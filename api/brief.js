@@ -39,8 +39,10 @@ export default async function handler(req, res) {
   const prompt = `คุณคือนักวิเคราะห์สถิติฟุตบอลของแอป Goal Club เขียนภาษาไทยทั้งหมด
 ข้อมูลคือผลโมเดลและราคาตลาดของวันที่ ${body.date} (เวลาไทย) และหัวข่าวจริงของวันนี้
 กติกา: ใช้เฉพาะตัวเลขและข่าวที่ให้มา ชื่อนักเตะต้องปรากฏในหัวข่าวเท่านั้น ห้ามแต่งข่าวหรือตัวเลข ห้ามชวนเดิมพัน ห้ามอ้างว่าแม่นหรือชัวร์
-ตอบเป็น JSON เท่านั้น: {"summary":"ภาพรวม 2-3 ประโยค","notes":[{"match":"ทีม - ทีม","text":"หนึ่งประโยค"}],"players":[{"name":"ชื่อจากข่าว","club":"สโมสร","detail":"ย้ายทีม/บาดเจ็บ/กำลังใจ หนึ่งประโยค"}]}
-notes 3-5 คู่ players ไม่เกิน 7 คน (ถ้าข่าวไม่มีชื่อให้เป็น [])
+สำนวน: ภาษานักข่าวกีฬาไทยยุคปัจจุบัน อ่านสนุก กระชับ มีจังหวะ
+ตอบเป็น JSON เท่านั้น: {"summary":"ภาพรวมของวัน 4-6 ประโยค","notes":[{"match":"ทีม - ทีม (ใช้ชื่อตามช่อง match)","text":"2 ประโยค"}],"players":[{"name":"ชื่อจากข่าว","club":"สโมสร","detail":"ย้ายทีม/บาดเจ็บ/กำลังใจ หนึ่งประโยค"}],"adjust":[{"match":"ทีม - ทีม (ตามช่อง match)","team":"home|away","effect":-0.05,"reason":"เหตุผลสั้น อ้างข่าว"}]}
+notes 4-6 คู่ players ไม่เกิน 7 คน (ถ้าข่าวไม่มีชื่อให้เป็น [])
+adjust ใส่เฉพาะเมื่อหัวข่าวยืนยันว่านักเตะหลักของทีมในคู่วันนี้ไม่ได้ลง (บาดเจ็บ/โดนแบน) หรือเปลี่ยนโค้ชกะทันหัน effect อยู่ระหว่าง -0.05 ถึง 0.03 ถ้าไม่มีให้เป็น []
 หัวข่าว: ${JSON.stringify(headlines.map((h) => `${h.source}: ${h.title}`))}
 ข้อมูลคู่: ${JSON.stringify(matches)}`;
 
@@ -48,7 +50,7 @@ notes 3-5 คู่ players ไม่เกิน 7 คน (ถ้าข่า�
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "content-type": "application/json", "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model: MODEL, max_tokens: 1500, messages: [{ role: "user", content: prompt }] }),
+      body: JSON.stringify({ model: MODEL, max_tokens: 2500, messages: [{ role: "user", content: prompt }] }),
       signal: AbortSignal.timeout(50000),
     });
     const j = await r.json();
@@ -57,7 +59,8 @@ notes 3-5 คู่ players ไม่เกิน 7 คน (ถ้าข่า�
     const out = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1));
     const names = headlines.map((h) => h.title.toLowerCase()).join(" ");
     const players = (out.players || []).filter((p) => p?.name && p.name.toLowerCase().split(/\s+/).some((w) => w.length > 2 && names.includes(w)));
-    res.status(200).json({ summary: out.summary || "", notes: out.notes || [], players, headlines });
+    const adjust = (out.adjust || []).filter((a) => a && a.match && /^(home|away)$/.test(a.team) && Number.isFinite(Number(a.effect)));
+    res.status(200).json({ summary: out.summary || "", notes: out.notes || [], players, headlines, adjust });
   } catch (e) {
     res.status(200).json({ error: "เขียนบทวิเคราะห์ไม่สำเร็จ ลองใหม่อีกครั้ง" });
   }
