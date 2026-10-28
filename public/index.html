@@ -102,6 +102,12 @@ h2.sec small{font-family:var(--font-body);font-size:12px;color:var(--faint);font
 .badge{position:relative;width:30px;height:30px;flex:none;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700;letter-spacing:.02em;color:#1a140c;overflow:hidden}
 .badge .logo{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;padding:2px;background:var(--surface-2);border-radius:50%}
 .face .badge .logo{padding:5px}
+.card.match.is-live{border-color:color-mix(in srgb,var(--win) 60%,transparent);background:linear-gradient(180deg,color-mix(in srgb,var(--win) 14%,var(--surface)) 0%,var(--surface) 75%)}
+.card.match.is-live .score{color:var(--win);font-weight:600}
+.card.match.is-live .probbar .h{background:var(--win)}
+.li.is-live{background:color-mix(in srgb,var(--win) 11%,var(--surface));box-shadow:inset 3px 0 0 var(--win)}
+.li.is-live .t{color:var(--win);font-weight:600}
+.li.is-live .r b{color:var(--win)}
 .card.goal{box-shadow:0 0 0 2px var(--win);animation:goalflash 1.2s ease-out 2}
 @keyframes goalflash{50%{box-shadow:0 0 0 6px color-mix(in srgb,var(--win) 35%,transparent)}}
 .score{font-family:var(--font-display);font-size:22px;color:var(--fg);text-align:right;min-width:24px}
@@ -645,7 +651,7 @@ function toast(msg){ let el=$("#toast"); if(!el){ el=document.createElement("div
 function matchCard(m){
   const best=bestEdge(m);
   const goal = S.goals[m.id] && Date.now()-S.goals[m.id] < 120e3;
-  return `<div class="card match${goal?" goal":""}" role="button" tabindex="0" data-open="${m.id}">
+  return `<div class="card match${m.st==="in"?" is-live":""}${goal?" goal":""}" role="button" tabindex="0" data-open="${m.id}">
     <div class="mhead"><span class="lg">${esc(LEAGUE_NAME[m.lg]||m.lg)}</span>${goal?`<span class="tag value">ประตู!</span>`:""}${stateTag(m)}
       <button class="star ${isFav(m)?"on":""}" data-fav="${m.id}" aria-label="ดาวโปรด">${starSvg}</button></div>
     <div class="teams">
@@ -727,9 +733,9 @@ function viewSchedule(){
   const day=getDay(S.date); const ms=filtered(day);
   const groups={}; ms.forEach(m=>(groups[m.lg]=groups[m.lg]||[]).push(m));
   const keys=Object.keys(groups).sort((a,b)=>(LEAGUE_ORDER[a]??99)-(LEAGUE_ORDER[b]??99));
-  return `<h2 class="sec">โปรแกรมแข่ง<small>จัดตามลีก · เวลาไทย · วันแข่งตัดรอบราว 11:00–12:00 น.</small></h2>${dateChips()}
+  return `<h2 class="sec">โปรแกรมแข่ง<small>เวลาไทย · ตัดรอบวันราว 11:00 น.</small></h2>${dateChips()}
   ${day.matches.length?`<div class="chips" style="padding-top:0">${leagueSelect(day)}</div><div class="stack">${keys.map(k=>`<div class="list"><div class="grouphead"><span>${esc(LEAGUE_NAME[k]||k)}</span><span class="num">${groups[k].length} คู่</span></div>
-    ${groups[k].map(m=>`<button class="li" data-open="${m.id}"><span class="t num">${m.st==="pre"?kickTime(m.ko):m.st==="in"?"สด":"จบ"}</span>
+    ${groups[k].map(m=>`<button class="li${m.st==="in"?" is-live":""}" data-open="${m.id}"><span class="t num">${m.st==="pre"?kickTime(m.ko):m.st==="in"?esc(m.clock||"สด"):"จบ"}</span>
       <span class="mid"><div>${esc(m.h.short)}</div><div class="muted">${esc(m.a.short)}</div></span>
       <span class="r num">${m.st==="pre"?`<span class="muted">${pct(m.sum.home)} · ${pct(m.sum.away)}</span>`:`<b>${m.h.score??"–"}</b><br><b>${m.a.score??"–"}</b>`}</span></button>`).join("")}</div>`).join("")}</div>`:emptyDay()}`;
 }
@@ -739,12 +745,12 @@ function viewAnalyze(){
   const tabs=[["all","ทั้งหมด"],["ah","แฮนดิแคป"],["ou","สูงต่ำ"],["goals","สกอร์รวม"]];
   let body="";
   if(f==="goals"){
-    body=`<div class="list">${ms.map(m=>`<button class="li" data-open="${m.id}"><span class="t num">${kickTime(m.ko)}</span><span class="mid"><div>${esc(m.h.short)} – ${esc(m.a.short)}</div><div class="muted num" style="font-size:12px">λ ${m.lh.toFixed(2)} / ${m.la.toFixed(2)} · รวม ${(m.lh+m.la).toFixed(2)}</div></span>
+    body=`<div class="list">${ms.map(m=>`<button class="li${m.st==="in"?" is-live":""}" data-open="${m.id}"><span class="t num">${m.st==="in"?esc(m.clock||"สด"):kickTime(m.ko)}</span><span class="mid"><div>${esc(m.h.short)} – ${esc(m.a.short)}${m.st!=="pre"?` <b class="num">${m.h.score??0}–${m.a.score??0}</b>`:""}</div><div class="muted num" style="font-size:12px">λ ${m.lh.toFixed(2)} / ${m.la.toFixed(2)} · รวม ${(m.lh+m.la).toFixed(2)}</div></span>
       <span class="r num">${m.sum.top.slice(0,3).map(c=>`${c.h}-${c.a} <span class="faint">${pct(c.p)}</span>`).join("<br>")}</span></button>`).join("")}</div>`;
   } else {
     const rows=[]; ms.forEach(m=>edgeRows(m).forEach(r=>{ if((f==="all"||r.kind===f)&&r.edge!=null) rows.push({m,r}); }));
     rows.sort((a,b)=>b.r.edge-a.r.edge);
-    body = rows.length ? `<div class="list">${rows.slice(0,60).map(({m,r})=>`<button class="li" data-open="${m.id}"><span class="t num">${kickTime(m.ko)}</span>
+    body = rows.length ? `<div class="list">${rows.slice(0,60).map(({m,r})=>`<button class="li${m.st==="in"?" is-live":""}" data-open="${m.id}"><span class="t num">${m.st==="in"?esc(m.clock||"สด"):kickTime(m.ko)}</span>
       <span class="mid"><div>${esc(r.label)}</div><div class="muted" style="font-size:12px">${esc(m.h.short)} – ${esc(m.a.short)} · ราคา ${fmtPrice(r.dec,S.style)}</div></span>
       <span class="r num"><div>โมเดล <b>${pct(r.model)}</b> · ตลาด ${pct(r.fair)}</div><span class="tag ${r.edge>=VALUE_EDGE?"value":""}">${pts(r.edge)} จุด</span></span></button>`).join("")}</div>`
       : `<div class="card empty muted">ยังไม่มีราคาตลาดของคู่ในวันนี้</div>`;
@@ -760,7 +766,7 @@ function viewSaved(){
   const upcoming=[]; all.forEach(d=>getDay(d).matches.forEach(m=>{ if(S.favs[m.h.id]||S.favs[m.a.id]) upcoming.push({d,m}); }));
   return `<h2 class="sec">ทีมโปรด<small>เก็บในเครื่องนี้</small></h2>
    <div class="chips">${ids.map(id=>`<button class="chip on" data-unfav="${id}" aria-label="เอาออก">${esc(S.favs[id])} ✕</button>`).join("")}</div>
-   ${upcoming.length?`<div class="list">${upcoming.map(({d,m})=>`<button class="li" data-open="${m.id}" data-day="${d}"><span class="t">${relLabel(d)}<br><span class="num">${kickTime(m.ko)}</span></span><span class="mid"><div>${esc(m.h.short)}</div><div class="muted">${esc(m.a.short)}</div></span><span class="r num">${m.st==="pre"?`${pct(m.sum.home)} · ${pct(m.sum.away)}`:`${m.h.score}–${m.a.score}`}</span></button>`).join("")}</div>`:`<div class="card muted">ยังไม่มีโปรแกรมของทีมโปรดในข้อมูลที่โหลดไว้</div>`}`;
+   ${upcoming.length?`<div class="list">${upcoming.map(({d,m})=>`<button class="li${m.st==="in"?" is-live":""}" data-open="${m.id}" data-day="${d}"><span class="t">${relLabel(d)}<br><span class="num">${kickTime(m.ko)}</span></span><span class="mid"><div>${esc(m.h.short)}</div><div class="muted">${esc(m.a.short)}</div></span><span class="r num">${m.st==="pre"?`${pct(m.sum.home)} · ${pct(m.sum.away)}`:`${m.h.score}–${m.a.score}`}</span></button>`).join("")}</div>`:`<div class="card muted">ยังไม่มีโปรแกรมของทีมโปรดในข้อมูลที่โหลดไว้</div>`}`;
 }
 function viewMore(){
   const day=getDay(S.date); const picks=lockPicks(day.matches);
@@ -870,7 +876,7 @@ function sheetHtml(m){
   <div class="wrap body">
     <div class="face">
       <div>${badge(m.h,120)}<div class="nm">${esc(m.h.name)}</div><div class="faint" style="font-size:12px">${m.h.rank?`อันดับ ${m.h.rank} · `:""}${m.h.points!=null?`${m.h.points} แต้ม`:""}</div></div>
-      <div class="mid num">${midHtml(m)}</div>
+      <div class="mid num"${m.st==="in"?' style="color:var(--win)"':""}>${midHtml(m)}</div>
       <div>${badge(m.a,120)}<div class="nm">${esc(m.a.name)}</div><div class="faint" style="font-size:12px">${m.a.rank?`อันดับ ${m.a.rank} · `:""}${m.a.points!=null?`${m.a.points} แต้ม`:""}</div></div>
     </div>
     <div class="probbar" style="height:10px;margin-top:20px"><i class="h" style="width:${m.sum.home*100}%"></i><i class="d" style="width:${m.sum.draw*100}%"></i><i class="a" style="width:${m.sum.away*100}%"></i></div>
