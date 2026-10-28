@@ -1,5 +1,7 @@
 // Long-form analysis for one match. Uses only the numbers the app sends plus today's headlines.
 // Needs ANTHROPIC_API_KEY in the Vercel project settings.
+import { kv, kvEnabled, parse } from "../lib/kv.js";
+
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5-5";
 
 async function headlines() {
@@ -12,7 +14,13 @@ async function headlines() {
 }
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
+  const id = String((req.query && req.query.id) || "");
+  if (req.method === "GET") {
+    if (!kvEnabled || !/^\d{1,12}$/.test(id)) { res.status(200).json({}); return; }
+    try { res.status(200).json(parse(await kv("GET", `ana:${id}`), {})); } catch { res.status(200).json({}); }
+    return;
+  }
+  if (req.method !== "POST") { res.status(405).json({ error: "GET or POST" }); return; }
   if (!process.env.ANTHROPIC_API_KEY) { res.status(200).json({ error: "ยังไม่ได้ตั้ง ANTHROPIC_API_KEY ใน Vercel" }); return; }
   const data = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
   const news = await headlines();
@@ -33,7 +41,11 @@ export default async function handler(req, res) {
     if (!r.ok) throw new Error(j?.error?.message || String(r.status));
     const text = (j.content || []).map((c) => c.text || "").join("");
     const out = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1));
-    res.status(200).json({ paras: Array.isArray(out.paras) ? out.paras : [] });
+    const result = { at: new Date().toISOString(), paras: Array.isArray(out.paras) ? out.paras.slice(0, 8) : [] };
+    if (kvEnabled && /^\d{1,12}$/.test(String(data.id || "")) && result.paras.length) {
+      try { await kv("SET", `ana:${data.id}`, JSON.stringify(result), "EX", String(5 * 86400)); } catch {}
+    }
+    res.status(200).json(result);
   } catch {
     res.status(200).json({ error: "เขียนบทวิเคราะห์ไม่สำเร็จ ลองใหม่อีกครั้ง" });
   }

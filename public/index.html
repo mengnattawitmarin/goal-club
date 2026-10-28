@@ -593,6 +593,25 @@ function signed(line){ const s=Math.round(line*4)/4; if(Math.abs(s)<.01) return 
 function bestEdge(m){ return edgeRows(m).filter(r=>r.edge!=null).sort((a,b)=>b.edge-a.edge)[0]||null; }
 
 /* picks: up to 5 market AH lines where the model is most confident */
+/* ---------- shared store: one data set for every device (hosted site with Upstash Redis) ---------- */
+const Shared={on:false, picks:{}, pickHist:[], histN:0, pulled:{}};
+async function syncPull(date){
+  if(window.claude || S.liveOk===false) return false;
+  try{
+    const j=await getJson(`/api/store?date=${date}`,6000);
+    if(!j?.enabled) return false;
+    Shared.on=true; Shared.picks[date]=j.picks||{}; Shared.pickHist=j.pickHist||[]; Shared.histN=j.histN||0; Shared.pulled[date]=Date.now();
+    if(j.calib) S.calib=j.calib;
+    if(j.newsTeam){ S.newsTeam={...S.newsTeam,...j.newsTeam}; }
+    if(j.brief && (!store.get("brief:"+date,null) || store.get("brief:"+date).at < j.brief.at)) store.set("brief:"+date,j.brief);
+    return true;
+  }catch{ return false; }
+}
+function syncPush(body){
+  if(!Shared.on) return Promise.resolve();
+  return fetch("/api/store",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).catch(()=>{});
+}
+
 /* ---------- picks: one strongest call per match, up to 10 a day, frozen at kickoff ---------- */
 function bestCall(m){
   if(m.st!=="pre") return null;
@@ -619,12 +638,22 @@ function picksLimit(n){ return Math.min(10, Math.max(3, Math.ceil(n/3.5))); }
 function picksFor(date){
   const day=getDay(date), ms=day.matches; if(!ms.length) return {list:[],limit:0,total:0};
   const limit=picksLimit(ms.length);
-  const saved=store.get("picks:"+date,[]);
+  const saved=Shared.on&&Shared.picks[date] ? Object.values(Shared.picks[date]) : store.get("picks:"+date,[]);
   const byId=new Map(ms.map(m=>[m.id,m]));
   const frozen=saved.filter(p=>byId.has(p.id)&&byId.get(p.id).st!=="pre");
   const fresh=ms.map(bestCall).filter(p=>p&&p.prob>=.55&&!frozen.some(z=>z.id===p.id)).sort((a,b)=>b.prob-a.prob);
   const list=[...frozen,...fresh.slice(0,Math.max(0,limit-frozen.length))].sort((a,b)=>b.prob-a.prob);
-  if(date>=shiftDate(bkkToday(),-1) && day.source!=="snapshot") store.set("picks:"+date, list);
+  if(date>=shiftDate(bkkToday(),-1) && day.source!=="snapshot"){
+    store.set("picks:"+date, list);
+    if(Shared.on){
+      const sig=list.map(p=>p.id+p.label).join("|");
+      if(Shared.sig?.[date]!==sig){ (Shared.sig=Shared.sig||{})[date]=sig;
+        const send=list.filter(p=>byId.get(p.id)?.st==="pre").map(p=>({...p,ko:byId.get(p.id).ko,match:`${byId.get(p.id).h.short} – ${byId.get(p.id).a.short}`}));
+        const next={}; list.forEach(p=>next[p.id]={...p,ko:byId.get(p.id).ko}); Shared.picks[date]=next;
+        if(send.length) syncPush({date,picks:send});
+      }
+    }
+  }
   return {list:list.map(p=>({...p,m:byId.get(p.id)})), limit, total:ms.length};
 }
 function settlePick(p, hs, as){
@@ -641,8 +670,18 @@ function settlePick(p, hs, as){
 const RES_LABEL={win:"เข้า",half:"เข้าครึ่ง",push:"คืนทุน",halflose:"เสียครึ่ง",lose:"ไม่เข้า"};
 
 /* ---------- learning from finished matches ---------- */
+const sentPred={}, sentRes={};
 function recordDay(date){
   const day=S.days[date]; if(!day?.matches?.length || day.source==="snapshot") return;
+  if(Shared.on){
+    const now=Date.now(), preds=[], results=[];
+    for(const m of day.matches){
+      if(m.st==="pre" && m.lh0!=null && (!sentPred[m.id] || now-sentPred[m.id]>30*60e3)){ sentPred[m.id]=now; preds.push({id:m.id,lg:m.lg,lh0:+m.lh0.toFixed(3),la0:+m.la0.toFixed(3),ph:+m.sum.home.toFixed(3),pa:+m.sum.away.toFixed(3),ko:m.ko}); }
+      if(m.st==="post" && m.h.score!=null && !sentRes[m.id]){ sentRes[m.id]=1; results.push({id:m.id,hs:m.h.score,as:m.a.score,match:`${m.h.short} ${m.h.score}–${m.a.score} ${m.a.short}`}); }
+    }
+    if(preds.length||results.length) syncPush({date,preds,results}).then(()=>{ if(results.length) syncPull(date).then(ok=>{ if(ok&&!S.open) render(); }); });
+    return;
+  }
   const pred=store.get("pred",{}), hist=store.get("hist",[]), seen=new Set(hist.map(h=>h.id));
   let dirty=false;
   for(const m of day.matches){
@@ -668,7 +707,7 @@ function computeCalib(){
   return out;
 }
 function pickRecord(days=14){
-  const from=shiftDate(bkkToday(),-days), ph=store.get("pickHist",[]).filter(x=>x.d>=from);
+  const from=shiftDate(bkkToday(),-days), ph=(Shared.on?Shared.pickHist.slice().reverse():store.get("pickHist",[])).filter(x=>x.d>=from);
   const won=ph.filter(x=>x.res==="win"||x.res==="half").length, lost=ph.filter(x=>x.res==="lose"||x.res==="halflose").length, push=ph.filter(x=>x.res==="push").length;
   return {list:ph.slice().reverse(), won, lost, push, n:won+lost};
 }
@@ -693,7 +732,7 @@ async function loadTrends(date, slugs){
     }catch{}
   });
   store.set("trends",trends); S.trends=trends;
-  if(settled){ store.set("pred",pred); store.set("hist",hist.slice(-600)); S.calib=computeCalib(); }
+  if(settled&&!Shared.on){ store.set("pred",pred); store.set("hist",hist.slice(-600)); S.calib=computeCalib(); }
   return true;
 }
 
@@ -931,7 +970,9 @@ async function refresh(date, manual, light){
       }
       live.matches.forEach(m=>{ const d=keep.get(m.id); if(d) m.ds=d; });
       S.days[date]=prepare({...live, source:"live"});
-      saveDay(date); recordDay(date);
+      saveDay(date);
+      if(!Shared.pulled[date] || Date.now()-Shared.pulled[date]>5*60e3) await syncPull(date);
+      recordDay(date);
       if(date===bkkToday()) loadTrends(date,[...new Set(S.days[date].matches.map(m=>m.lg))]).then(ch=>{ if(ch&&S.days[date]){ S.days[date]=prepare({...S.days[date],matches:S.days[date].matches.map(x=>x.raw||x)}); if(!S.open) render(); } });
       if(S.open){ const nm=S.days[date].matches.find(x=>x.id===S.open.id); if(nm) updateSheetScore(nm); }
       if(manual) toast("ดึงข้อมูลสดจาก ESPN แล้ว");
@@ -1224,6 +1265,7 @@ function viewMore(){
   <div class="group">
     <div class="gitem"><div class="lbl">สถานะ</div><div class="desc row" style="gap:6px">${statusText()}</div>
       <p class="note">${S.liveOk?"ใช้ฟีดสด อัปเดตเองทุกนาทีระหว่างแข่ง และทุก 10 นาทีเมื่อไม่มีคู่เตะ":"หน้านี้ต่อฟีดสดไม่ได้ จึงใช้ชุดที่บันทึกไว้ เปิดที่ goal-club.vercel.app เพื่อดูสด"}</p></div>
+    <div class="gitem"><div class="lbl">ข้อมูลร่วมทุกเครื่อง</div><div class="desc">${Shared.on?`<span class="green">เปิดอยู่</span> · ฟันธง ผลงานย้อนหลัง บทวิเคราะห์ และสิ่งที่โมเดลเรียนรู้ ใช้ชุดเดียวกันทุกเครื่อง · สะสมผลแล้ว ${Shared.histN} นัด`:window.claude?"ใช้ได้ในเว็บที่ติดตั้ง":"ยังไม่ได้ต่อฐานข้อมูล ข้อมูลเก็บแยกในแต่ละเครื่อง (ตั้งได้ที่ Vercel → Storage → Upstash Redis)"}</div></div>
     <div class="gitem row"><button class="btn ghost small" data-act="refresh">ดึงข้อมูลใหม่</button><button class="btn ghost small" data-act="clear">ล้างข้อมูลในเครื่อง</button></div>
     <div class="gitem"><div class="lbl">แหล่งข้อมูล</div><div class="desc">โปรแกรม สกอร์ ตารางคะแนน และราคา DraftKings จาก ESPN · หัวข่าวจาก BBC Sport, The Guardian และ ESPN · ราคาเป็นของตลาดต่างประเทศ ไม่ใช่ราคาเว็บไทย</div></div>
   </div>
@@ -1517,6 +1559,7 @@ async function enrichOpen(m, day){
     if(ds){ m.raw.ds=ds; swap(); } else { const el=$("#dsLoading"); if(el) el.textContent="ดึงสถิติเชิงลึกไม่สำเร็จ"; }
   }
   if(window.claude || S.liveOk===false) return;
+  if(Shared.on && !store.get("ana:"+id,null)){ getJson(`/api/analysis?id=${id}`,5000).then(a=>{ if(a?.paras?.length){ store.set("ana:"+id,a); if(S.open?.id===id) paintSheet(); } }).catch(()=>{}); }
   const cur=S.open; if(!cur||cur.id!==id) return;
   S.ext[id]=S.ext[id]||{};
   const [wx,people]=await Promise.all([S.ext[id].wx?S.ext[id].wx:loadWeather(cur), S.ext[id].people?S.ext[id].people:loadPeople(cur)]);
@@ -1534,7 +1577,7 @@ window.addEventListener("popstate",()=>{ if(S.open && !location.hash.startsWith(
 async function runAnalysis(){
   const m=S.open; if(!m) return;
   S.anaBusy=true; S.anaErr=""; paintSheet();
-  const data={match:`${m.h.name} - ${m.a.name}`,league:lg(m),kickoffThai:kickTime(m.ko),state:m.st,score:m.st!=="pre"?`${m.h.score}-${m.a.score}`:null,
+  const data={id:m.id,match:`${m.h.name} - ${m.a.name}`,league:lg(m),kickoffThai:kickTime(m.ko),state:m.st,score:m.st!=="pre"?`${m.h.score}-${m.a.score}`:null,
     ranks:[m.h.rank,m.a.rank],form:[m.h.form,m.a.form],model:{home:pct(m.sum.home),draw:pct(m.sum.draw),away:pct(m.sum.away),over25:pct(m.sum.over25),btts:pct(m.sum.btts),lambda:[+m.lh.toFixed(2),+m.la.toFixed(2)],topScores:m.sum.top.slice(0,3).map(c=>`${c.h}-${c.a}`)},
     handicap:m.mk?.spread?ahPhrase(m.h.short,m.a.short,m.mk.spread.line):null,factors:(m.factors||[]).map(f=>`${f.label}: ${f.text}`),
     h2h:m.meets.map(x=>`${x.date} ${x.f}-${x.a}`),players:(m.ds?.players||[]).map(p=>`${p.name} (${p.team}) ยิง ${p.goals??"-"} แอส ${p.assists??"-"}`)};
@@ -1575,7 +1618,7 @@ async function runBrief(){
   S.briefBusy=true; S.briefErr=""; render();
   try{
     const sample = window.claude ? await window.claude.use("sample") : null;
-    const data=day.matches.slice(0,30).map(m=>({match:`${m.h.short} - ${m.a.short}`,teams:[m.h.name,m.a.name],league:lg(m),kickoffThai:kickTime(m.ko),state:m.st,
+    const data=day.matches.slice(0,30).map(m=>({match:`${m.h.short} - ${m.a.short}`,teams:[m.h.name,m.a.name],homeId:m.h.id,awayId:m.a.id,league:lg(m),kickoffThai:kickTime(m.ko),state:m.st,
       model:{home:+m.sum.home.toFixed(3),draw:+m.sum.draw.toFixed(3),away:+m.sum.away.toFixed(3),over25:+m.sum.over25.toFixed(3),likely:`${m.sum.top[0].h}-${m.sum.top[0].a}`,lambda:[+m.lh.toFixed(2),+m.la.toFixed(2)]},
       handicap:m.mk?.spread?ahPhrase(m.h.short,m.a.short,m.mk.spread.line):null, bestEdge:(b=>b?{label:b.label,points:+(b.edge*100).toFixed(1)}:null)(bestEdge(m)),
       form:[m.h.form,m.a.form], h2hMeetings:m.meets.length}));
@@ -1639,7 +1682,7 @@ function render(){
   $("#view").innerHTML=v();
 }
 function goTab(tab){ S.tab=tab; try{ history.replaceState(null,"","#"+tab); }catch{} render(); window.scrollTo({top:0}); }
-function setDate(d){ S.date=d; S.league=""; render(); window.scrollTo({top:0}); const day=S.days[d]; if(S.liveOk && (day?.source!=="live" || Date.now()-Date.parse(day.fetchedAt)>60e3)) refresh(d,false); else if(S.liveOk) scheduleNext(); }
+function setDate(d){ S.date=d; S.league=""; if(Shared.on && !Shared.pulled[d]) syncPull(d).then(ok=>{ if(ok&&!S.open) render(); }); render(); window.scrollTo({top:0}); const day=S.days[d]; if(S.liveOk && (day?.source!=="live" || Date.now()-Date.parse(day.fetchedAt)>60e3)) refresh(d,false); else if(S.liveOk) scheduleNext(); }
 function toggleFav(id){
   const m=(S.open&&S.open.id===id)?S.open:Object.values(S.days).flatMap(d=>d.matches).find(x=>x.id===id); if(!m) return;
   if(isFav(m)){ delete S.favs[m.h.id]; delete S.favs[m.a.id]; toast("เอาออกจากทีมโปรดแล้ว"); }
@@ -1699,7 +1742,7 @@ window.addEventListener("hashchange",()=>{ if(S.open) return; if(!fromHash()) re
   const t=bkkToday(); S.today=t; S.calib=computeCalib();
   if(!getDay(t).matches.length && !store.get("day:"+t,null)){ const ds=Object.keys(SNAPSHOT||{}).sort(); const near=ds.find(d=>d>=t)||ds[ds.length-1]; if(near) S.date=near; }
   if(!fromHash()) render();
-  probeLive().then(ok=>{ if(ok && S.date!==t && !getDay(t).matches.length) S.date=t; refresh(S.date,false); });
+  probeLive().then(async ok=>{ if(ok && S.date!==t && !getDay(t).matches.length) S.date=t; if(ok && await syncPull(S.date)) render(); refresh(S.date,false); });
   if("serviceWorker" in navigator && location.protocol==="https:" && !window.claude){ try{ navigator.serviceWorker.register("/sw.js").catch(()=>{}); }catch{} }
 })();
 </script>

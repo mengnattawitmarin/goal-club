@@ -1,5 +1,7 @@
 // Daily brief: reads real headlines (BBC Sport, The Guardian, ESPN) and the app's model numbers,
 // then asks Claude for a Thai summary. Needs ANTHROPIC_API_KEY in the Vercel project settings.
+import { kv, kvPipe, kvEnabled } from "../lib/kv.js";
+
 const FEEDS = [
   { source: "BBC Sport", url: "https://feeds.bbci.co.uk/sport/football/rss.xml" },
   { source: "The Guardian", url: "https://www.theguardian.com/football/rss" },
@@ -60,7 +62,19 @@ adjust ใส่เฉพาะเมื่อหัวข่าวยืนย�
     const names = headlines.map((h) => h.title.toLowerCase()).join(" ");
     const players = (out.players || []).filter((p) => p?.name && p.name.toLowerCase().split(/\s+/).some((w) => w.length > 2 && names.includes(w)));
     const adjust = (out.adjust || []).filter((a) => a && a.match && /^(home|away)$/.test(a.team) && Number.isFinite(Number(a.effect)));
-    res.status(200).json({ summary: out.summary || "", notes: out.notes || [], players, headlines, adjust });
+    const brief = { at: new Date().toISOString(), summary: out.summary || "", notes: out.notes || [], players, headlines, adjust };
+    if (kvEnabled && /^\d{4}-\d{2}-\d{2}$/.test(String(body.date))) {
+      try {
+        const cmds = [["SET", `brief:${body.date}`, JSON.stringify(brief), "EX", String(14 * 86400)]];
+        for (const a of adjust) {
+          const m = matches.find((x) => String(a.match || "").toLowerCase().includes(String(x.match || "").split(" - ")[0].toLowerCase()));
+          const tid = m && (a.team === "away" ? m.awayId : m.homeId);
+          if (tid) cmds.push(["HSET", "newsteam", String(tid), JSON.stringify({ e: Math.max(-0.05, Math.min(0.03, Number(a.effect) || 0)), reason: String(a.reason || "").slice(0, 120), d: body.date })]);
+        }
+        await kvPipe(cmds);
+      } catch {}
+    }
+    res.status(200).json(brief);
   } catch (e) {
     res.status(200).json({ error: "เขียนบทวิเคราะห์ไม่สำเร็จ ลองใหม่อีกครั้ง" });
   }
