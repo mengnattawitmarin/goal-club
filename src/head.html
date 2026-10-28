@@ -296,7 +296,7 @@ label.f input,label.f select{height:42px;border-radius:var(--r-sm);border:1px so
 .vchips em{font-style:normal;font-size:11px;color:var(--faint)}
 .scorechips{display:flex;gap:6px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)}
 .scorechips span{display:inline-flex;align-items:baseline;gap:5px;padding:4px 10px;border-radius:999px;background:var(--surface-2);font-size:13px}
-.scorechips span.top{background:color-mix(in srgb,var(--gold) 20%,transparent);color:var(--gold)}
+.scorechips span.best{background:color-mix(in srgb,var(--gold) 20%,transparent);color:var(--gold)}
 .scorechips small{font-size:11px;color:var(--faint)}
 .article h4{font-family:var(--font-display);font-weight:500;font-size:16px;color:var(--gold);margin:14px 0 4px}
 .article h4:first-child{margin-top:0}
@@ -421,6 +421,41 @@ label.f input,label.f select{height:42px;border-radius:var(--r-sm);border:1px so
 .pcard .pill{width:20px;height:20px;border-radius:5px;font-size:11px}
 .brief-art{float:right;width:118px;height:78px;margin:-4px -4px 4px 10px}
 
+/* score prediction */
+.livebox{margin-top:12px;border-radius:var(--r-lg);padding:14px;border:1px solid color-mix(in srgb,var(--win) 55%,transparent);background:linear-gradient(180deg,color-mix(in srgb,var(--win) 12%,var(--surface)),var(--surface))}
+.scorecard{margin-top:12px;border-radius:var(--r-lg);padding:16px;border:1px solid var(--line);background:radial-gradient(120% 120% at 50% 0%,#2a2216 0%,#15120d 70%);text-align:center}
+.sc-k{font-size:11.5px;letter-spacing:.08em;color:var(--gold-deep);font-weight:600}
+.sc-row{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:10px;margin-top:10px}
+.sc-t{display:flex;align-items:center;gap:8px;min-width:0}
+.sc-t.r{justify-content:flex-end}
+.sc-t b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:15px}
+.sc-n{font-size:38px;font-weight:700;color:var(--gold);line-height:1;letter-spacing:.02em}
+.sc-p{font-size:12px;color:var(--muted);margin-top:8px}
+.sc-story{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;padding-top:12px;border-top:1px dashed var(--line);text-align:left;font-size:13px}
+.sc-story .r{text-align:right}
+.goal-l{display:block;margin:3px 0}
+.goal-l small{display:block;color:var(--faint);font-size:11.5px;padding-left:20px}
+.sc-story .r .goal-l small{padding-left:0}
+.scorers .srow{display:grid;grid-template-columns:minmax(0,1fr) 46px 46px 52px;gap:6px;align-items:center;padding:10px 14px;border-top:1px solid var(--line-soft);font-size:13.5px;text-align:right}
+.scorers .srow:first-child{border-top:0}
+.scorers .srow.sh{font-size:11.5px;color:var(--faint);padding-block:8px}
+.scorers .srow > :first-child{text-align:left}
+.scorers .sn{display:flex;flex-direction:column;min-width:0}
+.scorers .sn b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scorers .sn small{font-size:11.5px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.funs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.funs > div{border-radius:var(--r-md);border:1px solid var(--line);background:var(--surface);padding:10px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.funs em{font-style:normal;font-size:11.5px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.funs b{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.luckcard{border-style:dashed;border-color:color-mix(in srgb,var(--gold) 38%,transparent);font-size:13.5px}
+.lk-star{font-size:14.5px}
+.lk-star b{color:var(--gold)}
+.luckcard .ft{font-size:12.5px;color:var(--muted);margin-top:4px}
+.lk-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.lk{display:inline-flex;align-items:baseline;gap:5px;padding:4px 10px;border-radius:999px;background:var(--surface-2);font-size:12.5px}
+.lk small{color:var(--faint);font-size:11px}
+.lk.up b,.lkdot.up{color:var(--win)} .lk.down b,.lkdot.down{color:var(--loss)}
+.lkdot{font-size:12px;margin-left:2px}
 /* ---------- bottom tabs ---------- */
 nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:30;background:color-mix(in srgb,var(--bg) 96%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid var(--line-soft);padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
 nav.tabs .in{max-width:680px;margin:0 auto;display:flex}

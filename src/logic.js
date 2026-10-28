@@ -206,8 +206,114 @@ function refine(m){
     const bh=lh, ba=la; lh=clamp(lh*cal.hAdj,0.15,4.2); la=clamp(la*cal.aAdj,0.15,4.2);
     push("calib","เรียนรู้จากผลที่ผ่านมา",`เทียบที่ทำนายไว้กับสกอร์จริง ${cal.n} นัด${cal===S.calib._all?" (รวมทุกลีก)":` ใน${LEAGUE_NAME[m.lg]||"ลีกนี้"}`} เจ้าบ้านยิงจริง ${Math.round((cal.hs/cal.lh)*100)}% ของที่คาด ทีมเยือน ${Math.round((cal.as/cal.la)*100)}%`,bh,ba);
   }
+  /* market: blend in the expected goals implied by DraftKings prices (bookmaker prices carry
+     information the stats miss: injuries, rotation, motivation). Weight 35%, geometric blend. */
+  const mkt=marketLambdas(m, lh+la);
+  if(mkt){
+    const bh=lh, ba=la, W=.35;
+    lh=clamp(Math.exp(Math.log(lh)*(1-W)+Math.log(mkt.lh)*W),0.15,4.2); la=clamp(Math.exp(Math.log(la)*(1-W)+Math.log(mkt.la)*W),0.15,4.2);
+    push("market","ราคาตลาด",`ราคา ${m.mk.book} บอกประตูที่คาด ${mkt.lh.toFixed(2)} – ${mkt.la.toFixed(2)}${mkt.fromTotal?"":" (ไม่มีเส้นสูงต่ำ ใช้ผลรวมจากโมเดล)"} ผสม 35%`,bh,ba);
+  }
   const g=grid(lh,la), sum=summarize(g);
-  return {...m, raw:m.raw||m, lh, la, lh0, la0, basis, g, sum, steps, factors, hs, as, meets};
+  const out={...m, raw:m.raw||m, lh, la, lh0, la0, basis, g, sum, steps, factors, hs, as, meets};
+  out.live=liveModel(out); out.extra=extraMarkets(out); out.scorers=scorerModel(out);
+  return out;
+}
+
+/* ---------- market-implied expected goals: fit (λh, λa) to de-vigged 1X2 (+ total line) ---------- */
+function marketLambdas(m, modelTotal){
+  const mk=m.mk; if(!mk?.home||!mk?.draw||!mk?.away) return null;
+  const f=devig([mk.home.decimal,mk.draw.decimal,mk.away.decimal]); if(!f) return null;
+  let tOver=null, tLine=null;
+  if(mk.total){ const t=devig([mk.total.over.decimal,mk.total.under.decimal]); if(t){ tOver=t[0]; tLine=mk.total.line; } }
+  const pm=l=>{ const v=[]; let p=Math.exp(-l); for(let k=0;k<=9;k++){ v.push(p); p*=l/(k+1); } return v; };
+  const cache=new Map(); const P=l=>{ const k=l.toFixed(3); if(!cache.has(k)) cache.set(k,pm(l)); return cache.get(k); };
+  const err=(h,a)=>{
+    if(tOver==null && Math.abs(h+a-modelTotal)>.1) return 9;
+    const x=P(h), y=P(a); let ph=0,pd=0,pa=0; const tot=Array(19).fill(0);
+    for(let i=0;i<10;i++) for(let j=0;j<10;j++){ const p=x[i]*y[j]; if(i>j) ph+=p; else if(i===j) pd+=p; else pa+=p; tot[i+j]+=p; }
+    let e=(ph-f[0])**2+(pd-f[1])**2+(pa-f[2])**2;
+    if(tOver!=null){ let w=0,l=0; for(const part of atomic(tLine)) tot.forEach((p,t)=>{ if(t>part.line+1e-9) w+=p*part.w; else if(t<part.line-1e-9) l+=p*part.w; }); e+=(((w+l)>0?w/(w+l):.5)-tOver)**2; }
+    return e;
+  };
+  let best={e:9,lh:1,la:1};
+  for(let h=.2;h<=3.6;h+=.1) for(let a=.2;a<=3.6;a+=.1){ const e=err(h,a); if(e<best.e) best={e,lh:h,la:a}; }
+  const c=best; for(let h=c.lh-.1;h<=c.lh+.1;h+=.02) for(let a=c.la-.1;a<=c.la+.1;a+=.02){ if(h<.1||a<.1) continue; const e=err(h,a); if(e<best.e) best={e,lh:h,la:a}; }
+  return best.e<.01 ? {lh:best.lh, la:best.la, fromTotal:tOver!=null} : null;
+}
+
+/* ---------- in-play: remaining expected goals on top of the current score ---------- */
+function matchMinute(m){
+  if(m.st!=="in") return null;
+  const c=String(m.clock||"");
+  if(/พัก|HT/i.test(c)) return 45;
+  const n=c.match(/(\d+)(?:'|\+|$)/); const add=c.match(/\+(\d+)/);
+  return n ? Math.min(120, Number(n[1])+(add?Number(add[1]):0)) : null;
+}
+function liveModel(m){
+  const min=matchMinute(m); if(min==null||m.h.score==null) return null;
+  const left=Math.max(0,(94-min)/94);
+  const g=grid(Math.max(.01,m.lh*left),Math.max(.01,m.la*left));
+  let ph=0,pd=0,pa=0,best={p:0}; g.forEach((r,i)=>r.forEach((p,j)=>{ const H=m.h.score+i, A=m.a.score+j; if(H>A) ph+=p; else if(H===A) pd+=p; else pa+=p; if(p>best.p) best={p,h:H,a:A}; }));
+  const pMore=1-g[0][0];
+  return {min, ph, pd, pa, final:best, pMore};
+}
+
+/* ---------- extra markets from the same expected goals ---------- */
+function extraMarkets(m){
+  const H1=.45, lh=m.lh, la=m.la;
+  const pois=(k,l)=>{ let p=Math.exp(-l); for(let i=1;i<=k;i++) p*=l/i; return p; };
+  const res=(lH,lA)=>{ let h=0,d=0,a=0; for(let i=0;i<=8;i++) for(let j=0;j<=8;j++){ const p=pois(i,lH)*pois(j,lA); if(i>j) h+=p; else if(i===j) d+=p; else a+=p; } return {h,d,a}; };
+  // half-time / full-time: first-half goals then second-half goals, independent Poisson
+  const ht=[], htft={};
+  for(let i=0;i<=6;i++) for(let j=0;j<=6;j++) ht.push({i,j,p:pois(i,lh*H1)*pois(j,la*H1)});
+  for(const x of ht){
+    const hs=x.i>x.j?"h":x.i===x.j?"d":"a";
+    for(let k=0;k<=6;k++) for(let l=0;l<=6;l++){ const p=x.p*pois(k,lh*(1-H1))*pois(l,la*(1-H1)); const H=x.i+k, A=x.j+l; const fs=H>A?"h":H===A?"d":"a"; htft[hs+fs]=(htft[hs+fs]||0)+p; }
+  }
+  const htftTop=Object.entries(htft).sort((a,b)=>b[1]-a[1]).slice(0,3);
+  const p00=m.g[0][0];
+  const first={h:(1-p00)*lh/(lh+la), a:(1-p00)*la/(lh+la), none:p00};
+  let cleanH=0, cleanA=0, nilH=0, nilA=0, odd=0; const margin={};
+  m.g.forEach((r,i)=>r.forEach((p,j)=>{ if(j===0) cleanH+=p; if(i===0) cleanA+=p; if(i>j&&j===0) nilH+=p; if(j>i&&i===0) nilA+=p; if((i+j)%2) odd+=p; const d=i-j; const k=d>=3?"h3":d===2?"h2":d===1?"h1":d===0?"d":d===-1?"a1":d===-2?"a2":"a3"; margin[k]=(margin[k]||0)+p; }));
+  return {
+    h1:res(lh*H1,la*H1), goal1H:1-Math.exp(-(lh+la)*H1), goal2H:1-Math.exp(-(lh+la)*(1-H1)),
+    first, cleanH, cleanA, nilH, nilA, odd, even:1-odd, margin, htftTop,
+    over15:m.g.reduce((s,r,i)=>s+r.reduce((t,p,j)=>t+(i+j>=2?p:0),0),0),
+    over35:m.g.reduce((s,r,i)=>s+r.reduce((t,p,j)=>t+(i+j>=4?p:0),0),0)
+  };
+}
+
+/* ---------- scorers and assisters: each player's share of his team's season goals ---------- */
+function scorerModel(m){
+  const ps=m.ds?.players||[]; if(!ps.length) return null;
+  const sideOf=p=>p.side||(String(p.team||"").toLowerCase()===m.h.name.toLowerCase()?"h":String(p.team||"").toLowerCase()===m.a.name.toLowerCase()?"a":null);
+  const starters=new Set(m.ds?.lineup?.starters||[]); const known=!!m.ds?.lineup?.known;
+  const teamGoals=s=>{ const t=s==="h"?m.h:m.a; const fromTable=t.gf; const fromList=ps.filter(p=>sideOf(p)===s).reduce((a,p)=>a+(p.goals||0),0); return Math.max(fromTable||0, fromList*1.6, 1); };
+  const out=[];
+  for(const p of ps){
+    const s=sideOf(p); if(!s) continue;
+    const lam=s==="h"?m.lh:m.la, tg=teamGoals(s);
+    const play = known ? (p.id&&starters.has(String(p.id))?1:.25) : .85;
+    const gShare=clamp((p.goals||0)/tg,0,.6), aShare=clamp((p.assists||0)/tg,0,.5);
+    const xg=lam*gShare*play, xa=lam*aShare*play;
+    out.push({name:p.name, side:s, team:s==="h"?m.h.short:m.a.short, goals:p.goals, assists:p.assists, play,
+      pGoal:1-Math.exp(-xg), pAssist:1-Math.exp(-xa), pFirst:(s==="h"?m.extra?.first?.h:m.extra?.first?.a)??0, xg, xa, gShare});
+  }
+  out.forEach(o=>{ o.pFirst = (o.side==="h"?(1-m.g[0][0])*m.lh/(m.lh+m.la):(1-m.g[0][0])*m.la/(m.lh+m.la))*o.gShare*o.play; });
+  out.sort((a,b)=>b.pGoal-a.pGoal);
+  /* story for the most likely scoreline: hand the predicted goals to the likeliest scorers */
+  const top=m.sum.top[0], story={h:[],a:[]};
+  for(const s of ["h","a"]){
+    const n=s==="h"?top.h:top.a; const pool=out.filter(o=>o.side===s&&o.xg>0).map(o=>({...o,left:o.xg}));
+    for(let k=0;k<n;k++){
+      pool.sort((a,b)=>b.left-a.left); const pick=pool[0];
+      if(!pick||pick.left<.05){ story[s].push({name:"ผู้เล่นคนอื่น"}); continue; }
+      const helper=out.filter(o=>o.side===s&&o.name!==pick.name&&o.xa>0).sort((a,b)=>b.xa-a.xa)[k%2]||null;
+      story[s].push({name:pick.name, assist:helper?.name||null}); pick.left/=2.2;
+    }
+  }
+  return {list:out, story, known};
 }
 function venueSplit(f, side){
   if(!f?.ha?.length) return null;
@@ -501,7 +607,7 @@ async function loadLiveDossier(m){
     const v=p.gameInfo?.venue;
     const players=[...Object.values(leaders[m.h.id]||{}),...Object.values(leaders[m.a.id]||{})].map(x=>({...x,team:x.team===m.h.id?m.h.name:m.a.name,side:x.team===m.h.id?"h":"a"}));
     return {h2h:ser?.summary||null,meet,hf:five(m.h.id),af:five(m.a.id),venue:v?.fullName||null,city:v?.address?.city||null,country:v?.address?.country||null,
-      players, marks:[], lineup: known?{known:true,hMiss:miss(m.h.id),aMiss:miss(m.a.id)}:null};
+      players, marks:[], lineup: known?{known:true,hMiss:miss(m.h.id),aMiss:miss(m.a.id),starters:[...(starters[m.h.id]||[]),...(starters[m.a.id]||[])]}:null};
   }catch{ return null; }
 }
 
