@@ -265,6 +265,26 @@ label.f input,label.f select{height:42px;border-radius:var(--r-sm);border:1px so
 .out{margin-top:10px;font-size:13.5px;line-height:1.6}
 
 
+/* drawers (home) */
+.drawer{border-radius:var(--r-lg);background:var(--surface);border:1px solid var(--line);overflow:hidden}
+.drawer.gold{background:linear-gradient(180deg,#211b13 0%,#14110d 100%);border-color:color-mix(in srgb,var(--gold) 30%,transparent)}
+.dhead{display:flex;align-items:center;gap:8px;width:100%;padding:12px 14px;min-height:48px}
+.dhead .dt{font-family:var(--font-display);font-weight:500;font-size:17px;color:var(--gold);white-space:nowrap}
+.dhead .dm{margin-left:auto;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.chev{width:8px;height:8px;border-right:2px solid var(--faint);border-bottom:2px solid var(--faint);transform:rotate(45deg);margin:0 2px 4px 6px;transition:transform .15s;flex:none}
+.drawer.open .chev{transform:rotate(-135deg);margin-bottom:-2px}
+.dpeek{padding:0 14px 12px}
+.dpeek .dline{margin:0;font-size:13.5px;color:var(--muted);line-height:1.55}
+.dbody{padding:0 14px 14px}
+.dpeek + .dbody{padding-top:0}
+.drawer .more{display:block;width:100%;text-align:center;font-size:13px;color:var(--gold);padding:8px 0 0;font-weight:500}
+.list.compact .pick{padding:8px 12px;gap:2px 10px}
+.list.compact .pick .rank{font-size:17px;width:18px}
+.list.compact .pick .ph{font-size:14px}
+.list.compact .pick .sub{font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.list.compact .pick .pst{margin-top:2px}
+.list.compact .meter{width:48px;height:4px}
+.drawer .list{background:color-mix(in srgb,var(--bg) 55%,transparent)}
 /* picks hero */
 .picks-hero{padding:16px}
 .ph-head{display:flex;align-items:center;gap:10px}
@@ -1027,7 +1047,7 @@ Object.assign(S, {
   edgeKind: "all",        // all | ah | ou | 1x2
   sheetTab: "overview",   // overview | market | stats
   calc: {},
-  _: 0
+  drawer: store.get("drawer",{picks:false,brief:false})
 });
 
 /* ---------- helpers ---------- */
@@ -1152,22 +1172,40 @@ function recordPill(){
   const r=pickRecord(14); if(!r.n) return "";
   return `<span class="tag gold num">ย้อนหลัง 14 วัน เข้า ${r.won}/${r.n} (${Math.round(r.won/r.n*100)}%)${r.push?` · คืนทุน ${r.push}`:""}</span>`;
 }
-function picksHero(day){
-  const P=picksFor(S.date);
-  const head=`<div class="ph-head"><svg width="22" height="18" viewBox="0 0 26 22" aria-hidden="true"><path d="M2 18 L4 6 L9 11 L13 3 L17 11 L22 6 L24 18 Z" fill="#f0cc86"/></svg><h2>ฟันธงคู่เด็ด${relLabel(S.date)==="วันนี้"?"วันนี้":relLabel(S.date)}</h2></div>`;
-  if(!P.list.length) return `<section class="card gold picks-hero">${head}<p class="muted" style="margin:8px 0 0">${day.matches.some(m=>m.st==="pre")?"ยังไม่มีคู่ที่โมเดลให้เกิน 55%":"ทุกคู่เริ่มเตะแล้ว ฟันธงจะคัดจากคู่ที่ยังไม่เตะเท่านั้น"}</p>${recordPill()?`<div style="margin-top:10px">${recordPill()}</div>`:""}</section>`;
-  return `<section class="card gold picks-hero">${head}
-    <p class="ph-sub">คัด ${P.list.length} คู่ที่โมเดลให้เปอร์เซ็นต์สูงสุดจาก ${P.total} คู่ · วันบอลเยอะสูงสุด 10 คู่</p>
-    ${recordPill()?`<div style="margin:8px 0 2px">${recordPill()}</div>`:""}
-    <div class="list" style="margin-top:12px">${pickRows(P.list)}</div>
-    <p class="note">เลือกเส้นที่แรงที่สุดของแต่ละคู่ (แฮนดิแคป สูงต่ำ หรือผลชนะ) % คือโอกาสได้ผลเมื่อไม่นับคืนทุน คู่ที่เริ่มเตะแล้วจะล็อกไว้ไม่เปลี่ยน · ไม่ใช่คำแนะนำให้เดิมพัน</p>
+function drawer(key, title, meta, body, opts={}){
+  const open=!!S.drawer[key];
+  return `<section class="drawer${opts.gold?" gold":""}${open?" open":""}">
+    <button class="dhead" data-drawer="${key}" aria-expanded="${open}">
+      ${opts.icon||""}<span class="dt">${title}</span><span class="dm">${meta||""}</span><span class="chev" aria-hidden="true"></span>
+    </button>
+    ${opts.peek?`<div class="dpeek">${opts.peek}</div>`:""}
+    <div class="dbody"${open?"":" hidden"}>${body}</div>
   </section>`;
 }
-function briefCard(day){
+const CROWN='<svg width="18" height="15" viewBox="0 0 26 22" aria-hidden="true"><path d="M2 18 L4 6 L9 11 L13 3 L17 11 L22 6 L24 18 Z" fill="#f0cc86"/></svg>';
+function picksHero(day){
+  const P=picksFor(S.date), rel=relLabel(S.date);
+  const title=`ฟันธงคู่เด็ด${rel==="วันนี้"?"วันนี้":rel}`;
+  if(!P.list.length) return drawer("picks",title,`<span class="faint">ยังไม่มี</span>`,`<p class="muted" style="margin:0">${day.matches.some(m=>m.st==="pre")?"ยังไม่มีคู่ที่โมเดลให้เกิน 55%":"ทุกคู่เริ่มเตะแล้ว ฟันธงคัดจากคู่ที่ยังไม่เตะเท่านั้น"}</p>${recordPill()?`<div style="margin-top:10px">${recordPill()}</div>`:""}`,{gold:true,icon:CROWN});
+  const top=P.list.slice(0,3), rest=P.list.slice(3);
+  return drawer("picks",title,`<span class="num">${P.list.length} คู่</span>`,
+    `${rest.length?`<div class="list compact">${pickRows(rest).replace(/<span class="rank num">(\d+)<\/span>/g,(m0,n)=>`<span class="rank num">${+n+3}</span>`)}</div>`:""}
+     ${recordPill()?`<div style="margin-top:10px">${recordPill()}</div>`:""}
+     <p class="note">คัด ${P.list.length} จาก ${P.total} คู่ · เส้นที่แรงที่สุดของแต่ละคู่ · % คือโอกาสได้ผลไม่นับคืนทุน · คู่ที่เตะแล้วล็อกไว้ · ไม่ใช่คำแนะนำให้เดิมพัน</p>
+     <button class="act" data-goto="analyze:picks" style="margin-top:6px">ดูในหน้าวิเคราะห์</button>`,
+    {gold:true,icon:CROWN,peek:`<div class="list compact">${pickRows(top)}</div>${rest.length?`<button class="more" data-drawer="picks">${S.drawer.picks?"ย่อ":`ดูอีก ${rest.length} คู่`}</button>`:""}`});
+}
+function homeBrief(day){
+  const b=store.get("brief:"+S.date,null);
+  const first=b?.summary?String(b.summary).split(/(?<=[.!?])\s|\s{2,}/)[0].slice(0,110):"";
+  return `<div style="height:12px"></div>`+drawer("brief","บทวิเคราะห์วันนี้", b?`<span class="faint">${stampTime(b.at)}</span>`:S.briefBusy?`<span class="faint">กำลังเขียน…</span>`:`<span class="faint">ยังไม่ได้วิเคราะห์</span>`,
+    briefCard(day,true),{peek: b&&!S.drawer.brief?`<p class="dline">${esc(first)}${b.summary.length>first.length?"…":""}</p>`:(!b&&!S.drawer.brief?`<button class="btn small" id="btnBrief" ${S.briefBusy||!day.matches.length?"disabled":""}>${S.briefBusy?"กำลังวิเคราะห์…":"วิเคราะห์วันนี้"}</button>`:"")});
+}
+function briefCard(day, inner){
   const b=store.get("brief:"+S.date,null);
   const hosted=!window.claude;
-  return `<div class="card gold brief">
-    <div class="row"><h3>บทวิเคราะห์วันนี้</h3><span class="spacer"></span>${b?`<span class="faint" style="font-size:12px">เขียนเมื่อ ${stampTime(b.at)}</span>`:""}</div>
+  return `<div class="${inner?"":"card gold "}brief">
+    ${inner?"":`<div class="row"><h3>บทวิเคราะห์วันนี้</h3><span class="spacer"></span>${b?`<span class="faint" style="font-size:12px">เขียนเมื่อ ${stampTime(b.at)}</span>`:""}</div>`}
     ${b?`<p>${esc(b.summary)}</p>${b.notes?.length?`<ul>${b.notes.map(n=>`<li><b>${esc(n.match)}</b> — ${esc(n.text)}</li>`).join("")}</ul>`:""}`
        :`<p class="muted">ให้ Claude อ่านตัวเลขโมเดลกับราคาของ ${day.matches.length} คู่${hosted?" พร้อมหัวข่าวของวันนี้":""} แล้วสรุปเป็นภาษาไทย ผลจะจำไว้ใช้ทั้งวัน</p>`}
     ${b?.players?.length?`<div style="margin-top:10px"><b style="font-size:13px" class="gold">นักเตะในข่าว</b><ul>${b.players.map(p=>`<li><b>${esc(p.name)}</b>${p.club?` (${esc(p.club)})`:""} — ${esc(p.detail)}</li>`).join("")}</ul></div>`:""}
@@ -1192,7 +1230,7 @@ function viewHome(){
     <button class="tile value" data-goto="analyze:edge"><span class="k">มีค่าตามโมเดล</span><span class="v num">${values}</span></button>
   </div>
   ${live.length?sec(`<span class="dot live pulse" style="vertical-align:4px;margin-right:8px"></span>กำลังแข่ง`,`อัปเดตทุกนาที`)+`<div class="stack">${live.map(matchCard).join("")}</div>`:""}
-  ${sec("บทวิเคราะห์")}${briefCard(day)}
+  ${homeBrief(day)}
   ${favs.length?sec("ทีมโปรดวันนี้")+`<div class="list">${favs.map(m=>matchRow(m)).join("")}</div>`:""}
   ${upcoming.length?sec("ถัดไป",`เวลาไทย`,`<button class="act" data-goto="schedule:pre">ดูโปรแกรมทั้งหมด</button>`)+`<div class="stack">${upcoming.slice(0,4).map(matchCard).join("")}</div>`:""}
   ${done.length?sec("ผลล่าสุด",`จบแล้ว ${done.length} คู่`,`<button class="act" data-goto="schedule:post">ดูผลทั้งหมด</button>`)+`<div class="list">${done.slice(-5).reverse().map(m=>matchRow(m)).join("")}</div>`:""}`;
@@ -1694,9 +1732,10 @@ function toggleFav(id){
 
 /* ---------- events ---------- */
 document.addEventListener("click",e=>{
-  const t=e.target.closest("[data-fav],[data-open],[data-date],[data-set],[data-goto],[data-act],[data-unfav],[data-tab],#btnBrief,#btnAna,#btnBack,#btnSearch,#btnRefresh");
+  const t=e.target.closest("[data-drawer],[data-fav],[data-open],[data-date],[data-set],[data-goto],[data-act],[data-unfav],[data-tab],#btnBrief,#btnAna,#btnBack,#btnSearch,#btnRefresh");
   if(!t) return;
   const d=t.dataset;
+  if(d.drawer){ S.drawer[d.drawer]=!S.drawer[d.drawer]; store.set("drawer",S.drawer); return render(); }
   if(d.fav){ e.stopPropagation(); e.preventDefault(); return toggleFav(d.fav); }
   if(t.id==="btnBack") return closeSheet();
   if(d.open) return openMatch(d.open, d.day);

@@ -28,7 +28,7 @@ try {
   await A.goto(BASE); await A.waitForTimeout(2500);
   check("live status shows ESPN", (await A.textContent("#status")).includes("สดจาก ESPN"));
   check("shared store is on", await A.evaluate(() => Shared.on));
-  check("picks hero rendered", await A.isVisible(".picks-hero"));
+  check("picks drawer rendered", await A.isVisible('.dhead[data-drawer="picks"]'));
   check("page has no horizontal scroll", (await A.evaluate(() => document.documentElement.scrollWidth)) <= 400);
 
   await A.click('.mcard[data-open="9001"]'); await A.waitForTimeout(1500);
