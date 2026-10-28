@@ -20,6 +20,7 @@ function redis([c, ...a]) {
     case "SREM": return set().delete(a[1]) ? 1 : 0;
     case "HSET": { const o = h(); for (let i = 1; i < a.length; i += 2) o[a[i]] = a[i + 1]; db.set(a[0], o); return 1; }
     case "HGET": return h()[a[1]] ?? null;
+    case "HDEL": { const o = h(); const had = a[1] in o; delete o[a[1]]; return had ? 1 : 0; }
     case "HMGET": return a.slice(1).map((k) => h()[k] ?? null);
     case "HGETALL": return Object.entries(h()).flat();
   }
@@ -44,6 +45,10 @@ globalThis.fetch = async (url, opts) => {
   if (u.includes("/summary?event=7001")) return json({ scoringPlays: [{ team: { displayName: "Alpha" }, athletesInvolved: [{ id: "11", displayName: "Striker A" }, { id: "12", displayName: "Mid A" }] }, { team: { displayName: "Alpha" }, athletesInvolved: [{ id: "11", displayName: "Striker A" }] }],
     rosters: [{ team: { displayName: "Alpha" }, roster: [{ starter: true, athlete: { id: "11", displayName: "Striker A" } }, { starter: true, athlete: { id: "12", displayName: "Mid A" } }] }] });
   if (u.includes("/summary")) return json({});
+  if (u.includes("bbci.co.uk")) return new Response("<rss><item><title>Striker A ruled out with hamstring injury</title></item></rss>", { status: 200 });
+  if (u.includes("theguardian.com")) return new Response("<rss></rss>", { status: 200 });
+  if (u.includes("/news")) return json({ articles: [] });
+  if (u.includes("api.anthropic.com")) return json({ content: [{ type: "text", text: JSON.stringify({ players: [{ name: "Striker A", team: "Alpha", status: "out", reason: "เจ็บต้นขา" }, { name: "Made Up Name", team: "X", status: "out", reason: "x" }] }) }] });
   return new Response("{}", { status: 404 });
 };
 
@@ -68,10 +73,26 @@ const ev = JSON.parse(await kv("HGET", "evals", yday));
 check("daily evaluation model vs market", ev.n === 1 && ev.nK === 1 && ev.llM > 0, JSON.stringify(ev));
 const r2 = await run();
 check("second run does not double count", r2.settled === 0 && r2.picks === 0 && JSON.parse(await kv("HGET", "evals", yday)).n === 1);
-// weight tuning with synthetic history where the market is better than the stats model
-const rows = []; for (let i = 0; i < 150; i++) { const strongHome = i % 3 !== 0; rows.push(JSON.stringify({ lg: "eng.1", pH: 1.3, pA: 1.3, mkH: strongHome ? 2.2 : 0.8, mkA: strongHome ? 0.8 : 1.6, hs: strongHome ? 2 : 0, as: strongHome ? 0 : 1, lh0: 1.3, la0: 1.3 })); }
+// self-tuning: a helpful factor and a noise factor; market more accurate than stats
+const rows = [];
+for (let i = 0; i < 200; i++) {
+  const homeStrong = i % 3 !== 0;
+  const right = i % 5 !== 0;                                          // right 80% of the time, small effect
+  const good = (homeStrong === right) ? [0.12, -0.1] : [-0.1, 0.12];
+  const noise = i % 2 ? [0.3, -0.3] : [-0.3, 0.3];                   // random direction
+  rows.push(JSON.stringify({ lg: "eng.1", bH: 1.3, bA: 1.3, fr: { good, noise }, pH: 1.3, pA: 1.3, mkH: homeStrong ? 2.6 : 0.7, mkA: homeStrong ? 0.6 : 1.7, mh: homeStrong ? 0.6 : 0.3, md: 0.25, ma: homeStrong ? 0.15 : 0.45, hs: homeStrong ? 2 : 0, as: homeStrong ? 0 : 1, lh0: 1.3, la0: 1.3 }));
+}
 await kv("LPUSH", "hist", ...rows); await kv("SET", "weights", JSON.stringify({ at: "2000-01-01T00:00:00Z" }));
-await run();
+for (let i = 0; i < 25; i++) await kv("LPUSH", "pickhist", JSON.stringify({ type: "ou", prob: 0.65, res: i % 2 ? "win" : "lose" }));
+process.env.ANTHROPIC_API_KEY = "test";
+const r3 = await run();
 const wt = JSON.parse(await kv("GET", "weights"));
-check("weekly re-tune moves the market weight up when the market is better", wt.market > 0.35, JSON.stringify(wt));
+check("keeps or boosts the helpful factor", (wt.factors?.good ?? 0) >= 1, JSON.stringify(wt.factors));
+check("switches off or weakens the noise factor", (wt.factors?.noise ?? 1) < 1);
+check("raises market weight when the market is better", wt.market > 0.35, `market ${wt.market}`);
+check("calibrates over-confident picks down", wt.pickCal?.ou < 1, JSON.stringify(wt.pickCal));
+const lessons = JSON.parse(await kv("GET", "lessons"));
+check("writes lessons for the bot", lessons.items.length >= 3, lessons.items[0]);
+const np = await kv("HGETALL", "newsplayer");
+check("player news: keeps names found in headlines, drops invented ones", np.includes("striker a") && !np.includes("made up name"), JSON.stringify(r3.newsPlayers));
 kvServer.close(); process.exit(failed ? 1 : 0);

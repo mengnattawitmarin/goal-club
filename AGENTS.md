@@ -64,6 +64,8 @@ npm test           # build + ทดสอบงานประจำวัน + 
 - `scorerModel`: โอกาสยิง/ส่งของนักเตะ = 1 − e^(−λทีม × สัดส่วนประตูหรือแอสซิสต์ในฤดูกาล × โอกาสได้ลงเล่น) และเรื่องเล่าสกอร์ที่ทาย (แจกประตูให้คนที่น่าจะยิงที่สุด)
 - ดวงของคนยิง (`scorerLuck` ใน ui.js) แสดงแยก เพื่อความสนุก ไม่แตะตัวเลข %
 
+การปรับตัวเอง (งานประจำวัน ทุก 2–3 วันเมื่อมีผล ≥120 นัด): แอปเก็บ λ ฐาน (`bH/bA`) และสัดส่วนดิบของทุกปัจจัย (`fr`) ไว้กับคำทำนาย งานประจำวันหาค่า `weights.factors[k]` ∈ {0, 0.5, 1, 1.5} และน้ำหนักราคาตลาด (ทั้งหมดและรายลีก ≥80 นัด) ที่ทำให้ log loss ต่ำสุด ปรับความมั่นใจฟันธงตามผลจริงรายประเภท (`pickCal`) แล้วเขียน `lessons` ใน `push()` ของ refine คูณผลของปัจจัยด้วยกำลัง `weights.factors[k]`
+
 จากนั้นทำตารางสกอร์ 0–10 ปรับสกอร์ต่ำด้วย rho −0.08 ได้ ชนะ/เสมอ/แพ้ สูง/ต่ำ 2.5 ทั้งยิงทั้งเสีย และสกอร์ที่น่าจะเป็น
 - แฮนดิแคปเขียนแบบไทย เช่น "Milan ต่อ 0/0.5" (`ahPhrase`) ครอบเส้นไม่นับคืนทุน (`cover`)
 - เทียบตลาดหักน้ำแบบสัดส่วน (`devig`) "มีค่า" = โมเดลสูงกว่าตลาด ≥4 จุด เฉพาะคู่ที่ยังไม่เตะ
@@ -79,11 +81,13 @@ npm test           # build + ทดสอบงานประจำวัน + 
 | `pickhist` | list (เก็บ 1000) | ผลฟันธงที่ตัดสินแล้ว `{d, id, label, type, prob, match, res}` |
 | `newsteam` | hash teamId → JSON | ข่าวที่พาไปนัดถัดไป `{e, reason, d}` |
 | `brief:YYYY-MM-DD` | string JSON | บทวิเคราะห์ประจำวัน |
+| `newsplayer` | hash ชื่อนักเตะ(ตัวเล็ก) → JSON | `{name, team, status: out|doubtful, reason, d}` จากงานประจำวันและบทวิเคราะห์ประจำวัน ลบเองเมื่อเกิน 14 วัน |
+| `lessons` | string JSON | `{at, items[]}` บทเรียนที่งานประจำวันเขียน ให้บอทและหน้าความแม่นใช้ |
 | `ratings` | hash teamId → JSON | `{att, def, n, name, lg, at}` เรียนรู้จากทุกนัด |
 | `lgavg` | hash league → JSON | `{g, n}` ประตูต่อทีมต่อนัด |
 | `players` | hash athleteId → JSON | `{name, team, g, a, apps}` สะสมจาก scoringPlays/rosters |
 | `evals` | hash YYYY-MM-DD → JSON | ผลวัดรายวัน `{n, llM, llK, nK, brM, brK, hitM, hitK}` (M=โมเดล K=ตลาด) |
-| `weights` | string JSON | `{market, n, at}` น้ำหนักราคาตลาดที่ปรับเอง |
+| `weights` | string JSON | `{market, marketLg{}, factors{k: 0|0.5|1|1.5}, pickCal{ah,ou,1x2}, n, loss, at}` ที่ระบบปรับเอง |
 | `learned` | set | นัดที่งานประจำวันเรียนรู้แล้ว (กันซ้ำ) |
 | `ana2:<matchId>` | string JSON, หมดอายุ 5 วัน | ทัศนะบอลจากบอท `{at, text, sources, bot}` |
 ถ้าไม่ได้ต่อ Redis แอปยังทำงานได้ โดยเก็บข้อมูลเหล่านี้ใน localStorage ของแต่ละเครื่อง (prefix `gc:`)

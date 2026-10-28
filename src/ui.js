@@ -275,6 +275,20 @@ function viewAnalyze(){
   if(S.mode==="acc") body=accuracyView();
   return `<div style="margin-bottom:12px">${seg("mode",[["picks","ฟันธง"],["edge","เทียบราคา"],["goals","สกอร์"],["acc","ความแม่น"]],S.mode)}</div>${body}`;
 }
+const FACTOR_NAME={h2h:"ผลที่เคยเจอกัน",pace:"เกมรุก-รับ 5 นัด",venue:"ฟอร์มในบ้าน/นอกบ้าน",rest:"วันพัก",lineup:"ตัวจริง",weather:"สภาพอากาศ",news:"ข่าววันนี้",newsOld:"ข่าวที่ผ่านมา",trend:"แนวโน้มลีก",rating:"ความแข็งของทีม",calib:"เรียนรู้จากผลจริง"};
+function learningBlock(){
+  const W=S.weights||{}, L=S.lessons;
+  const fac=Object.entries(W.factors||{});
+  return `${sec("ระบบเรียนรู้อะไรแล้ว", W.n?`จากผลจริง ${W.n} นัด`:"")}
+    <div class="card">
+      ${fac.length?`<div class="statgrid" style="grid-template-columns:minmax(0,1fr) auto auto"><span class="h">ปัจจัย</span><span class="h">น้ำหนัก</span><span class="h"></span>
+        ${fac.map(([k,v])=>`<span>${esc(FACTOR_NAME[k]||k)}</span><span class="num">×${v}</span><span class="${v>1?"green":v<1?"lossc":"faint"}" style="font-size:12px">${v===0?"ปิด":v>1?"เพิ่ม":v<1?"ลด":"คงเดิม"}</span>`).join("")}</div>`
+        :`<p class="muted" style="margin:0;font-size:13.5px">ยังไม่ได้ปรับน้ำหนักปัจจัย ระบบจะเริ่มเองเมื่อมีผลจริงครบ 120 นัด และปรับซ้ำทุก 2–3 วัน</p>`}
+      ${Object.keys(W.marketLg||{}).length?`<p class="note">น้ำหนักราคาตลาดรายลีก: ${Object.entries(W.marketLg).map(([lg,w])=>`${esc(LEAGUE_NAME[lg]||lg)} ${Math.round(w*100)}%`).join(" · ")}</p>`:""}
+      ${Object.keys(W.pickCal||{}).length?`<p class="note">ปรับความมั่นใจฟันธง: ${Object.entries(W.pickCal).map(([t,c])=>`${TYPE_LABEL[t]||t} ×${c}`).join(" · ")}</p>`:""}
+    </div>
+    ${L?.items?.length?`${sec("บทเรียนล่าสุด",stampTime(L.at))}<div class="card"><ul style="margin:0;padding-left:18px;font-size:13.5px;line-height:1.6">${L.items.map(x=>`<li>${esc(x.replace(/\b([a-z]{3}\.[a-z0-9._]+)\b/g,(m0)=>LEAGUE_NAME[m0]||m0))}</li>`).join("")}</ul></div>`:""}`;
+}
 function accuracyView(){
   const E=S.evals||{}, days=Object.keys(E).sort().reverse(), R=pickRecord(30);
   const tot=days.reduce((a,d)=>{ const e=E[d]; for(const k in e) a[k]=(a[k]||0)+(e[k]||0); return a; },{});
@@ -295,6 +309,7 @@ function accuracyView(){
         <span>Brier score เฉลี่ย</span><span class="num">${f2(avg(tot.brM,tot.n))}</span><span class="num">${f2(avg(tot.brK,tot.nK))}</span>
         <span>ทายผลถูก (เลือกฝั่งที่ % สูงสุด)</span><span class="num">${tot.n?pct(tot.hitM/tot.n):"–"}</span><span class="num">${tot.nK?pct(tot.hitK/tot.nK):"–"}</span></div>
       <p class="note">น้ำหนักราคาตลาดในโมเดลตอนนี้ ${Math.round((S.weights?.market??.35)*100)}%${S.weights?.n?` ปรับเองล่าสุด ${stampTime(S.weights.at)} จากผลจริง ${S.weights.n} นัด`:" (ค่าเริ่มต้น ระบบจะปรับเองเมื่อสะสมครบ 120 นัด)"}</p></div>
+    ${learningBlock()}
     ${sec("รายวัน")}
     ${days.length?`<div class="list">${days.map(d=>{ const e=E[d]; return `<div class="lrow"><span class="main"><div>${relLabel(d)}</div><div class="sub num">${e.n} คู่ · ทายถูก ${pct(e.hitM/e.n)} · ตลาด ${e.nK?pct(e.hitK/e.nK):"–"}</div></span><span class="r num">${f2(e.llM/e.n)}<div class="faint">${e.nK?f2(e.llK/e.nK):"–"}</div></span></div>`; }).join("")}</div>`
       :`<div class="card muted">ยังไม่มีผล ระบบจะวัดผลครั้งแรกหลังงานประจำวันรอบเที่ยง (เวลาไทย) ของวันพรุ่งนี้</div>`}
@@ -491,7 +506,7 @@ function scoreCard(m){
       <div class="lk-list">${lk.list.map(p=>`<span class="lk ${p.luck.score>0?"up":p.luck.score<0?"down":""}">${esc(p.name)} <b class="num">${p.luck.score>0?"+":""}${p.luck.score.toFixed(1)}</b> <small>${p.luck.taksa} · ${p.luck.zodiac.replace("กับวัน","")}</small></span>`).join("")}</div>
       <p class="note">คำนวณจากวันเกิดนักเตะเทียบกับวันแข่ง (ทักษาไทย + นักษัตรจีน) ใช้อ่านเล่น ตัวเลข % ยิงและส่งด้านล่างมาจากสถิติอย่างเดียว</p></div>`; })()}
   ${S_?`${sec("คนยิงและคนส่ง","จากสัดส่วนประตูในฤดูกาล")}<div class="list scorers"><div class="srow sh"><span>นักเตะ</span><span>ยิง</span><span>ส่ง</span><span>ยิงแรก</span></div>
-    ${S_.list.slice(0,8).map(p=>`<div class="srow"><span class="sn"><b>${esc(p.name)}${(()=>{ const l=scorerLuck(m).byName[p.name]; return l?` <span class="lkdot ${l.score>0?"up":l.score<0?"down":""}" title="ดวงวันนี้">${l.score>0?"✦":l.score<0?"✕":"·"}</span>`:""; })()}</b><small>${esc(p.team)} · ${p.goals??0} ประตู${p.assists!=null?` · ${p.assists} แอสซิสต์`:""}${S_.known&&p.play<1?" · ไม่ได้เป็นตัวจริง":""}</small></span><span class="num">${pct(p.pGoal)}</span><span class="num">${pct(p.pAssist)}</span><span class="num">${pct(p.pFirst)}</span></div>`).join("")}</div>
+    ${S_.list.slice(0,8).map(p=>`<div class="srow"><span class="sn"><b>${esc(p.name)}${(()=>{ const l=scorerLuck(m).byName[p.name]; return l?` <span class="lkdot ${l.score>0?"up":l.score<0?"down":""}" title="ดวงวันนี้">${l.score>0?"✦":l.score<0?"✕":"·"}</span>`:""; })()}</b><small>${esc(p.team)} · ${p.goals??0} ประตู${p.assists!=null?` · ${p.assists} แอสซิสต์`:""}${S_.known&&p.play<1?" · ไม่ได้เป็นตัวจริง":""}${p.news?` · <span class="lossc">ข่าว: ${p.news.status==="out"?"ไม่ได้ลง":"ไม่แน่ว่าได้ลง"} ${esc(p.news.reason||"")}</span>`:""}</small></span><span class="num">${pct(p.pGoal)}</span><span class="num">${pct(p.pAssist)}</span><span class="num">${pct(p.pFirst)}</span></div>`).join("")}</div>
     <p class="note">ยิง/ส่ง = โอกาสยิงหรือแอสซิสต์อย่างน้อย 1 ครั้งในเกมนี้ คิดจากประตูที่คาดของทีม × สัดส่วนผลงานของนักเตะ${S_.known?" × ลงตัวจริงหรือไม่":" (ยังไม่ประกาศตัวจริง คิดเวลาลงสนาม 85%)"} · ฟีดให้รายชื่อเฉพาะดาวเด่นของแต่ละทีม</p>`
     :`<div class="card muted" style="margin-top:12px;font-size:13.5px">${m.ds?"ฟีดยังไม่มีรายชื่อดาวยิงของคู่นี้":"รายชื่อคนยิงจะขึ้นเมื่อโหลดสถิติเชิงลึกของคู่นี้"}</div>`}
   ${sec("ตลาดสนุก ๆ","จากประตูที่คาดชุดเดียวกัน")}
@@ -730,6 +745,10 @@ function botPayload(m){
     funMarkets:{firstHalfGoal:pct(m.extra.goal1H),firstToScore:m.extra.first.h>=m.extra.first.a?`${m.h.short} ${pct(m.extra.first.h)}`:`${m.a.short} ${pct(m.extra.first.a)}`,htft:m.extra.htftTop.map(([k,p])=>`${HTFT_NAME(m,k)} ${pct(p)}`)},
     live:m.live?{minute:m.live.min,home:pct(m.live.ph),draw:pct(m.live.pd),away:pct(m.live.pa)}:null,
     h2h:m.meets.map(x=>`${x.date} ${m.h.short} ${x.f}-${x.a}`),weather:S.ext[m.id]?.wx||null,
+    lessons:S.lessons?.items||null,
+    trackRecord:(()=>{ const r=pickRecord(30); return r.n?`ฟันธง 30 วัน เข้า ${r.won}/${r.n}`:null; })(),
+    learnedWeights:S.weights?{market:S.weights.marketLg?.[m.lg]??S.weights.market,factors:S.weights.factors||null,pickCal:S.weights.pickCal||null}:null,
+    playerNews:Object.values(S.newsPlayer||{}).filter(n=>[m.h.name,m.a.name,m.h.short,m.a.short].some(t=>String(n.team||"").toLowerCase().includes(String(t).toLowerCase().split(" ")[0]))).slice(0,8),
     luckForFun:luck?.list?.length?luck.list.map(p=>`${p.name}: ทักษา${p.luck.taksa} ปี${p.luck.animal} ${p.luck.zodiac} คะแนน ${p.luck.score}`):null};
 }
 async function runBot(){

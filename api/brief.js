@@ -71,6 +71,10 @@ adjust ใส่เฉพาะเมื่อหัวข่าวยืนย�
           const tid = m && (a.team === "away" ? m.awayId : m.homeId);
           if (tid) cmds.push(["HSET", "newsteam", String(tid), JSON.stringify({ e: Math.max(-0.05, Math.min(0.03, Number(a.effect) || 0)), reason: String(a.reason || "").slice(0, 120), d: body.date })]);
         }
+        for (const p of players) {
+          const st = p.kind === "injury" ? "out" : null; if (!st || !p.name) continue;
+          cmds.push(["HSET", "newsplayer", String(p.name).toLowerCase(), JSON.stringify({ name: p.name, team: p.club || "", status: st, reason: String(p.detail || "").slice(0, 120), d: body.date })]);
+        }
         await kvPipe(cmds);
       } catch {}
     }

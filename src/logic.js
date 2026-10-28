@@ -126,9 +126,14 @@ function refine(m){
   const steps=[], factors=[];
   let lh=m.lh, la=m.la, basis=m.basis;
   if(lh==null||la==null){ const b=baseLambdas(m.h,m.a,null); lh=b.lh; la=b.la; basis=b.basis; }
-  const push=(k,label,text,bh,ba)=>{ factors.push({k,label,text,h:lh/bh,a:la/ba}); steps.push({k,text:`${label}: ${text}`,lh,la}); };
+  /* every factor's push can be strengthened or weakened by the daily job (weights.factors[k]); raw ratios are kept so the job can re-tune */
+  const push=(k,label,text,bh,ba)=>{
+    const fh=lh/bh, fa=la/ba, st=k==="market"?1:(S?.weights?.factors?.[k]??1);
+    if(st!==1){ lh=clamp(bh*fh**st,0.15,4.2); la=clamp(ba*fa**st,0.15,4.2); }
+    factors.push({k,label,text:st!==1?`${text} · น้ำหนักปรับเอง ×${st}`:text,h:lh/bh,a:la/ba,rh:fh,ra:fa,st}); steps.push({k,text:`${label}: ${text}`,lh,la}); };
   steps.push({k:"base", text: basis==="table"?"ตารางคะแนน: อัตรายิง/เสียหดเข้าค่าเฉลี่ยลีกด้วย prior 8 นัด แล้วขยับด้วยฟอร์มล่าสุด":basis==="blend"?"ตารางคะแนน: มีครบทีมเดียว อีกทีมใช้ฟอร์ม 5 นัด":"ฟอร์ม: ตารางยังไม่พอ ใช้ผล 5 นัดหลัง", lh, la});
   factors.push({k:"base",label:basis==="form"?"ฟอร์ม 5 นัด":"ตารางคะแนนและฟอร์ม",text:`เริ่มที่ ${lh.toFixed(2)} – ${la.toFixed(2)} ประตูที่คาด`,h:1,a:1,base:true});
+  const bH=lh, bA=la;
   const meets=meetingsFor(m);
   if(meets.length>=3){
     const bh=lh, ba=la, hf=meets.reduce((s,x)=>s+x.f,0)/meets.length, af=meets.reduce((s,x)=>s+x.a,0)/meets.length;
@@ -218,12 +223,12 @@ function refine(m){
   const pH=lh, pA=la;
   const mkt=marketLambdas(m, lh+la);
   if(mkt){
-    const bh=lh, ba=la, W=S?.weights?.market??.35;
+    const bh=lh, ba=la, W=S?.weights?.marketLg?.[m.lg]??S?.weights?.market??.35;
     lh=clamp(Math.exp(Math.log(lh)*(1-W)+Math.log(mkt.lh)*W),0.15,4.2); la=clamp(Math.exp(Math.log(la)*(1-W)+Math.log(mkt.la)*W),0.15,4.2);
     push("market","ราคาตลาด",`ราคา ${m.mk.book} บอกประตูที่คาด ${mkt.lh.toFixed(2)} – ${mkt.la.toFixed(2)}${mkt.fromTotal?"":" (ไม่มีเส้นสูงต่ำ ใช้ผลรวมจากโมเดล)"} ผสม ${Math.round(W*100)}%${S?.weights?.n?` (ปรับเองจากผลจริง ${S.weights.n} นัด)`:""}`,bh,ba);
   }
   const g=grid(lh,la), sum=summarize(g);
-  const out={...m, raw:m.raw||m, lh, la, lh0, la0, pH, pA, mkt, basis, g, sum, steps, factors, hs, as, meets};
+  const out={...m, raw:m.raw||m, lh, la, lh0, la0, pH, pA, bH, bA, mkt, basis, g, sum, steps, factors, hs, as, meets};
   out.live=liveModel(out); out.extra=extraMarkets(out); out.scorers=scorerModel(out);
   return out;
 }
@@ -302,12 +307,15 @@ function scorerModel(m){
   for(const p of ps){
     const s=sideOf(p); if(!s) continue;
     const lam=s==="h"?m.lh:m.la, tg=teamGoals(s);
-    const play = known ? (p.id&&starters.has(String(p.id))?1:.25) : .85;
+    let play = known ? (p.id&&starters.has(String(p.id))?1:.25) : .85;
+    const nw=S?.newsPlayer?.[String(p.name||"").toLowerCase()];
+    const fresh_=nw&&(Date.parse(m.ko)-Date.parse(nw.d))/864e5<=7;
+    if(fresh_&&!known){ if(nw.status==="out") play=.05; else if(nw.status==="doubtful") play=.5; }
     const gShare=clamp((p.goals||0)/tg,0,.6), aShare=clamp((p.assists||0)/tg,0,.5);
     let xg=lam*gShare*play, xa=lam*aShare*play;
     const rec=p.id?S?.players?.[p.id]:null;
     if(rec&&rec.apps>=3){ xg=.5*xg+.5*(rec.g/rec.apps)*play; xa=.5*xa+.5*(rec.a/rec.apps)*play; }
-    out.push({name:p.name, side:s, team:s==="h"?m.h.short:m.a.short, goals:p.goals, assists:p.assists, play,
+    out.push({name:p.name, side:s, team:s==="h"?m.h.short:m.a.short, goals:p.goals, assists:p.assists, play, news:fresh_?nw:null,
       pGoal:1-Math.exp(-xg), pAssist:1-Math.exp(-xa), pFirst:(s==="h"?m.extra?.first?.h:m.extra?.first?.a)??0, xg, xa, gShare});
   }
   out.forEach(o=>{ o.pFirst = (o.side==="h"?(1-m.g[0][0])*m.lh/(m.lh+m.la):(1-m.g[0][0])*m.la/(m.lh+m.la))*o.gShare*o.play; });
@@ -376,6 +384,7 @@ async function syncPull(date){
     if(!j?.enabled) return false;
     Shared.on=true; Shared.picks[date]=j.picks||{}; Shared.pickHist=j.pickHist||[]; Shared.histN=j.histN||0; Shared.pulled[date]=Date.now();
     if(j.calib) S.calib=j.calib;
+    if(j.newsPlayer) S.newsPlayer=j.newsPlayer; if(j.lessons) S.lessons=j.lessons;
     S.ratings={...(S.ratings||{}),...(j.ratings||{})}; S.lgavg={...(S.lgavg||{}),...(j.lgavg||{})}; if(j.weights) S.weights=j.weights; if(j.evals) S.evals=j.evals;
     if(day?.matches?.length) S.days[date]=prepare({...day,matches:day.matches.map(x=>x.raw||x)});
     if(j.newsTeam){ S.newsTeam={...S.newsTeam,...j.newsTeam}; }
@@ -421,7 +430,9 @@ function picksFor(date){
   const saved=Shared.on&&Shared.picks[date] ? Object.values(Shared.picks[date]) : store.get("picks:"+date,[]);
   const byId=new Map(ms.map(m=>[m.id,m]));
   const frozen=saved.filter(p=>byId.has(p.id)&&byId.get(p.id).st!=="pre");
-  const fresh=ms.map(bestCall).filter(p=>p&&p.prob>=.55&&!frozen.some(z=>z.id===p.id)).sort((a,b)=>b.prob-a.prob);
+  const cal=S?.weights?.pickCal||{};
+  const fresh=ms.map(bestCall).filter(Boolean).map(p=>{ const c=cal[p.type]; return c?{...p,raw:p.prob,prob:Math.min(.95,p.prob*c)}:p; })
+    .filter(p=>p.prob>=.55&&!frozen.some(z=>z.id===p.id)).sort((a,b)=>b.prob-a.prob);
   const list=[...frozen,...fresh.slice(0,Math.max(0,limit-frozen.length))].sort((a,b)=>b.prob-a.prob);
   if(date>=shiftDate(bkkToday(),-1) && day.source!=="snapshot"){
     store.set("picks:"+date, list);
@@ -458,7 +469,8 @@ function recordDay(date){
     for(const m of day.matches){
       if(m.st==="pre" && m.lh0!=null && (!sentPred[m.id] || now-sentPred[m.id]>30*60e3)){ sentPred[m.id]=now; const mk=m.mk?.home&&m.mk.draw&&m.mk.away?devig([m.mk.home.decimal,m.mk.draw.decimal,m.mk.away.decimal]):null;
         preds.push({id:m.id,lg:m.lg,lh0:+m.lh0.toFixed(3),la0:+m.la0.toFixed(3),ph:+m.sum.home.toFixed(3),pa:+m.sum.away.toFixed(3),ko:m.ko,hid:m.h.id,aid:m.a.id,
-          pH:+m.pH.toFixed(3),pA:+m.pA.toFixed(3),mkH:m.mkt?+m.mkt.lh.toFixed(3):undefined,mkA:m.mkt?+m.mkt.la.toFixed(3):undefined,mh:mk?.[0],md:mk?.[1],ma:mk?.[2]}); }
+          pH:+m.pH.toFixed(3),pA:+m.pA.toFixed(3),bH:+m.bH.toFixed(3),bA:+m.bA.toFixed(3),
+          fr:Object.fromEntries((m.factors||[]).filter(f=>!f.base&&f.k!=="market"&&f.rh>0&&f.ra>0).map(f=>[f.k,[+Math.log(f.rh).toFixed(4),+Math.log(f.ra).toFixed(4)]])),mkH:m.mkt?+m.mkt.lh.toFixed(3):undefined,mkA:m.mkt?+m.mkt.la.toFixed(3):undefined,mh:mk?.[0],md:mk?.[1],ma:mk?.[2]}); }
       if(m.st==="post" && m.h.score!=null && !sentRes[m.id]){ sentRes[m.id]=1; results.push({id:m.id,hs:m.h.score,as:m.a.score,match:`${m.h.short} ${m.h.score}–${m.a.score} ${m.a.short}`}); }
     }
     if(preds.length||results.length) syncPush({date,preds,results}).then(()=>{ if(results.length) syncPull(date).then(ok=>{ if(ok&&!S.open) render(); }); });
