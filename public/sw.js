@@ -1,5 +1,5 @@
 // App shell offline cache. Feed calls (/api/*) always go to the network.
-const SHELL = "goalclub-v6";
+const SHELL = "goalclub-v7";
 const FILES = ["/", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(SHELL).then((c) => c.addAll(FILES))); self.skipWaiting(); });
 self.addEventListener("activate", (e) => {

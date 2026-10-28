@@ -7,7 +7,9 @@ Object.assign(S, {
   edgeKind: "all",        // all | ah | ou | 1x2
   sheetTab: "overview",   // overview | market | stats
   calc: {},
-  drawer: store.get("drawer",{picks:false,brief:false})
+  drawer: store.get("drawer2",{picks:false,brief:false}),
+  picksAll: false,
+  filterOpen: false
 });
 
 /* ---------- helpers ---------- */
@@ -119,47 +121,55 @@ function pickStatus(p){
   if(m.st==="unk") return `<span class="tag">${m.h.score}–${m.a.score}</span>`;
   return `<span class="tag ${r==="win"||r==="half"?"value":r==="push"?"":"warn"}">${m.h.score}–${m.a.score} · ${RES_LABEL[r]}</span>`;
 }
-function pickRows(picks){
-  return picks.map((p,i)=>`<button class="pick${p.m?.st==="in"?" is-live":""}" data-open="${p.id}">
-    <span class="rank num">${i+1}</span>
-    <span class="ph">${esc(p.label)} <span class="ptype">${TYPE_LABEL[p.type]||""}</span></span>
-    <span class="pp num"><b class="gold">${pct(p.prob)}</b><div class="meter"><i style="width:${Math.round(p.prob*100)}%"></i></div></span>
-    <span class="sub">${p.m?`<span class="num">${timeCell(p.m)}</span> · ${esc(p.m.h.short)} – ${esc(p.m.a.short)} · ${esc(lg(p.m))}`:""} · ทาย <span class="num">${p.score}</span></span>
-    <span class="pst">${pickStatus(p)}</span>
-  </button>`).join("");
+function pickRows(picks, offset=0){
+  return picks.map((p,i)=>{ const m=p.m; return `<button class="prow${m?.st==="in"?" is-live":""}" data-open="${p.id}">
+    <span class="prank num">${i+1+offset}</span>
+    <span class="pmain">
+      <span class="pl"><b>${esc(p.label)}</b><span class="ptag">${TYPE_LABEL[p.type]||""}</span></span>
+      ${m?`<span class="pteams"><span class="tm num">${timeCell(m)}</span><span class="nm">${esc(m.h.short)} – ${esc(m.a.short)}</span></span>
+      <span class="pmeta">${flagOf(m)} ${esc(lg(m))} · ทาย ${p.score}</span>`:""}
+      ${pickStatus(p)?`<span class="pst">${pickStatus(p)}</span>`:""}
+    </span>
+    <span class="pside"><span class="pc num">${pct(p.prob)}</span><small>โอกาสได้ผล</small><span class="pbar"><i style="width:${Math.round(p.prob*100)}%"></i></span></span>
+  </button>`; }).join("");
 }
 function recordPill(){
   const r=pickRecord(14); if(!r.n) return "";
   return `<span class="tag gold num">ย้อนหลัง 14 วัน เข้า ${r.won}/${r.n} (${Math.round(r.won/r.n*100)}%)${r.push?` · คืนทุน ${r.push}`:""}</span>`;
 }
-function drawer(key, title, meta, body, opts={}){
+function drawer(key, title, sub, meta, body, icon){
   const open=!!S.drawer[key];
-  return `<section class="drawer${opts.gold?" gold":""}${open?" open":""}">
+  return `<section class="drawer gold${open?" open":""}">
     <button class="dhead" data-drawer="${key}" aria-expanded="${open}">
-      ${opts.icon||""}<span class="dt">${title}</span><span class="dm">${meta||""}</span><span class="chev" aria-hidden="true"></span>
+      <span class="dicon">${icon}</span><span class="dtitle"><span class="dt">${title}</span>${sub?`<small>${sub}</small>`:""}</span>
+      <span class="dm">${meta||""}</span><span class="chev" aria-hidden="true"></span>
     </button>
-    ${opts.peek?`<div class="dpeek">${opts.peek}</div>`:""}
     <div class="dbody"${open?"":" hidden"}>${body}</div>
   </section>`;
 }
-const CROWN='<svg width="18" height="15" viewBox="0 0 26 22" aria-hidden="true"><path d="M2 18 L4 6 L9 11 L13 3 L17 11 L22 6 L24 18 Z" fill="#f0cc86"/></svg>';
+const ICON_TARGET='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><path d="m15 9 5-5M17 4h3v3"/></svg>';
+const ICON_TREND='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V14M9 20v-6M14 20v-9M19 20V8"/><path d="m4 10 5-4 4 3 7-6M16 3h4v4"/></svg>';
 function picksHero(day){
   const P=picksFor(S.date), rel=relLabel(S.date);
   const title=`ฟันธงคู่เด็ด${rel==="วันนี้"?"วันนี้":rel}`;
-  if(!P.list.length) return drawer("picks",title,`<span class="faint">ยังไม่มี</span>`,`<p class="muted" style="margin:0">${day.matches.some(m=>m.st==="pre")?"ยังไม่มีคู่ที่โมเดลให้เกิน 55%":"ทุกคู่เริ่มเตะแล้ว ฟันธงคัดจากคู่ที่ยังไม่เตะเท่านั้น"}</p>${recordPill()?`<div style="margin-top:10px">${recordPill()}</div>`:""}`,{gold:true,icon:CROWN});
-  const top=P.list.slice(0,3), rest=P.list.slice(3);
-  return drawer("picks",title,`<span class="num">${P.list.length} คู่</span>`,
-    `${rest.length?`<div class="list compact">${pickRows(rest).replace(/<span class="rank num">(\d+)<\/span>/g,(m0,n)=>`<span class="rank num">${+n+3}</span>`)}</div>`:""}
-     ${recordPill()?`<div style="margin-top:10px">${recordPill()}</div>`:""}
-     <p class="note">คัด ${P.list.length} จาก ${P.total} คู่ · เส้นที่แรงที่สุดของแต่ละคู่ · % คือโอกาสได้ผลไม่นับคืนทุน · คู่ที่เตะแล้วล็อกไว้ · ไม่ใช่คำแนะนำให้เดิมพัน</p>
-     <button class="act" data-goto="analyze:picks" style="margin-top:6px">ดูในหน้าวิเคราะห์</button>`,
-    {gold:true,icon:CROWN,peek:`<div class="list compact">${pickRows(top)}</div>${rest.length?`<button class="more" data-drawer="picks">${S.drawer.picks?"ย่อ":`ดูอีก ${rest.length} คู่`}</button>`:""}`});
+  if(!P.list.length) return drawer("picks",title,day.matches.some(m=>m.st==="pre")?"ยังไม่มีคู่ที่โมเดลให้เกิน 55%":"ทุกคู่เริ่มเตะแล้ว",`<span class="dpill">0</span>`,`<p class="muted" style="margin:0 4px">${recordPill()||"ฟันธงคัดจากคู่ที่ยังไม่เตะเท่านั้น"}</p>`,ICON_TARGET);
+  const top=P.list[0];
+  const showAll=S.picksAll, list=showAll?P.list:P.list.slice(0,3);
+  return drawer("picks",title,`อันดับ 1 ${esc(top.label)} · ${pct(top.prob)}`,`<span class="dpill num">${P.list.length} คู่</span>`,
+    `<div class="list">${pickRows(list)}</div>
+     ${P.list.length>3?`<button class="morebtn${showAll?" up":""}" data-act="picksAll">${showAll?"ย่อ":`ดูอีก ${P.list.length-3} คู่`} <span class="chev"></span></button>`:""}
+     <div class="row" style="margin-top:10px">${recordPill()}<span class="spacer"></span><button class="act" data-goto="analyze:picks" style="font-size:13px;color:var(--gold)">ดูทั้งหมด ›</button></div>
+     <p class="note">คัด ${P.list.length} จาก ${P.total} คู่ · เส้นที่แรงที่สุดของแต่ละคู่ · % คือโอกาสได้ผลไม่นับคืนทุน · คู่ที่เตะแล้วล็อกไว้ · ไม่ใช่คำแนะนำให้เดิมพัน</p>`,ICON_TARGET);
 }
+const PITCH_ART=`<svg class="brief-art" viewBox="0 0 120 80" aria-hidden="true"><defs><linearGradient id="pa" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e9c47a"/><stop offset="1" stop-color="#8a6326"/></linearGradient></defs>
+  <g transform="skewX(-14) translate(14 0)"><rect x="6" y="10" width="96" height="60" rx="4" fill="url(#pa)" opacity=".9"/><g fill="none" stroke="#3a2a10" stroke-width="1.2" opacity=".55"><rect x="10" y="14" width="88" height="52" rx="2"/><path d="M54 14v52"/><circle cx="54" cy="40" r="9"/><rect x="10" y="28" width="12" height="24"/><rect x="86" y="28" width="12" height="24"/></g>
+  <g stroke="#7a2412" stroke-width="1.3" fill="none" opacity=".75"><path d="M28 50 C40 30 52 52 70 30"/><path d="m66 28 5 1-2 5"/></g><g fill="#7a2412" opacity=".8"><circle cx="28" cy="50" r="1.8"/><circle cx="46" cy="40" r="1.8"/><circle cx="62" cy="36" r="1.8"/></g></g>
+  <circle cx="100" cy="58" r="13" fill="url(#pa)"/><path d="M100 58 V45 A13 13 0 0 1 112 53 Z" fill="#f6dfa6"/></svg>`;
 function homeBrief(day){
   const b=store.get("brief:"+S.date,null);
-  const first=b?.summary?String(b.summary).split(/(?<=[.!?])\s|\s{2,}/)[0].slice(0,110):"";
-  return `<div style="height:12px"></div>`+drawer("brief","บทวิเคราะห์วันนี้", b?`<span class="faint">${stampTime(b.at)}</span>`:S.briefBusy?`<span class="faint">กำลังเขียน…</span>`:`<span class="faint">ยังไม่ได้วิเคราะห์</span>`,
-    briefCard(day,true),{peek: b&&!S.drawer.brief?`<p class="dline">${esc(first)}${b.summary.length>first.length?"…":""}</p>`:(!b&&!S.drawer.brief?`<button class="btn small" id="btnBrief" ${S.briefBusy||!day.matches.length?"disabled":""}>${S.briefBusy?"กำลังวิเคราะห์…":"วิเคราะห์วันนี้"}</button>`:"")});
+  const first=b?.summary?String(b.summary).split(/(?<=[.!?])\s|\s{2,}/)[0].slice(0,90):"";
+  return drawer("brief","บทวิเคราะห์วันนี้", b?esc(first)+(b.summary.length>first.length?"…":""):S.briefBusy?"กำลังเขียน…":"ยังไม่ได้วิเคราะห์ · แตะเพื่อเปิด", b?`<span class="faint num">${kickTime(b.at)}</span>`:"",
+    `${b?"":PITCH_ART}${briefCard(day,true)}`, ICON_TREND);
 }
 function briefCard(day, inner){
   const b=store.get("brief:"+S.date,null);
@@ -177,23 +187,48 @@ function briefCard(day, inner){
 }
 
 /* ---------- views ---------- */
+const FLAG={tha:"🇹🇭",eng:"🏴\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}",esp:"🇪🇸",ger:"🇩🇪",ita:"🇮🇹",fra:"🇫🇷",uefa:"🇪🇺",ned:"🇳🇱",por:"🇵🇹",bel:"🇧🇪",sco:"🏴\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F}",tur:"🇹🇷",usa:"🇺🇸",mex:"🇲🇽",bra:"🇧🇷",arg:"🇦🇷",ksa:"🇸🇦",jpn:"🇯🇵",chn:"🇨🇳",aus:"🇦🇺"};
+const flagOf=m=>FLAG[m.lg.split(".")[0]]||"⚽";
+function progCard(m){
+  const v=valueRow(m);
+  const side=(t,sc)=>`<div class="pc-team">${badge(t)}<span class="nm">${esc(t.short)}${t.rank?`<small>#${t.rank}</small>`:""}</span>${m.st==="pre"?formPills(t.form):`<span class="sc num">${sc??"–"}</span>`}</div>`;
+  return `<div class="pcard${liveCls(m)}" role="button" tabindex="0" data-open="${m.id}">
+    <div class="pc-head"><span class="flag" aria-hidden="true">${flagOf(m)}</span><span class="lg">${esc(lg(m))}</span>${isGoal(m)?`<span class="tag value">ประตู!</span>`:""}${m.st==="pre"?`<span class="time num">${kickTime(m.ko)}</span>`:stateTag(m)}${starBtn(m)}</div>
+    ${side(m.h,m.h.score)}${side(m.a,m.a.score)}
+    <div class="pc-foot"><span class="num">${esc(m.h.short)} ${pct(m.sum.home)} · เสมอ ${pct(m.sum.draw)} · ${esc(m.a.short)} ${pct(m.sum.away)}</span>${m.mk?.spread?`<span><b>${esc(ahPhrase(m.h.short,m.a.short,m.mk.spread.line))}</b></span>`:""}${v?`<span class="tag value">มีค่า ${pts(v.edge)}</span>`:""}</div>
+  </div>`;
+}
+function spark(vals, color){
+  if(!vals.length||Math.max(...vals)<=0) return "";
+  const max=Math.max(...vals), n=vals.length, pts_=vals.map((v,i)=>`${(i/(n-1||1))*100},${28-(v/max)*22}`).join(" ");
+  return `<svg class="spark" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><polygon points="0,30 ${pts_} 100,30" fill="${color}" opacity=".14"/><polyline points="${pts_}" fill="none" stroke="${color}" stroke-width="1.4" vector-effect="non-scaling-stroke"/></svg>`;
+}
+function homeTiles(ms){
+  const t0=Math.min(...ms.map(m=>Date.parse(m.ko))), bins=12, span=24*3600e3/bins;
+  const kick=Array(bins).fill(0), playing=Array(bins).fill(0);
+  ms.forEach(m=>{ const k=Math.floor((Date.parse(m.ko)-t0)/span); if(k>=0&&k<bins){ kick[k]++; for(let j=k;j<Math.min(bins,k+2);j++) playing[j]++; } });
+  const R=pickRecord(7); const days={}; R.list.forEach(x=>{ const d=days[x.d]=days[x.d]||{w:0,n:0}; if(x.res!=="push"){ d.n++; if(x.res==="win"||x.res==="half") d.w++; } });
+  const acc=Object.keys(days).sort().map(d=>days[d].n?days[d].w/days[d].n:0);
+  const live=ms.filter(m=>m.st==="in").length;
+  return `<div class="tiles">
+    <button class="tile c-green" data-goto="schedule:all"><div class="tt"><span class="ti">${'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg>'}</span><span class="k">คู่ทั้งหมด</span></div><span class="v num">${ms.length}</span><span class="u">คู่${relLabel(S.date)}</span>${spark(kick,"#8fc79a")}</button>
+    <button class="tile c-blue" data-goto="schedule:in"><div class="tt"><span class="ti">${'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V12M10 20V6M16 20v-9M22 20H2"/></svg>'}</span><span class="k">กำลังแข่งขัน</span></div><span class="v num">${live}</span><span class="u">คู่</span>${spark(playing,"#8fb0f0")}</button>
+    <button class="tile c-gold" data-goto="analyze:picks"><div class="tt"><span class="ti">${'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>'}</span><span class="k">ฟันธงเข้า</span></div><span class="v num">${R.n?Math.round(R.won/R.n*100)+"%":"–"}</span><span class="u">${R.n?`เฉลี่ย 7 วัน · ${R.won}/${R.n}`:"ยังไม่มีผล"}</span>${spark(acc,"#f0cc86")}</button>
+  </div>`;
+}
 function viewHome(){
   const day=getDay(S.date);
   if(!day.matches.length) return emptyDay();
-  const ms=filtered(day);
-  const live=ms.filter(m=>m.st==="in"), upcoming=ms.filter(m=>m.st==="pre"), done=ms.filter(m=>m.st==="post");
-  const values=ms.filter(valueRow).length, favs=ms.filter(isFav);
-  return `${picksHero(day)}
-  <div class="tiles" style="margin-top:12px">
-    <button class="tile" data-goto="schedule:all"><span class="k">คู่ทั้งหมด</span><span class="v num">${ms.length}</span></button>
-    <button class="tile live" data-goto="schedule:in"><span class="k">กำลังแข่ง</span><span class="v num">${live.length}</span></button>
-    <button class="tile value" data-goto="analyze:edge"><span class="k">มีค่าตามโมเดล</span><span class="v num">${values}</span></button>
-  </div>
-  ${live.length?sec(`<span class="dot live pulse" style="vertical-align:4px;margin-right:8px"></span>กำลังแข่ง`,`อัปเดตทุกนาที`)+`<div class="stack">${live.map(matchCard).join("")}</div>`:""}
-  ${homeBrief(day)}
-  ${favs.length?sec("ทีมโปรดวันนี้")+`<div class="list">${favs.map(m=>matchRow(m)).join("")}</div>`:""}
-  ${upcoming.length?sec("ถัดไป",`เวลาไทย`,`<button class="act" data-goto="schedule:pre">ดูโปรแกรมทั้งหมด</button>`)+`<div class="stack">${upcoming.slice(0,4).map(matchCard).join("")}</div>`:""}
-  ${done.length?sec("ผลล่าสุด",`จบแล้ว ${done.length} คู่`,`<button class="act" data-goto="schedule:post">ดูผลทั้งหมด</button>`)+`<div class="list">${done.slice(-5).reverse().map(m=>matchRow(m)).join("")}</div>`:""}`;
+  const ms=filtered(day).filter(m=>S.status==="all"||m.st===S.status);
+  const live=ms.filter(m=>m.st==="in"), upcoming=ms.filter(m=>m.st==="pre"||m.st==="pp"), done=ms.filter(m=>m.st==="post"||m.st==="unk");
+  const favs=ms.filter(isFav);
+  return `<div class="hdrawers">${picksHero(day)}${homeBrief(day)}</div>
+  <div style="height:12px"></div>${homeTiles(day.matches)}
+  ${live.length?sec(`<span class="dot live pulse" style="vertical-align:4px;margin-right:8px"></span>กำลังแข่ง`,`${live.length} คู่ · อัปเดตทุกนาที`)+`<div class="stack">${live.map(progCard).join("")}</div>`:""}
+  ${favs.length&&!S.q?sec("ทีมโปรดวันนี้")+`<div class="list">${favs.map(m=>matchRow(m)).join("")}</div>`:""}
+  ${sec(live.length?"โปรแกรมถัดไป":"โปรแกรม",`เวลาไทย · ${upcoming.length} คู่`,`<button class="act" data-goto="schedule:all">ดูตามลีก</button>`)}
+  ${upcoming.length?`<div class="stack">${upcoming.map(progCard).join("")}</div>`:`<div class="card muted" style="text-align:center">${ms.length?"ไม่มีคู่ที่ยังไม่เตะในตัวกรองนี้":"ไม่มีคู่ที่ตรงกับตัวกรอง"}</div>`}
+  ${done.length?sec("ผลการแข่งขัน",`จบแล้ว ${done.length} คู่`)+`<div class="list">${done.slice().reverse().map(m=>matchRow(m)).join("")}</div>`:""}`;
 }
 function viewSchedule(){
   const day=getDay(S.date);
@@ -203,8 +238,8 @@ function viewSchedule(){
   const ms=base.filter(m=>S.status==="all"||m.st===S.status);
   const groups={}; ms.forEach(m=>(groups[m.lg]=groups[m.lg]||[]).push(m));
   const keys=Object.keys(groups).sort((a,b)=>(LEAGUE_ORDER[a]??99)-(LEAGUE_ORDER[b]??99));
-  return `<div class="toolbar">${seg("status",[["all","ทั้งหมด",cnt("all")],["in","สด",cnt("in")],["pre","ยังไม่เตะ",cnt("pre")],["post","จบแล้ว",cnt("post")]],S.status)}${leagueSelect(day)}</div>
-  ${keys.length?`<div class="stack">${keys.map(k=>`<div class="list"><div class="lhead"><span>${esc(LEAGUE_NAME[k]||k)}</span><span class="n num">${groups[k].length} คู่</span></div>${groups[k].map(m=>matchRow(m)).join("")}</div>`).join("")}</div>`
+  return `${S.filterOpen?"":`<div class="toolbar">${seg("status",[["all","ทั้งหมด",cnt("all")],["in","สด",cnt("in")],["pre","ยังไม่เตะ",cnt("pre")],["post","จบแล้ว",cnt("post")]],S.status)}</div>`}
+  ${keys.length?`<div class="stack">${keys.map(k=>`<div class="list"><div class="lhead"><span>${FLAG[k.split(".")[0]]||"⚽"} ${esc(LEAGUE_NAME[k]||k)}</span><span class="n num">${groups[k].length} คู่</span></div>${groups[k].map(m=>matchRow(m)).join("")}</div>`).join("")}</div>`
     :`<div class="card empty"><p>ไม่มีคู่ในหมวดนี้</p></div>`}
   <p class="note">เวลาไทย · วันแข่งตัดรอบราว 11:00 น. ตามฟีด ESPN · ตัวเลขด้านขวาคือโอกาสชนะของเจ้าบ้านและทีมเยือน</p>`;
 }
@@ -654,18 +689,28 @@ function statusText(){
   return `<span class="dot"></span><span>ยังไม่มีข้อมูลของ${relLabel(S.date)}</span>`;
 }
 function paintStatus(){ const el=$("#status"); if(el) el.innerHTML=statusText(); }
+const CAL_ICON='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>';
 function paintDates(){
-  const el=$("#dates"); const show=DATED_TABS.has(S.tab);
-  el.hidden=!show; $("#status").hidden=!show;
+  const show=DATED_TABS.has(S.tab);
+  $("#dateRow").hidden=!show; $("#statusRow").hidden=!show; $("#filterPanel").hidden=!show||!S.filterOpen;
   if(!show) return;
-  const t=bkkToday(); const set=new Set([shiftDate(t,-1),t,shiftDate(t,1),shiftDate(t,2),S.date]);
+  const el=$("#dates");
+  const t=bkkToday(); const set=new Set([shiftDate(t,-1),t,shiftDate(t,1),shiftDate(t,2),shiftDate(t,3),S.date]);
   Object.keys(SNAPSHOT||{}).filter(d=>d>=shiftDate(t,-1)).forEach(d=>set.add(d));
+  const TH_DAY=["อาทิตย์","จันทร์","อังคาร","พุธ","พฤหัส","ศุกร์","เสาร์"];
   const html=[...set].sort().map(d=>{
     const day=S.days[d]||((SNAPSHOT||{})[d]?getDay(d):null); const n=day?.matches?.length||0; const live=day?.matches?.some(m=>m.st==="in");
-    const rel=relLabel(d), lbl=dayLabel(d);
-    return `<button class="dchip ${d===S.date?"on":""}${live?" has-live":""}" role="tab" aria-selected="${d===S.date}" data-date="${d}"><span class="d1">${rel===lbl?lbl.split(" ")[0]:rel}</span><span class="d2 num">${rel===lbl?lbl.split(" ").slice(1).join(" "):lbl.split(" ").slice(1).join(" ")}${n?` · ${n}`:""}</span></button>`;
+    const rel=relLabel(d), lbl=dayLabel(d).split(" ").slice(1).join(" ");
+    const top=["วันนี้","พรุ่งนี้","เมื่อวาน"].includes(rel)?rel:TH_DAY[weekday(d)];
+    return `<button class="dchip ${d===S.date?"on":""}${live?" has-live":""}" role="tab" aria-selected="${d===S.date}" data-date="${d}"><span class="d1">${CAL_ICON}${top}</span><span class="d2 num">${lbl}${n?` · ${n} คู่`:""}</span></button>`;
   }).join("");
   if(el.dataset.html!==html){ el.innerHTML=html; el.dataset.html=html; el.querySelector(".on")?.scrollIntoView({inline:"center",block:"nearest"}); }
+  $("#datePick").value=S.date;
+  const fb=$("#btnFilter"); fb.setAttribute("aria-expanded",String(S.filterOpen)); fb.querySelector(".fdot").hidden=!(S.league||S.status!=="all");
+  if(S.filterOpen){
+    const day=getDay(S.date), base=filtered({matches:day.matches}), cnt=k=>base.filter(m=>k==="all"||m.st===k).length;
+    $("#filterPanel").innerHTML=seg("status",[["all","ทั้งหมด",cnt("all")],["in","สด",cnt("in")],["pre","ยังไม่เตะ",cnt("pre")],["post","จบแล้ว",cnt("post")]],S.status)+leagueSelect(day);
+  }
 }
 function paintTabs(){
   const liveN=(S.days[S.date]?.matches||[]).filter(m=>m.st==="in").length;
@@ -692,10 +737,12 @@ function toggleFav(id){
 
 /* ---------- events ---------- */
 document.addEventListener("click",e=>{
-  const t=e.target.closest("[data-drawer],[data-fav],[data-open],[data-date],[data-set],[data-goto],[data-act],[data-unfav],[data-tab],#btnBrief,#btnAna,#btnBack,#btnSearch,#btnRefresh");
+  const t=e.target.closest("#btnFilter,[data-drawer],[data-fav],[data-open],[data-date],[data-set],[data-goto],[data-act],[data-unfav],[data-tab],#btnBrief,#btnAna,#btnBack,#btnSearch,#btnRefresh");
   if(!t) return;
   const d=t.dataset;
-  if(d.drawer){ S.drawer[d.drawer]=!S.drawer[d.drawer]; store.set("drawer",S.drawer); return render(); }
+  if(t.id==="btnFilter"){ S.filterOpen=!S.filterOpen; return render(); }
+  if(d.drawer){ S.drawer[d.drawer]=!S.drawer[d.drawer]; store.set("drawer2",S.drawer); return render(); }
+  if(d.act==="picksAll"){ S.picksAll=!S.picksAll; return render(); }
   if(d.fav){ e.stopPropagation(); e.preventDefault(); return toggleFav(d.fav); }
   if(t.id==="btnBack") return closeSheet();
   if(d.open) return openMatch(d.open, d.day);
@@ -718,13 +765,14 @@ document.addEventListener("click",e=>{
 });
 document.addEventListener("keydown",e=>{
   if(e.key==="Escape" && S.open) return closeSheet();
-  if((e.key==="Enter"||e.key===" ") && e.target.matches?.(".mcard[role=button]")){ e.preventDefault(); openMatch(e.target.dataset.open); }
+  if((e.key==="Enter"||e.key===" ") && e.target.matches?.(".mcard[role=button],.pcard[role=button]")){ e.preventDefault(); openMatch(e.target.dataset.open); }
 });
 document.addEventListener("input",e=>{
   if(e.target.id==="q"){ clearTimeout(S.qT); S.qT=setTimeout(()=>{ S.q=e.target.value.trim(); render(); },160); }
   if(["cHome","cAway","tOver","tUnder"].includes(e.target.id)) runCalc();
 });
 document.addEventListener("change",e=>{
+  if(e.target.id==="datePick"&&/^\d{4}-\d{2}-\d{2}$/.test(e.target.value)) return setDate(e.target.value);
   if(e.target.id==="leagueSel"){ S.league=e.target.value; render(); }
   if(["cLine","tLine"].includes(e.target.id)) runCalc();
 });

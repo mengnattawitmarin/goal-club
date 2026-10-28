@@ -31,7 +31,7 @@ try {
   check("picks drawer rendered", await A.isVisible('.dhead[data-drawer="picks"]'));
   check("page has no horizontal scroll", (await A.evaluate(() => document.documentElement.scrollWidth)) <= 400);
 
-  await A.click('.mcard[data-open="9001"]'); await A.waitForTimeout(1500);
+  await A.click('#view .pcard[data-open="9001"]'); await A.waitForTimeout(1500);
   check("match sheet opens", await A.isVisible("#sheet"));
   const factors = await A.evaluate(() => S.open.factors.map((f) => f.k));
   check("model factors applied", ["h2h", "pace", "venue", "rest", "lineup"].every((k) => factors.includes(k)), factors.join(","));

@@ -15,7 +15,7 @@
 <title>Goal Club</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Taviraj:wght@500;600&family=Sarabun:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap">
 <style>
 /* Layout: one phone-width column (max 680px). Sticky header = brand row + date strip + status.
    Five tabs, each with one job: หน้าหลัก (today at a glance), โปรแกรม (full list), วิเคราะห์ (picks & prices),
@@ -327,6 +327,113 @@ label.f input,label.f select{height:42px;border-radius:var(--r-sm);border:1px so
 .lbar::before{content:"";position:absolute;left:50%;top:-3px;bottom:-3px;width:1px;background:var(--line)}
 .lbar i{position:absolute;top:0;height:100%;border-radius:99px;background:var(--win)}
 
+
+/* ===== v2 visual refresh ===== */
+:root{--r-lg:20px;--r-md:14px;--font-display:"Sarabun",system-ui,-apple-system,"Segoe UI",sans-serif}
+.verdict .vt,.face .mid,.article h4,.ph-head h2,.empty h3,.tile .v,.score{font-weight:700}
+.face .mid{letter-spacing:-.01em}
+.brandbar{display:flex;align-items:center;gap:10px;padding-block:14px 8px}
+.brandbar .brand{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
+.logo-mark{flex:none;filter:drop-shadow(0 4px 10px rgba(226,180,95,.25))}
+.brandtext{display:flex;flex-direction:column;min-width:0}
+.brandtext b{font-family:var(--font-body);font-weight:700;font-size:28px;line-height:1.05;letter-spacing:-.01em;color:var(--fg);background:linear-gradient(180deg,#fff6e2,#e9cf98);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.brandtext span{font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brandtext i{font-style:normal;color:var(--gold)}
+.brandbar .iconbtn{width:46px;height:46px}
+.top{border-bottom:0;background:color-mix(in srgb,var(--bg) 94%,transparent)}
+.daterow{display:flex;gap:8px;align-items:stretch;padding-top:4px}
+.daterow .datestrip{flex:1;min-width:0;padding-block:2px 8px}
+.dchip{min-width:80px;padding:8px 12px;border-radius:14px;align-items:flex-start;background:linear-gradient(180deg,var(--surface-2),var(--surface));gap:2px}
+.dchip .d1{display:flex;align-items:center;gap:6px;font-size:14px}
+.dchip .d1 svg{opacity:.75}
+.dchip .d2{font-size:12px;padding-left:2px}
+.dchip.on{background:linear-gradient(180deg,#f7d995,#d9ac58);border-color:#f0cc86;box-shadow:0 6px 18px -8px rgba(240,204,134,.6)}
+.calbtn{position:relative;flex:none;width:52px;margin-bottom:8px;border-radius:14px;border:1px solid var(--line);background:linear-gradient(180deg,var(--surface-2),var(--surface));display:grid;place-items:center;color:var(--muted);cursor:pointer}
+.calbtn input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}
+.statusrow{display:flex;align-items:center;gap:8px;padding-bottom:10px}
+.statusrow .status{flex:1;min-width:0;padding:0;font-size:12.5px}
+.statusrow .status span:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.filterbtn{position:relative;display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px;border-radius:12px;border:1px solid var(--line);background:var(--surface);font-size:13px;color:var(--fg);flex:none}
+.filterbtn[aria-expanded="true"]{border-color:var(--gold);color:var(--gold)}
+.fdot{position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;background:var(--gold)}
+.filterpanel{display:flex;flex-direction:column;gap:8px;padding-bottom:12px}
+.filterpanel .seg{width:100%}
+.filterpanel .select{width:100%}
+.sec h2{font-family:var(--font-body);font-weight:700;font-size:19px;color:var(--fg)}
+.sec .act{display:inline-flex;align-items:center;gap:4px}
+.sec .act::after{content:"›";font-size:18px;line-height:1}
+.pagetitle{font-family:var(--font-body);font-weight:700;color:var(--fg)}
+
+/* home drawers */
+.hdrawers{display:flex;flex-direction:column;gap:10px}
+.drawer{border-radius:var(--r-lg)}
+.drawer.gold{background:radial-gradient(120% 140% at 0% 0%,#2b2216 0%,#15120d 60%);box-shadow:inset 0 1px 0 rgba(255,230,170,.06)}
+.dhead{padding:14px 16px;min-height:60px;gap:12px}
+.dicon{width:36px;height:36px;border-radius:12px;display:grid;place-items:center;flex:none;background:color-mix(in srgb,var(--gold) 14%,transparent);color:var(--gold)}
+.dtitle{display:flex;flex-direction:column;min-width:0;text-align:left}
+.dhead .dt{font-family:var(--font-body);font-weight:700;font-size:16.5px;color:var(--fg)}
+.dtitle small{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dhead .dm{font-size:12.5px}
+.dpill{display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:999px;background:var(--surface-3);font-size:12px;color:var(--gold);font-weight:600}
+.dbody{padding:0 12px 14px}
+
+/* picks rows v2 */
+.prow{display:grid;grid-template-columns:36px minmax(0,1fr) 76px;gap:12px;align-items:center;padding:14px 12px;border-top:1px solid var(--line-soft);width:100%;text-align:left}
+.prow:first-child{border-top:0}
+.prow:hover{background:color-mix(in srgb,var(--surface-2) 60%,transparent)}
+.prank{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;font-weight:700;font-size:18px;color:var(--gold);background:color-mix(in srgb,var(--gold) 13%,transparent)}
+.pmain{min-width:0;display:flex;flex-direction:column;gap:4px}
+.pmain .pl{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px;font-weight:700;font-size:16px;min-width:0}
+.pmain .pl b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ptag{flex:none;font-size:11px;font-weight:600;padding:2px 8px;border-radius:6px;background:color-mix(in srgb,var(--gold) 15%,transparent);color:var(--gold)}
+.pteams{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--fg);min-width:0}
+.pteams .tm{color:var(--muted);flex:none}
+.pteams span.nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.pmeta{font-size:12px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pside{text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.pside .pc{font-size:22px;font-weight:700;color:var(--fg);line-height:1}
+.pside small{font-size:11px;color:var(--faint)}
+.pbar{width:68px;height:5px;border-radius:99px;background:var(--surface-3);overflow:hidden;margin-top:4px}
+.pbar i{display:block;height:100%;background:linear-gradient(90deg,#c9a35b,#f0cc86)}
+.prow.is-live{background:color-mix(in srgb,var(--win) 9%,transparent);box-shadow:inset 3px 0 0 var(--win)}
+.prow .pst{margin-top:2px}
+.morebtn .chev{transform:rotate(45deg)!important;margin-bottom:4px!important}
+.morebtn.up .chev{transform:rotate(-135deg)!important;margin-bottom:-2px!important}
+.morebtn{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;height:44px;margin-top:10px;border-radius:12px;border:1px solid color-mix(in srgb,var(--gold) 30%,transparent);background:color-mix(in srgb,var(--gold) 6%,transparent);color:var(--gold);font-weight:600;font-size:14px}
+
+/* tiles v2 */
+.tiles{gap:10px}
+.tile{position:relative;overflow:hidden;padding:10px 12px 22px;border-radius:16px;background:linear-gradient(180deg,var(--surface-2),var(--surface));min-height:92px}
+.tile .ti{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;margin-bottom:4px}
+.tile .tt{display:flex;flex-direction:column;gap:2px;align-items:flex-start}
+.tile .k{font-size:11.5px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.tile .v{font-family:var(--font-body);font-weight:700;font-size:26px;line-height:1.1}
+.tile .u{font-size:11px;color:var(--faint)}
+.tile svg.spark{position:absolute;left:0;right:0;bottom:0;width:100%;height:30px}
+.tile.c-green .ti{background:color-mix(in srgb,var(--win) 18%,transparent);color:var(--win)}
+.tile.c-blue .ti{background:rgba(110,150,230,.18);color:#8fb0f0}
+.tile.c-gold .ti{background:color-mix(in srgb,var(--gold) 18%,transparent);color:var(--gold)}
+.tile.c-blue .v{color:var(--fg)}
+
+/* program cards (home) */
+.pcard{display:block;width:100%;border-radius:18px;border:1px solid var(--line);background:linear-gradient(180deg,var(--surface-2) 0%,var(--surface) 100%);padding:12px 14px;text-align:left}
+.pcard:hover{border-color:color-mix(in srgb,var(--gold) 40%,transparent)}
+.pc-head{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted)}
+.pc-head .flag{font-size:16px;line-height:1}
+.pc-head .lg{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc-head .time{color:var(--fg);font-weight:700;font-size:14px}
+.pc-team{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;margin-top:8px}
+.pc-team .nm{font-weight:700;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc-team .nm small{font-weight:400;font-size:12px;color:var(--faint);margin-left:6px}
+.pc-team .sc{font-size:22px;font-weight:700;min-width:22px;text-align:right}
+.pc-foot{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:10px;padding-top:9px;border-top:1px dashed var(--line);font-size:12px;color:var(--muted)}
+.pc-foot b{color:var(--gold);font-weight:600}
+.pcard .badge{width:32px;height:32px}
+.pcard.is-live{border-color:color-mix(in srgb,var(--win) 60%,transparent);background:linear-gradient(180deg,color-mix(in srgb,var(--win) 13%,var(--surface)) 0%,var(--surface) 80%)}
+.pcard.is-live .sc{color:var(--win)}
+.pcard .pill{width:20px;height:20px;border-radius:5px;font-size:11px}
+.brief-art{float:right;width:118px;height:78px;margin:-4px -4px 4px 10px}
+
 /* ---------- bottom tabs ---------- */
 nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:30;background:color-mix(in srgb,var(--bg) 96%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid var(--line-soft);padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
 nav.tabs .in{max-width:680px;margin:0 auto;display:flex}
@@ -340,19 +447,25 @@ nav.tabs .badge-n{position:absolute;top:8px;left:calc(50% + 6px);min-width:16px;
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 
+<div class="wrap brandbar">
+  <div class="brand">
+    <svg class="logo-mark" width="44" height="44" viewBox="0 0 48 48" aria-hidden="true">
+      <defs><linearGradient id="gcg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe3a3"/><stop offset=".55" stop-color="#e2b45f"/><stop offset="1" stop-color="#9c7230"/></linearGradient></defs>
+      <path d="M13 14 L14.5 5 L19.5 9.5 L24 3 L28.5 9.5 L33.5 5 L35 14 Z" fill="url(#gcg)"/>
+      <path d="M34.4 25 A12 12 0 1 0 36 31 H25" fill="none" stroke="url(#gcg)" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <div class="brandtext"><b>Goal Club</b><span>อ่านเกมด้วยตัวเลข <i>✦</i></span></div>
+  </div>
+  <button class="iconbtn" id="btnSearch" aria-label="ค้นหาทีม"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
+  <button class="iconbtn" id="btnRefresh" aria-label="ดึงข้อมูลใหม่"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 4v5h-5"/></svg></button>
+</div>
 <header class="top">
   <div class="wrap">
-    <div class="brandrow">
-      <div class="brand">
-        <svg width="24" height="20" viewBox="0 0 26 22" aria-hidden="true"><path d="M2 18 L4 6 L9 11 L13 3 L17 11 L22 6 L24 18 Z" fill="none" stroke="#f0cc86" stroke-width="1.8" stroke-linejoin="round"/><path d="M3 20.5 H23" stroke="#f0cc86" stroke-width="1.8" stroke-linecap="round"/></svg>
-        <b>Goal Club</b>
-      </div>
-      <button class="iconbtn" id="btnSearch" aria-label="ค้นหาทีม"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
-      <button class="iconbtn" id="btnRefresh" aria-label="ดึงข้อมูลใหม่"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 4v5h-5"/></svg></button>
-    </div>
     <div class="searchrow" id="searchRow" hidden><input id="q" type="search" placeholder="ค้นหาทีม เช่น Arsenal" autocomplete="off" aria-label="ค้นหาทีม"></div>
-    <div class="datestrip" id="dates" role="tablist" aria-label="เลือกวันแข่ง"></div>
-    <div class="status" id="status" aria-live="polite"></div>
+    <div class="daterow" id="dateRow"><div class="datestrip" id="dates" role="tablist" aria-label="เลือกวันแข่ง"></div>
+      <label class="calbtn" aria-label="เลือกวันจากปฏิทิน"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4M8 14h.01M12 14h.01M16 14h.01M8 17.5h.01M12 17.5h.01"/></svg><input type="date" id="datePick"></label></div>
+    <div class="statusrow" id="statusRow"><div class="status" id="status" aria-live="polite"></div><button class="filterbtn" id="btnFilter" aria-expanded="false"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>ตัวกรอง<span class="fdot" hidden></span></button></div>
+    <div class="filterpanel" id="filterPanel" hidden></div>
   </div>
 </header>
 
@@ -1047,7 +1160,9 @@ Object.assign(S, {
   edgeKind: "all",        // all | ah | ou | 1x2
   sheetTab: "overview",   // overview | market | stats
   calc: {},
-  drawer: store.get("drawer",{picks:false,brief:false})
+  drawer: store.get("drawer2",{picks:false,brief:false}),
+  picksAll: false,
+  filterOpen: false
 });
 
 /* ---------- helpers ---------- */
@@ -1159,47 +1274,55 @@ function pickStatus(p){
   if(m.st==="unk") return `<span class="tag">${m.h.score}–${m.a.score}</span>`;
   return `<span class="tag ${r==="win"||r==="half"?"value":r==="push"?"":"warn"}">${m.h.score}–${m.a.score} · ${RES_LABEL[r]}</span>`;
 }
-function pickRows(picks){
-  return picks.map((p,i)=>`<button class="pick${p.m?.st==="in"?" is-live":""}" data-open="${p.id}">
-    <span class="rank num">${i+1}</span>
-    <span class="ph">${esc(p.label)} <span class="ptype">${TYPE_LABEL[p.type]||""}</span></span>
-    <span class="pp num"><b class="gold">${pct(p.prob)}</b><div class="meter"><i style="width:${Math.round(p.prob*100)}%"></i></div></span>
-    <span class="sub">${p.m?`<span class="num">${timeCell(p.m)}</span> · ${esc(p.m.h.short)} – ${esc(p.m.a.short)} · ${esc(lg(p.m))}`:""} · ทาย <span class="num">${p.score}</span></span>
-    <span class="pst">${pickStatus(p)}</span>
-  </button>`).join("");
+function pickRows(picks, offset=0){
+  return picks.map((p,i)=>{ const m=p.m; return `<button class="prow${m?.st==="in"?" is-live":""}" data-open="${p.id}">
+    <span class="prank num">${i+1+offset}</span>
+    <span class="pmain">
+      <span class="pl"><b>${esc(p.label)}</b><span class="ptag">${TYPE_LABEL[p.type]||""}</span></span>
+      ${m?`<span class="pteams"><span class="tm num">${timeCell(m)}</span><span class="nm">${esc(m.h.short)} – ${esc(m.a.short)}</span></span>
+      <span class="pmeta">${flagOf(m)} ${esc(lg(m))} · ทาย ${p.score}</span>`:""}
+      ${pickStatus(p)?`<span class="pst">${pickStatus(p)}</span>`:""}
+    </span>
+    <span class="pside"><span class="pc num">${pct(p.prob)}</span><small>โอกาสได้ผล</small><span class="pbar"><i style="width:${Math.round(p.prob*100)}%"></i></span></span>
+  </button>`; }).join("");
 }
 function recordPill(){
   const r=pickRecord(14); if(!r.n) return "";
   return `<span class="tag gold num">ย้อนหลัง 14 วัน เข้า ${r.won}/${r.n} (${Math.round(r.won/r.n*100)}%)${r.push?` · คืนทุน ${r.push}`:""}</span>`;
 }
-function drawer(key, title, meta, body, opts={}){
+function drawer(key, title, sub, meta, body, icon){
   const open=!!S.drawer[key];
-  return `<section class="drawer${opts.gold?" gold":""}${open?" open":""}">
+  return `<section class="drawer gold${open?" open":""}">
     <button class="dhead" data-drawer="${key}" aria-expanded="${open}">
-      ${opts.icon||""}<span class="dt">${title}</span><span class="dm">${meta||""}</span><span class="chev" aria-hidden="true"></span>
+      <span class="dicon">${icon}</span><span class="dtitle"><span class="dt">${title}</span>${sub?`<small>${sub}</small>`:""}</span>
+      <span class="dm">${meta||""}</span><span class="chev" aria-hidden="true"></span>
     </button>
-    ${opts.peek?`<div class="dpeek">${opts.peek}</div>`:""}
     <div class="dbody"${open?"":" hidden"}>${body}</div>
   </section>`;
 }
-const CROWN='<svg width="18" height="15" viewBox="0 0 26 22" aria-hidden="true"><path d="M2 18 L4 6 L9 11 L13 3 L17 11 L22 6 L24 18 Z" fill="#f0cc86"/></svg>';
+const ICON_TARGET='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><path d="m15 9 5-5M17 4h3v3"/></svg>';
+const ICON_TREND='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V14M9 20v-6M14 20v-9M19 20V8"/><path d="m4 10 5-4 4 3 7-6M16 3h4v4"/></svg>';
 function picksHero(day){
   const P=picksFor(S.date), rel=relLabel(S.date);
   const title=`ฟันธงคู่เด็ด${rel==="วันนี้"?"วันนี้":rel}`;
-  if(!P.list.length) return drawer("picks",title,`<span class="faint">ยังไม่มี</span>`,`<p class="muted" style="margin:0">${day.matches.some(m=>m.st==="pre")?"ยังไม่มีคู่ที่โมเดลให้เกิน 55%":"ทุกคู่เริ่มเตะแล้ว ฟันธงคัดจากคู่ที่ยังไม่เตะเท่านั้น"}</p>${recordPill()?`<div style="margin-top:10px">${recordPill()}</div>`:""}`,{gold:true,icon:CROWN});
-  const top=P.list.slice(0,3), rest=P.list.slice(3);
-  return drawer("picks",title,`<span class="num">${P.list.length} คู่</span>`,
-    `${rest.length?`<div class="list compact">${pickRows(rest).replace(/<span class="rank num">(\d+)<\/span>/g,(m0,n)=>`<span class="rank num">${+n+3}</span>`)}</div>`:""}
-     ${recordPill()?`<div style="margin-top:10px">${recordPill()}</div>`:""}
-     <p class="note">คัด ${P.list.length} จาก ${P.total} คู่ · เส้นที่แรงที่สุดของแต่ละคู่ · % คือโอกาสได้ผลไม่นับคืนทุน · คู่ที่เตะแล้วล็อกไว้ · ไม่ใช่คำแนะนำให้เดิมพัน</p>
-     <button class="act" data-goto="analyze:picks" style="margin-top:6px">ดูในหน้าวิเคราะห์</button>`,
-    {gold:true,icon:CROWN,peek:`<div class="list compact">${pickRows(top)}</div>${rest.length?`<button class="more" data-drawer="picks">${S.drawer.picks?"ย่อ":`ดูอีก ${rest.length} คู่`}</button>`:""}`});
+  if(!P.list.length) return drawer("picks",title,day.matches.some(m=>m.st==="pre")?"ยังไม่มีคู่ที่โมเดลให้เกิน 55%":"ทุกคู่เริ่มเตะแล้ว",`<span class="dpill">0</span>`,`<p class="muted" style="margin:0 4px">${recordPill()||"ฟันธงคัดจากคู่ที่ยังไม่เตะเท่านั้น"}</p>`,ICON_TARGET);
+  const top=P.list[0];
+  const showAll=S.picksAll, list=showAll?P.list:P.list.slice(0,3);
+  return drawer("picks",title,`อันดับ 1 ${esc(top.label)} · ${pct(top.prob)}`,`<span class="dpill num">${P.list.length} คู่</span>`,
+    `<div class="list">${pickRows(list)}</div>
+     ${P.list.length>3?`<button class="morebtn${showAll?" up":""}" data-act="picksAll">${showAll?"ย่อ":`ดูอีก ${P.list.length-3} คู่`} <span class="chev"></span></button>`:""}
+     <div class="row" style="margin-top:10px">${recordPill()}<span class="spacer"></span><button class="act" data-goto="analyze:picks" style="font-size:13px;color:var(--gold)">ดูทั้งหมด ›</button></div>
+     <p class="note">คัด ${P.list.length} จาก ${P.total} คู่ · เส้นที่แรงที่สุดของแต่ละคู่ · % คือโอกาสได้ผลไม่นับคืนทุน · คู่ที่เตะแล้วล็อกไว้ · ไม่ใช่คำแนะนำให้เดิมพัน</p>`,ICON_TARGET);
 }
+const PITCH_ART=`<svg class="brief-art" viewBox="0 0 120 80" aria-hidden="true"><defs><linearGradient id="pa" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e9c47a"/><stop offset="1" stop-color="#8a6326"/></linearGradient></defs>
+  <g transform="skewX(-14) translate(14 0)"><rect x="6" y="10" width="96" height="60" rx="4" fill="url(#pa)" opacity=".9"/><g fill="none" stroke="#3a2a10" stroke-width="1.2" opacity=".55"><rect x="10" y="14" width="88" height="52" rx="2"/><path d="M54 14v52"/><circle cx="54" cy="40" r="9"/><rect x="10" y="28" width="12" height="24"/><rect x="86" y="28" width="12" height="24"/></g>
+  <g stroke="#7a2412" stroke-width="1.3" fill="none" opacity=".75"><path d="M28 50 C40 30 52 52 70 30"/><path d="m66 28 5 1-2 5"/></g><g fill="#7a2412" opacity=".8"><circle cx="28" cy="50" r="1.8"/><circle cx="46" cy="40" r="1.8"/><circle cx="62" cy="36" r="1.8"/></g></g>
+  <circle cx="100" cy="58" r="13" fill="url(#pa)"/><path d="M100 58 V45 A13 13 0 0 1 112 53 Z" fill="#f6dfa6"/></svg>`;
 function homeBrief(day){
   const b=store.get("brief:"+S.date,null);
-  const first=b?.summary?String(b.summary).split(/(?<=[.!?])\s|\s{2,}/)[0].slice(0,110):"";
-  return `<div style="height:12px"></div>`+drawer("brief","บทวิเคราะห์วันนี้", b?`<span class="faint">${stampTime(b.at)}</span>`:S.briefBusy?`<span class="faint">กำลังเขียน…</span>`:`<span class="faint">ยังไม่ได้วิเคราะห์</span>`,
-    briefCard(day,true),{peek: b&&!S.drawer.brief?`<p class="dline">${esc(first)}${b.summary.length>first.length?"…":""}</p>`:(!b&&!S.drawer.brief?`<button class="btn small" id="btnBrief" ${S.briefBusy||!day.matches.length?"disabled":""}>${S.briefBusy?"กำลังวิเคราะห์…":"วิเคราะห์วันนี้"}</button>`:"")});
+  const first=b?.summary?String(b.summary).split(/(?<=[.!?])\s|\s{2,}/)[0].slice(0,90):"";
+  return drawer("brief","บทวิเคราะห์วันนี้", b?esc(first)+(b.summary.length>first.length?"…":""):S.briefBusy?"กำลังเขียน…":"ยังไม่ได้วิเคราะห์ · แตะเพื่อเปิด", b?`<span class="faint num">${kickTime(b.at)}</span>`:"",
+    `${b?"":PITCH_ART}${briefCard(day,true)}`, ICON_TREND);
 }
 function briefCard(day, inner){
   const b=store.get("brief:"+S.date,null);
@@ -1217,23 +1340,48 @@ function briefCard(day, inner){
 }
 
 /* ---------- views ---------- */
+const FLAG={tha:"🇹🇭",eng:"🏴\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}",esp:"🇪🇸",ger:"🇩🇪",ita:"🇮🇹",fra:"🇫🇷",uefa:"🇪🇺",ned:"🇳🇱",por:"🇵🇹",bel:"🇧🇪",sco:"🏴\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F}",tur:"🇹🇷",usa:"🇺🇸",mex:"🇲🇽",bra:"🇧🇷",arg:"🇦🇷",ksa:"🇸🇦",jpn:"🇯🇵",chn:"🇨🇳",aus:"🇦🇺"};
+const flagOf=m=>FLAG[m.lg.split(".")[0]]||"⚽";
+function progCard(m){
+  const v=valueRow(m);
+  const side=(t,sc)=>`<div class="pc-team">${badge(t)}<span class="nm">${esc(t.short)}${t.rank?`<small>#${t.rank}</small>`:""}</span>${m.st==="pre"?formPills(t.form):`<span class="sc num">${sc??"–"}</span>`}</div>`;
+  return `<div class="pcard${liveCls(m)}" role="button" tabindex="0" data-open="${m.id}">
+    <div class="pc-head"><span class="flag" aria-hidden="true">${flagOf(m)}</span><span class="lg">${esc(lg(m))}</span>${isGoal(m)?`<span class="tag value">ประตู!</span>`:""}${m.st==="pre"?`<span class="time num">${kickTime(m.ko)}</span>`:stateTag(m)}${starBtn(m)}</div>
+    ${side(m.h,m.h.score)}${side(m.a,m.a.score)}
+    <div class="pc-foot"><span class="num">${esc(m.h.short)} ${pct(m.sum.home)} · เสมอ ${pct(m.sum.draw)} · ${esc(m.a.short)} ${pct(m.sum.away)}</span>${m.mk?.spread?`<span><b>${esc(ahPhrase(m.h.short,m.a.short,m.mk.spread.line))}</b></span>`:""}${v?`<span class="tag value">มีค่า ${pts(v.edge)}</span>`:""}</div>
+  </div>`;
+}
+function spark(vals, color){
+  if(!vals.length||Math.max(...vals)<=0) return "";
+  const max=Math.max(...vals), n=vals.length, pts_=vals.map((v,i)=>`${(i/(n-1||1))*100},${28-(v/max)*22}`).join(" ");
+  return `<svg class="spark" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><polygon points="0,30 ${pts_} 100,30" fill="${color}" opacity=".14"/><polyline points="${pts_}" fill="none" stroke="${color}" stroke-width="1.4" vector-effect="non-scaling-stroke"/></svg>`;
+}
+function homeTiles(ms){
+  const t0=Math.min(...ms.map(m=>Date.parse(m.ko))), bins=12, span=24*3600e3/bins;
+  const kick=Array(bins).fill(0), playing=Array(bins).fill(0);
+  ms.forEach(m=>{ const k=Math.floor((Date.parse(m.ko)-t0)/span); if(k>=0&&k<bins){ kick[k]++; for(let j=k;j<Math.min(bins,k+2);j++) playing[j]++; } });
+  const R=pickRecord(7); const days={}; R.list.forEach(x=>{ const d=days[x.d]=days[x.d]||{w:0,n:0}; if(x.res!=="push"){ d.n++; if(x.res==="win"||x.res==="half") d.w++; } });
+  const acc=Object.keys(days).sort().map(d=>days[d].n?days[d].w/days[d].n:0);
+  const live=ms.filter(m=>m.st==="in").length;
+  return `<div class="tiles">
+    <button class="tile c-green" data-goto="schedule:all"><div class="tt"><span class="ti">${'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg>'}</span><span class="k">คู่ทั้งหมด</span></div><span class="v num">${ms.length}</span><span class="u">คู่${relLabel(S.date)}</span>${spark(kick,"#8fc79a")}</button>
+    <button class="tile c-blue" data-goto="schedule:in"><div class="tt"><span class="ti">${'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V12M10 20V6M16 20v-9M22 20H2"/></svg>'}</span><span class="k">กำลังแข่งขัน</span></div><span class="v num">${live}</span><span class="u">คู่</span>${spark(playing,"#8fb0f0")}</button>
+    <button class="tile c-gold" data-goto="analyze:picks"><div class="tt"><span class="ti">${'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>'}</span><span class="k">ฟันธงเข้า</span></div><span class="v num">${R.n?Math.round(R.won/R.n*100)+"%":"–"}</span><span class="u">${R.n?`เฉลี่ย 7 วัน · ${R.won}/${R.n}`:"ยังไม่มีผล"}</span>${spark(acc,"#f0cc86")}</button>
+  </div>`;
+}
 function viewHome(){
   const day=getDay(S.date);
   if(!day.matches.length) return emptyDay();
-  const ms=filtered(day);
-  const live=ms.filter(m=>m.st==="in"), upcoming=ms.filter(m=>m.st==="pre"), done=ms.filter(m=>m.st==="post");
-  const values=ms.filter(valueRow).length, favs=ms.filter(isFav);
-  return `${picksHero(day)}
-  <div class="tiles" style="margin-top:12px">
-    <button class="tile" data-goto="schedule:all"><span class="k">คู่ทั้งหมด</span><span class="v num">${ms.length}</span></button>
-    <button class="tile live" data-goto="schedule:in"><span class="k">กำลังแข่ง</span><span class="v num">${live.length}</span></button>
-    <button class="tile value" data-goto="analyze:edge"><span class="k">มีค่าตามโมเดล</span><span class="v num">${values}</span></button>
-  </div>
-  ${live.length?sec(`<span class="dot live pulse" style="vertical-align:4px;margin-right:8px"></span>กำลังแข่ง`,`อัปเดตทุกนาที`)+`<div class="stack">${live.map(matchCard).join("")}</div>`:""}
-  ${homeBrief(day)}
-  ${favs.length?sec("ทีมโปรดวันนี้")+`<div class="list">${favs.map(m=>matchRow(m)).join("")}</div>`:""}
-  ${upcoming.length?sec("ถัดไป",`เวลาไทย`,`<button class="act" data-goto="schedule:pre">ดูโปรแกรมทั้งหมด</button>`)+`<div class="stack">${upcoming.slice(0,4).map(matchCard).join("")}</div>`:""}
-  ${done.length?sec("ผลล่าสุด",`จบแล้ว ${done.length} คู่`,`<button class="act" data-goto="schedule:post">ดูผลทั้งหมด</button>`)+`<div class="list">${done.slice(-5).reverse().map(m=>matchRow(m)).join("")}</div>`:""}`;
+  const ms=filtered(day).filter(m=>S.status==="all"||m.st===S.status);
+  const live=ms.filter(m=>m.st==="in"), upcoming=ms.filter(m=>m.st==="pre"||m.st==="pp"), done=ms.filter(m=>m.st==="post"||m.st==="unk");
+  const favs=ms.filter(isFav);
+  return `<div class="hdrawers">${picksHero(day)}${homeBrief(day)}</div>
+  <div style="height:12px"></div>${homeTiles(day.matches)}
+  ${live.length?sec(`<span class="dot live pulse" style="vertical-align:4px;margin-right:8px"></span>กำลังแข่ง`,`${live.length} คู่ · อัปเดตทุกนาที`)+`<div class="stack">${live.map(progCard).join("")}</div>`:""}
+  ${favs.length&&!S.q?sec("ทีมโปรดวันนี้")+`<div class="list">${favs.map(m=>matchRow(m)).join("")}</div>`:""}
+  ${sec(live.length?"โปรแกรมถัดไป":"โปรแกรม",`เวลาไทย · ${upcoming.length} คู่`,`<button class="act" data-goto="schedule:all">ดูตามลีก</button>`)}
+  ${upcoming.length?`<div class="stack">${upcoming.map(progCard).join("")}</div>`:`<div class="card muted" style="text-align:center">${ms.length?"ไม่มีคู่ที่ยังไม่เตะในตัวกรองนี้":"ไม่มีคู่ที่ตรงกับตัวกรอง"}</div>`}
+  ${done.length?sec("ผลการแข่งขัน",`จบแล้ว ${done.length} คู่`)+`<div class="list">${done.slice().reverse().map(m=>matchRow(m)).join("")}</div>`:""}`;
 }
 function viewSchedule(){
   const day=getDay(S.date);
@@ -1243,8 +1391,8 @@ function viewSchedule(){
   const ms=base.filter(m=>S.status==="all"||m.st===S.status);
   const groups={}; ms.forEach(m=>(groups[m.lg]=groups[m.lg]||[]).push(m));
   const keys=Object.keys(groups).sort((a,b)=>(LEAGUE_ORDER[a]??99)-(LEAGUE_ORDER[b]??99));
-  return `<div class="toolbar">${seg("status",[["all","ทั้งหมด",cnt("all")],["in","สด",cnt("in")],["pre","ยังไม่เตะ",cnt("pre")],["post","จบแล้ว",cnt("post")]],S.status)}${leagueSelect(day)}</div>
-  ${keys.length?`<div class="stack">${keys.map(k=>`<div class="list"><div class="lhead"><span>${esc(LEAGUE_NAME[k]||k)}</span><span class="n num">${groups[k].length} คู่</span></div>${groups[k].map(m=>matchRow(m)).join("")}</div>`).join("")}</div>`
+  return `${S.filterOpen?"":`<div class="toolbar">${seg("status",[["all","ทั้งหมด",cnt("all")],["in","สด",cnt("in")],["pre","ยังไม่เตะ",cnt("pre")],["post","จบแล้ว",cnt("post")]],S.status)}</div>`}
+  ${keys.length?`<div class="stack">${keys.map(k=>`<div class="list"><div class="lhead"><span>${FLAG[k.split(".")[0]]||"⚽"} ${esc(LEAGUE_NAME[k]||k)}</span><span class="n num">${groups[k].length} คู่</span></div>${groups[k].map(m=>matchRow(m)).join("")}</div>`).join("")}</div>`
     :`<div class="card empty"><p>ไม่มีคู่ในหมวดนี้</p></div>`}
   <p class="note">เวลาไทย · วันแข่งตัดรอบราว 11:00 น. ตามฟีด ESPN · ตัวเลขด้านขวาคือโอกาสชนะของเจ้าบ้านและทีมเยือน</p>`;
 }
@@ -1694,18 +1842,28 @@ function statusText(){
   return `<span class="dot"></span><span>ยังไม่มีข้อมูลของ${relLabel(S.date)}</span>`;
 }
 function paintStatus(){ const el=$("#status"); if(el) el.innerHTML=statusText(); }
+const CAL_ICON='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>';
 function paintDates(){
-  const el=$("#dates"); const show=DATED_TABS.has(S.tab);
-  el.hidden=!show; $("#status").hidden=!show;
+  const show=DATED_TABS.has(S.tab);
+  $("#dateRow").hidden=!show; $("#statusRow").hidden=!show; $("#filterPanel").hidden=!show||!S.filterOpen;
   if(!show) return;
-  const t=bkkToday(); const set=new Set([shiftDate(t,-1),t,shiftDate(t,1),shiftDate(t,2),S.date]);
+  const el=$("#dates");
+  const t=bkkToday(); const set=new Set([shiftDate(t,-1),t,shiftDate(t,1),shiftDate(t,2),shiftDate(t,3),S.date]);
   Object.keys(SNAPSHOT||{}).filter(d=>d>=shiftDate(t,-1)).forEach(d=>set.add(d));
+  const TH_DAY=["อาทิตย์","จันทร์","อังคาร","พุธ","พฤหัส","ศุกร์","เสาร์"];
   const html=[...set].sort().map(d=>{
     const day=S.days[d]||((SNAPSHOT||{})[d]?getDay(d):null); const n=day?.matches?.length||0; const live=day?.matches?.some(m=>m.st==="in");
-    const rel=relLabel(d), lbl=dayLabel(d);
-    return `<button class="dchip ${d===S.date?"on":""}${live?" has-live":""}" role="tab" aria-selected="${d===S.date}" data-date="${d}"><span class="d1">${rel===lbl?lbl.split(" ")[0]:rel}</span><span class="d2 num">${rel===lbl?lbl.split(" ").slice(1).join(" "):lbl.split(" ").slice(1).join(" ")}${n?` · ${n}`:""}</span></button>`;
+    const rel=relLabel(d), lbl=dayLabel(d).split(" ").slice(1).join(" ");
+    const top=["วันนี้","พรุ่งนี้","เมื่อวาน"].includes(rel)?rel:TH_DAY[weekday(d)];
+    return `<button class="dchip ${d===S.date?"on":""}${live?" has-live":""}" role="tab" aria-selected="${d===S.date}" data-date="${d}"><span class="d1">${CAL_ICON}${top}</span><span class="d2 num">${lbl}${n?` · ${n} คู่`:""}</span></button>`;
   }).join("");
   if(el.dataset.html!==html){ el.innerHTML=html; el.dataset.html=html; el.querySelector(".on")?.scrollIntoView({inline:"center",block:"nearest"}); }
+  $("#datePick").value=S.date;
+  const fb=$("#btnFilter"); fb.setAttribute("aria-expanded",String(S.filterOpen)); fb.querySelector(".fdot").hidden=!(S.league||S.status!=="all");
+  if(S.filterOpen){
+    const day=getDay(S.date), base=filtered({matches:day.matches}), cnt=k=>base.filter(m=>k==="all"||m.st===k).length;
+    $("#filterPanel").innerHTML=seg("status",[["all","ทั้งหมด",cnt("all")],["in","สด",cnt("in")],["pre","ยังไม่เตะ",cnt("pre")],["post","จบแล้ว",cnt("post")]],S.status)+leagueSelect(day);
+  }
 }
 function paintTabs(){
   const liveN=(S.days[S.date]?.matches||[]).filter(m=>m.st==="in").length;
@@ -1732,10 +1890,12 @@ function toggleFav(id){
 
 /* ---------- events ---------- */
 document.addEventListener("click",e=>{
-  const t=e.target.closest("[data-drawer],[data-fav],[data-open],[data-date],[data-set],[data-goto],[data-act],[data-unfav],[data-tab],#btnBrief,#btnAna,#btnBack,#btnSearch,#btnRefresh");
+  const t=e.target.closest("#btnFilter,[data-drawer],[data-fav],[data-open],[data-date],[data-set],[data-goto],[data-act],[data-unfav],[data-tab],#btnBrief,#btnAna,#btnBack,#btnSearch,#btnRefresh");
   if(!t) return;
   const d=t.dataset;
-  if(d.drawer){ S.drawer[d.drawer]=!S.drawer[d.drawer]; store.set("drawer",S.drawer); return render(); }
+  if(t.id==="btnFilter"){ S.filterOpen=!S.filterOpen; return render(); }
+  if(d.drawer){ S.drawer[d.drawer]=!S.drawer[d.drawer]; store.set("drawer2",S.drawer); return render(); }
+  if(d.act==="picksAll"){ S.picksAll=!S.picksAll; return render(); }
   if(d.fav){ e.stopPropagation(); e.preventDefault(); return toggleFav(d.fav); }
   if(t.id==="btnBack") return closeSheet();
   if(d.open) return openMatch(d.open, d.day);
@@ -1758,13 +1918,14 @@ document.addEventListener("click",e=>{
 });
 document.addEventListener("keydown",e=>{
   if(e.key==="Escape" && S.open) return closeSheet();
-  if((e.key==="Enter"||e.key===" ") && e.target.matches?.(".mcard[role=button]")){ e.preventDefault(); openMatch(e.target.dataset.open); }
+  if((e.key==="Enter"||e.key===" ") && e.target.matches?.(".mcard[role=button],.pcard[role=button]")){ e.preventDefault(); openMatch(e.target.dataset.open); }
 });
 document.addEventListener("input",e=>{
   if(e.target.id==="q"){ clearTimeout(S.qT); S.qT=setTimeout(()=>{ S.q=e.target.value.trim(); render(); },160); }
   if(["cHome","cAway","tOver","tUnder"].includes(e.target.id)) runCalc();
 });
 document.addEventListener("change",e=>{
+  if(e.target.id==="datePick"&&/^\d{4}-\d{2}-\d{2}$/.test(e.target.value)) return setDate(e.target.value);
   if(e.target.id==="leagueSel"){ S.league=e.target.value; render(); }
   if(["cLine","tLine"].includes(e.target.id)) runCalc();
 });

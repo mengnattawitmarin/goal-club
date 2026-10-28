@@ -2,7 +2,7 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Taviraj:wght@500;600&family=Sarabun:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap">
 <style>
 /* Layout: one phone-width column (max 680px). Sticky header = brand row + date strip + status.
    Five tabs, each with one job: หน้าหลัก (today at a glance), โปรแกรม (full list), วิเคราะห์ (picks & prices),
@@ -314,6 +314,113 @@ label.f input,label.f select{height:42px;border-radius:var(--r-sm);border:1px so
 .lbar::before{content:"";position:absolute;left:50%;top:-3px;bottom:-3px;width:1px;background:var(--line)}
 .lbar i{position:absolute;top:0;height:100%;border-radius:99px;background:var(--win)}
 
+
+/* ===== v2 visual refresh ===== */
+:root{--r-lg:20px;--r-md:14px;--font-display:"Sarabun",system-ui,-apple-system,"Segoe UI",sans-serif}
+.verdict .vt,.face .mid,.article h4,.ph-head h2,.empty h3,.tile .v,.score{font-weight:700}
+.face .mid{letter-spacing:-.01em}
+.brandbar{display:flex;align-items:center;gap:10px;padding-block:14px 8px}
+.brandbar .brand{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
+.logo-mark{flex:none;filter:drop-shadow(0 4px 10px rgba(226,180,95,.25))}
+.brandtext{display:flex;flex-direction:column;min-width:0}
+.brandtext b{font-family:var(--font-body);font-weight:700;font-size:28px;line-height:1.05;letter-spacing:-.01em;color:var(--fg);background:linear-gradient(180deg,#fff6e2,#e9cf98);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.brandtext span{font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brandtext i{font-style:normal;color:var(--gold)}
+.brandbar .iconbtn{width:46px;height:46px}
+.top{border-bottom:0;background:color-mix(in srgb,var(--bg) 94%,transparent)}
+.daterow{display:flex;gap:8px;align-items:stretch;padding-top:4px}
+.daterow .datestrip{flex:1;min-width:0;padding-block:2px 8px}
+.dchip{min-width:80px;padding:8px 12px;border-radius:14px;align-items:flex-start;background:linear-gradient(180deg,var(--surface-2),var(--surface));gap:2px}
+.dchip .d1{display:flex;align-items:center;gap:6px;font-size:14px}
+.dchip .d1 svg{opacity:.75}
+.dchip .d2{font-size:12px;padding-left:2px}
+.dchip.on{background:linear-gradient(180deg,#f7d995,#d9ac58);border-color:#f0cc86;box-shadow:0 6px 18px -8px rgba(240,204,134,.6)}
+.calbtn{position:relative;flex:none;width:52px;margin-bottom:8px;border-radius:14px;border:1px solid var(--line);background:linear-gradient(180deg,var(--surface-2),var(--surface));display:grid;place-items:center;color:var(--muted);cursor:pointer}
+.calbtn input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}
+.statusrow{display:flex;align-items:center;gap:8px;padding-bottom:10px}
+.statusrow .status{flex:1;min-width:0;padding:0;font-size:12.5px}
+.statusrow .status span:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.filterbtn{position:relative;display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px;border-radius:12px;border:1px solid var(--line);background:var(--surface);font-size:13px;color:var(--fg);flex:none}
+.filterbtn[aria-expanded="true"]{border-color:var(--gold);color:var(--gold)}
+.fdot{position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;background:var(--gold)}
+.filterpanel{display:flex;flex-direction:column;gap:8px;padding-bottom:12px}
+.filterpanel .seg{width:100%}
+.filterpanel .select{width:100%}
+.sec h2{font-family:var(--font-body);font-weight:700;font-size:19px;color:var(--fg)}
+.sec .act{display:inline-flex;align-items:center;gap:4px}
+.sec .act::after{content:"›";font-size:18px;line-height:1}
+.pagetitle{font-family:var(--font-body);font-weight:700;color:var(--fg)}
+
+/* home drawers */
+.hdrawers{display:flex;flex-direction:column;gap:10px}
+.drawer{border-radius:var(--r-lg)}
+.drawer.gold{background:radial-gradient(120% 140% at 0% 0%,#2b2216 0%,#15120d 60%);box-shadow:inset 0 1px 0 rgba(255,230,170,.06)}
+.dhead{padding:14px 16px;min-height:60px;gap:12px}
+.dicon{width:36px;height:36px;border-radius:12px;display:grid;place-items:center;flex:none;background:color-mix(in srgb,var(--gold) 14%,transparent);color:var(--gold)}
+.dtitle{display:flex;flex-direction:column;min-width:0;text-align:left}
+.dhead .dt{font-family:var(--font-body);font-weight:700;font-size:16.5px;color:var(--fg)}
+.dtitle small{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dhead .dm{font-size:12.5px}
+.dpill{display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:999px;background:var(--surface-3);font-size:12px;color:var(--gold);font-weight:600}
+.dbody{padding:0 12px 14px}
+
+/* picks rows v2 */
+.prow{display:grid;grid-template-columns:36px minmax(0,1fr) 76px;gap:12px;align-items:center;padding:14px 12px;border-top:1px solid var(--line-soft);width:100%;text-align:left}
+.prow:first-child{border-top:0}
+.prow:hover{background:color-mix(in srgb,var(--surface-2) 60%,transparent)}
+.prank{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;font-weight:700;font-size:18px;color:var(--gold);background:color-mix(in srgb,var(--gold) 13%,transparent)}
+.pmain{min-width:0;display:flex;flex-direction:column;gap:4px}
+.pmain .pl{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px;font-weight:700;font-size:16px;min-width:0}
+.pmain .pl b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ptag{flex:none;font-size:11px;font-weight:600;padding:2px 8px;border-radius:6px;background:color-mix(in srgb,var(--gold) 15%,transparent);color:var(--gold)}
+.pteams{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--fg);min-width:0}
+.pteams .tm{color:var(--muted);flex:none}
+.pteams span.nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.pmeta{font-size:12px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pside{text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.pside .pc{font-size:22px;font-weight:700;color:var(--fg);line-height:1}
+.pside small{font-size:11px;color:var(--faint)}
+.pbar{width:68px;height:5px;border-radius:99px;background:var(--surface-3);overflow:hidden;margin-top:4px}
+.pbar i{display:block;height:100%;background:linear-gradient(90deg,#c9a35b,#f0cc86)}
+.prow.is-live{background:color-mix(in srgb,var(--win) 9%,transparent);box-shadow:inset 3px 0 0 var(--win)}
+.prow .pst{margin-top:2px}
+.morebtn .chev{transform:rotate(45deg)!important;margin-bottom:4px!important}
+.morebtn.up .chev{transform:rotate(-135deg)!important;margin-bottom:-2px!important}
+.morebtn{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;height:44px;margin-top:10px;border-radius:12px;border:1px solid color-mix(in srgb,var(--gold) 30%,transparent);background:color-mix(in srgb,var(--gold) 6%,transparent);color:var(--gold);font-weight:600;font-size:14px}
+
+/* tiles v2 */
+.tiles{gap:10px}
+.tile{position:relative;overflow:hidden;padding:10px 12px 22px;border-radius:16px;background:linear-gradient(180deg,var(--surface-2),var(--surface));min-height:92px}
+.tile .ti{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;margin-bottom:4px}
+.tile .tt{display:flex;flex-direction:column;gap:2px;align-items:flex-start}
+.tile .k{font-size:11.5px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.tile .v{font-family:var(--font-body);font-weight:700;font-size:26px;line-height:1.1}
+.tile .u{font-size:11px;color:var(--faint)}
+.tile svg.spark{position:absolute;left:0;right:0;bottom:0;width:100%;height:30px}
+.tile.c-green .ti{background:color-mix(in srgb,var(--win) 18%,transparent);color:var(--win)}
+.tile.c-blue .ti{background:rgba(110,150,230,.18);color:#8fb0f0}
+.tile.c-gold .ti{background:color-mix(in srgb,var(--gold) 18%,transparent);color:var(--gold)}
+.tile.c-blue .v{color:var(--fg)}
+
+/* program cards (home) */
+.pcard{display:block;width:100%;border-radius:18px;border:1px solid var(--line);background:linear-gradient(180deg,var(--surface-2) 0%,var(--surface) 100%);padding:12px 14px;text-align:left}
+.pcard:hover{border-color:color-mix(in srgb,var(--gold) 40%,transparent)}
+.pc-head{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted)}
+.pc-head .flag{font-size:16px;line-height:1}
+.pc-head .lg{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc-head .time{color:var(--fg);font-weight:700;font-size:14px}
+.pc-team{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;margin-top:8px}
+.pc-team .nm{font-weight:700;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc-team .nm small{font-weight:400;font-size:12px;color:var(--faint);margin-left:6px}
+.pc-team .sc{font-size:22px;font-weight:700;min-width:22px;text-align:right}
+.pc-foot{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:10px;padding-top:9px;border-top:1px dashed var(--line);font-size:12px;color:var(--muted)}
+.pc-foot b{color:var(--gold);font-weight:600}
+.pcard .badge{width:32px;height:32px}
+.pcard.is-live{border-color:color-mix(in srgb,var(--win) 60%,transparent);background:linear-gradient(180deg,color-mix(in srgb,var(--win) 13%,var(--surface)) 0%,var(--surface) 80%)}
+.pcard.is-live .sc{color:var(--win)}
+.pcard .pill{width:20px;height:20px;border-radius:5px;font-size:11px}
+.brief-art{float:right;width:118px;height:78px;margin:-4px -4px 4px 10px}
+
 /* ---------- bottom tabs ---------- */
 nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:30;background:color-mix(in srgb,var(--bg) 96%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid var(--line-soft);padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
 nav.tabs .in{max-width:680px;margin:0 auto;display:flex}
@@ -327,19 +434,25 @@ nav.tabs .badge-n{position:absolute;top:8px;left:calc(50% + 6px);min-width:16px;
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 
+<div class="wrap brandbar">
+  <div class="brand">
+    <svg class="logo-mark" width="44" height="44" viewBox="0 0 48 48" aria-hidden="true">
+      <defs><linearGradient id="gcg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe3a3"/><stop offset=".55" stop-color="#e2b45f"/><stop offset="1" stop-color="#9c7230"/></linearGradient></defs>
+      <path d="M13 14 L14.5 5 L19.5 9.5 L24 3 L28.5 9.5 L33.5 5 L35 14 Z" fill="url(#gcg)"/>
+      <path d="M34.4 25 A12 12 0 1 0 36 31 H25" fill="none" stroke="url(#gcg)" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <div class="brandtext"><b>Goal Club</b><span>อ่านเกมด้วยตัวเลข <i>✦</i></span></div>
+  </div>
+  <button class="iconbtn" id="btnSearch" aria-label="ค้นหาทีม"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
+  <button class="iconbtn" id="btnRefresh" aria-label="ดึงข้อมูลใหม่"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 4v5h-5"/></svg></button>
+</div>
 <header class="top">
   <div class="wrap">
-    <div class="brandrow">
-      <div class="brand">
-        <svg width="24" height="20" viewBox="0 0 26 22" aria-hidden="true"><path d="M2 18 L4 6 L9 11 L13 3 L17 11 L22 6 L24 18 Z" fill="none" stroke="#f0cc86" stroke-width="1.8" stroke-linejoin="round"/><path d="M3 20.5 H23" stroke="#f0cc86" stroke-width="1.8" stroke-linecap="round"/></svg>
-        <b>Goal Club</b>
-      </div>
-      <button class="iconbtn" id="btnSearch" aria-label="ค้นหาทีม"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
-      <button class="iconbtn" id="btnRefresh" aria-label="ดึงข้อมูลใหม่"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 4v5h-5"/></svg></button>
-    </div>
     <div class="searchrow" id="searchRow" hidden><input id="q" type="search" placeholder="ค้นหาทีม เช่น Arsenal" autocomplete="off" aria-label="ค้นหาทีม"></div>
-    <div class="datestrip" id="dates" role="tablist" aria-label="เลือกวันแข่ง"></div>
-    <div class="status" id="status" aria-live="polite"></div>
+    <div class="daterow" id="dateRow"><div class="datestrip" id="dates" role="tablist" aria-label="เลือกวันแข่ง"></div>
+      <label class="calbtn" aria-label="เลือกวันจากปฏิทิน"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4M8 14h.01M12 14h.01M16 14h.01M8 17.5h.01M12 17.5h.01"/></svg><input type="date" id="datePick"></label></div>
+    <div class="statusrow" id="statusRow"><div class="status" id="status" aria-live="polite"></div><button class="filterbtn" id="btnFilter" aria-expanded="false"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>ตัวกรอง<span class="fdot" hidden></span></button></div>
+    <div class="filterpanel" id="filterPanel" hidden></div>
   </div>
 </header>
 
