@@ -764,7 +764,7 @@ function botBody(m){
   const st=S.bot[m.id], saved=store.get("bot:"+m.id,null);
   if(st?.busy) return `<div class="botstatus">${st.status.slice(-3).map(s=>`<span><span class="dot live pulse"></span>${esc(s)}</span>`).join("")}</div><div class="article bottext">${mdLite(st.text)}<span class="caret"></span></div>`;
   if(st?.err) return `<p style="color:var(--loss);font-size:13.5px;margin:0">${esc(st.err)}</p>`;
-  if(saved) return `<div class="article bottext">${mdLite(saved.text)}</div>${saved.sources?.length?`<details class="botsrc"><summary>แหล่งข้อมูล ${saved.sources.length} แหล่ง</summary><ul>${saved.sources.map(s=>`<li><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a></li>`).join("")}</ul></details>`:""}<p class="note">เขียนเมื่อ ${stampTime(saved.at)}${saved.bot?" · ค้นข่าวจากเว็บ":" · ไม่ได้ค้นเว็บ"}</p>`;
+  if(saved) return `<div class="article bottext">${mdLite(saved.text)}</div>${saved.sources?.length?`<details class="botsrc"><summary>แหล่งข้อมูล ${saved.sources.length} แหล่ง</summary><ul>${saved.sources.map(s=>`<li><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a></li>`).join("")}</ul></details>`:""}<p class="note">เขียนเมื่อ ${stampTime(saved.at)}${saved.ai?` · โดย ${esc(saved.ai)}`:""}${saved.bot?" · ค้นข่าวจากเว็บ":" · ไม่ได้ค้นเว็บ"}</p>`;
   return `<p class="muted" style="margin:0;font-size:13.5px">บอทจะอ่านตัวเลขทุกอย่างของคู่นี้ในแอป ดึงข้อมูลเชิงลึกจาก ESPN ค้นข่าวล่าสุดจากเว็บ แล้วเขียนเป็นทัศนะบอลพร้อมทายสกอร์และดาวยิง ใช้เวลาราว 20–50 วินาที</p>`;
 }
 function botCard(m){

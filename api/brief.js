@@ -1,6 +1,7 @@
 // Daily brief: reads real headlines (BBC Sport, The Guardian, ESPN) and the app's model numbers,
 // then asks Claude for a Thai summary. Needs ANTHROPIC_API_KEY in the Vercel project settings.
-import { kv, kvPipe, kvEnabled, anthropicKey } from "../lib/kv.js";
+import { kv, kvPipe, kvEnabled } from "../lib/kv.js";
+import { aiConfig, aiText } from "../lib/ai.js";
 
 const FEEDS = [
   { source: "BBC Sport", url: "https://feeds.bbci.co.uk/sport/football/rss.xml" },
@@ -33,7 +34,7 @@ async function espnNews() {
 
 export default async function handler(req, res) {
   if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
-  if (!anthropicKey()) { res.status(200).json({ error: "ยังไม่ได้ตั้ง ANTHROPIC_API_KEY ใน Vercel จึงยังเขียนบทวิเคราะห์ไม่ได้" }); return; }
+  if (!aiConfig()) { res.status(200).json({ error: "ยังไม่ได้ตั้งคีย์ AI ใน Vercel (ANTHROPIC_API_KEY หรือ XAI_API_KEY) จึงยังเขียนบทวิเคราะห์ไม่ได้" }); return; }
   const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
   const matches = Array.isArray(body.matches) ? body.matches.slice(0, 30) : [];
   const headlines = (await Promise.all([...FEEDS.map(rss), espnNews()])).flat().slice(0, 20);
@@ -49,15 +50,7 @@ adjust ใส่เฉพาะเมื่อหัวข่าวยืนย�
 ข้อมูลคู่: ${JSON.stringify(matches)}`;
 
   try {
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-api-key": anthropicKey(), "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model: MODEL, max_tokens: 2500, messages: [{ role: "user", content: prompt }] }),
-      signal: AbortSignal.timeout(50000),
-    });
-    const j = await r.json();
-    if (!r.ok) throw new Error(j?.error?.message || String(r.status));
-    const text = (j.content || []).map((c) => c.text || "").join("");
+    const text = await aiText(prompt, { maxTokens: 2500 });
     const out = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1));
     const names = headlines.map((h) => h.title.toLowerCase()).join(" ");
     const players = (out.players || []).filter((p) => p?.name && p.name.toLowerCase().split(/\s+/).some((w) => w.length > 2 && names.includes(w)));
@@ -80,6 +73,6 @@ adjust ใส่เฉพาะเมื่อหัวข่าวยืนย�
     }
     res.status(200).json(brief);
   } catch (e) {
-    res.status(200).json({ error: "เขียนบทวิเคราะห์ไม่สำเร็จ ลองใหม่อีกครั้ง" });
+    res.status(200).json({ error: /คีย์|เครดิต|รุ่น|ตอบว่า/.test(String(e?.message)) ? e.message : "เขียนบทวิเคราะห์ไม่สำเร็จ ลองใหม่อีกครั้ง" });
   }
 }

@@ -3,10 +3,10 @@
 // - ดึงข้อมูลเชิงลึกจาก ESPN ฝั่งเซิร์ฟเวอร์
 // - ค้นข่าวล่าสุดจากเว็บด้วยเครื่องมือ web_search ของ Claude API แล้วอ้างแหล่ง
 // ส่งผลแบบสตรีมเป็นบรรทัด JSON (NDJSON) เพื่อให้หน้าแอปแสดงระหว่างเขียน
-// ต้องตั้ง ANTHROPIC_API_KEY ใน Vercel (ตัวเลือก ANTHROPIC_MODEL)
-import { kv, kvEnabled, parse, readBody, anthropicKey } from "../lib/kv.js";
+// ใช้ Claude หรือ Grok ตามคีย์ที่ตั้งใน Vercel (ดู lib/ai.js)
+import { kv, kvEnabled, parse, readBody } from "../lib/kv.js";
+import { aiConfig, friendlyError } from "../lib/ai.js";
 
-const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5-5";
 const ID = /^\d{1,12}$/;
 const SLUG = /^[a-z0-9._]+$/;
 
@@ -17,7 +17,7 @@ const SKILLS = `คุณคือ "บอท Goal Club" นักวิเค�
 2. อ่านราคาต่อรอง: เขียนแฮนดิแคปแบบไทย เช่น "Inter ต่อ 1.5" เทียบโมเดลกับราคาตลาดหลังหักน้ำ
 3. ทายสกอร์และคนยิง: ใช้สกอร์ที่โมเดลให้โอกาสสูงสุด รายชื่อคนยิง/คนส่งและเปอร์เซ็นต์จากแอป
 4. ตลาดสนุก: ครึ่งแรกมีประตู ผลครึ่งแรก ครึ่ง/จบ ทีมยิงก่อน ชนะไม่เสียประตู
-5. ค้นเว็บ: ใช้ web_search หาข่าวล่าสุดของทั้งสองทีม (บาดเจ็บ โดนแบน ตัวจริงที่คาด คำให้สัมภาษณ์โค้ช ฟอร์มนัดล่าสุด) ค้นเป็นภาษาอังกฤษจะได้ผลดีกว่า ค้นไม่เกิน 4 ครั้ง
+5. ค้นเว็บ: ใช้เครื่องมือค้นเว็บ (และค้นโพสต์บน X ถ้ามี) หาข่าวล่าสุดของทั้งสองทีม (บาดเจ็บ โดนแบน ตัวจริงที่คาด คำให้สัมภาษณ์โค้ช ฟอร์มนัดล่าสุด) ค้นเป็นภาษาอังกฤษจะได้ผลดีกว่า ค้นไม่เกิน 4 ครั้ง
 6. ดวง: ถ้าแอปส่งข้อมูลดวงมา ใช้ได้เฉพาะในหัวข้อดวงท้ายบท และต้องบอกว่าเพื่อความสนุก ไม่เกี่ยวกับความน่าจะเป็น
 7. เรียนรู้จากผลงานย้อนหลัง: แอปส่ง lessons, trackRecord และ learnedWeights มา ใช้บอกผู้อ่านว่าโมเดลแม่นหรือพลาดตรงไหนในลีก/ประเภทเส้นนี้ และลดหรือเพิ่มระดับความมั่นใจ (ดาว) ให้สอดคล้อง ถ้าโมเดลแพ้ราคาตลาดในลีกนี้ ให้เขียนตรง ๆ
 8. ข่าวนักเตะจากระบบ: playerNews คือรายชื่อที่ระบบจับได้จากหัวข่าว ใช้ร่วมกับผลค้นเว็บ
@@ -81,7 +81,8 @@ export default async function handler(req, res) {
   res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
   res.setHeader("Cache-Control", "no-store");
   const send = (o) => res.write(JSON.stringify(o) + "\n");
-  if (!anthropicKey()) { send({ t: "error", d: "ยังไม่ได้ตั้ง ANTHROPIC_API_KEY ใน Vercel" }); res.end(); return; }
+  const cfg = aiConfig();
+  if (!cfg) { send({ t: "error", d: "ยังไม่ได้ตั้งคีย์ AI ใน Vercel (ANTHROPIC_API_KEY หรือ XAI_API_KEY)" }); res.end(); return; }
 
   const data = readBody(req);
   send({ t: "status", d: "กำลังอ่านข้อมูลเชิงลึกจาก ESPN" });
@@ -95,62 +96,105 @@ ${JSON.stringify(data).slice(0, 9000)}
 ข้อมูลเชิงลึกจาก ESPN:
 ${JSON.stringify(deep || "ไม่มี").slice(0, 5000)}`;
 
-  let text = "", stop = null; const sources = new Map(); let q = "", inSearch = false;
+  let text = "", stop = null; const sources = new Map();
+  const on = {
+    text: (d) => { text += d; send({ t: "text", d }); },
+    status: (d) => send({ t: "status", d }),
+    source: (url, title) => { if (url && !sources.has(url)) sources.set(url, title || url); },
+    stop: (s) => { stop = s; },
+  };
   try {
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-api-key": anthropicKey(), "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({
-        model: MODEL, max_tokens: 3000, stream: true, system: SKILLS,
-        tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 4, user_location: { type: "approximate", country: "TH", timezone: "Asia/Bangkok" } }],
-        messages: [{ role: "user", content: user }],
-      }),
-      signal: AbortSignal.timeout(57000),
-    });
-    if (!r.ok) {
-      const j = await r.json().catch(() => ({}));
-      const msg = j?.error?.message || String(r.status);
-      send({ t: "error", d: /x-api-key|authentication/i.test(msg) ? "คีย์ Claude API ใน Vercel ไม่ถูกต้อง (invalid x-api-key) สร้างคีย์ใหม่ที่ console.anthropic.com แล้วใส่ใน ANTHROPIC_API_KEY จากนั้น Redeploy" : /credit|balance/i.test(msg) ? "เครดิต Claude API หมด เติมได้ที่ console.anthropic.com → Billing" : `Claude API ตอบว่า: ${msg}` }); res.end(); return;
-    }
-    send({ t: "status", d: "บอทเริ่มค้นข่าวและเขียนบท" });
-    const reader = r.body.getReader(); const dec = new TextDecoder(); let buf = "";
-    for (;;) {
-      const { done, value } = await reader.read(); if (done) break;
-      buf += dec.decode(value, { stream: true });
-      let i;
-      while ((i = buf.indexOf("\n")) >= 0) {
-        const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
-        if (!line.startsWith("data:")) continue;
-        const ev = parse(line.slice(5).trim()); if (!ev) continue;
-        if (ev.type === "content_block_start") {
-          const b = ev.content_block || {};
-          if (b.type === "server_tool_use") { inSearch = true; q = ""; }
-          if (b.type === "web_search_tool_result" && Array.isArray(b.content)) {
-            send({ t: "status", d: `พบข้อมูล ${b.content.length} แหล่ง` });
-            for (const x of b.content.slice(0, 6)) if (x.url && !sources.has(x.url)) sources.set(x.url, x.title || x.url);
-          }
-        } else if (ev.type === "content_block_delta") {
-          const d = ev.delta || {};
-          if (d.type === "text_delta") { text += d.text; send({ t: "text", d: d.text }); }
-          else if (d.type === "input_json_delta" && inSearch) q += d.partial_json || "";
-          else if (d.type === "citations_delta" && d.citation?.url) sources.set(d.citation.url, d.citation.title || d.citation.url);
-        } else if (ev.type === "content_block_stop" && inSearch) {
-          inSearch = false; const qq = parse(q, {})?.query; if (qq) send({ t: "status", d: `กำลังค้น: ${qq}` });
-        } else if (ev.type === "message_delta") stop = ev.delta?.stop_reason || stop;
-        else if (ev.type === "error") send({ t: "error", d: ev.error?.message || "Claude API error" });
-      }
-    }
+    const err = cfg.provider === "grok" ? await streamGrok(cfg, user, on) : await streamClaude(cfg, user, on);
+    if (err) { send({ t: "error", d: err }); res.end(); return; }
   } catch (e) {
-    if (!text) { send({ t: "error", d: e?.name === "TimeoutError" ? "บอทใช้เวลานานเกินไป ลองใหม่อีกครั้ง" : "เชื่อมต่อ Claude ไม่สำเร็จ ลองใหม่อีกครั้ง" }); res.end(); return; }
+    if (!text) { send({ t: "error", d: e?.name === "TimeoutError" ? "บอทใช้เวลานานเกินไป ลองใหม่อีกครั้ง" : `เชื่อมต่อ ${cfg.name} ไม่สำเร็จ ลองใหม่อีกครั้ง` }); res.end(); return; }
   }
   const src = [...sources].slice(0, 10).map(([url, title]) => ({ url, title }));
   send({ t: "src", d: src });
   if (stop === "pause_turn" || stop === "max_tokens") send({ t: "status", d: "บทนี้ถูกตัดตอนเพราะยาวหรือค้นนาน" });
   if (text.trim()) {
     const k = text.indexOf("## "); const body = (k > 0 ? text.slice(k) : text).trim();
-    const result = { at: new Date().toISOString(), text: body, sources: src, bot: true };
+    const result = { at: new Date().toISOString(), text: body, sources: src, bot: true, ai: cfg.name };
     if (kvEnabled && ID.test(String(data.id || ""))) { try { await kv("SET", `ana2:${data.id}`, JSON.stringify(result), "EX", String(5 * 86400)); } catch {} }
   }
   send({ t: "done" });
   res.end();
+}
+
+/* read a server-sent-events body and hand each JSON event to fn */
+async function eachEvent(body, fn) {
+  const reader = body.getReader(); const dec = new TextDecoder(); let buf = "";
+  for (;;) {
+    const { done, value } = await reader.read(); if (done) break;
+    buf += dec.decode(value, { stream: true }); let i;
+    while ((i = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+      if (!line.startsWith("data:")) continue; const raw = line.slice(5).trim(); if (raw === "[DONE]") continue;
+      const ev = parse(raw); if (ev) fn(ev);
+    }
+  }
+}
+
+/* Claude: Messages API with the built-in web_search tool */
+async function streamClaude(cfg, user, on) {
+  const r = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST", signal: AbortSignal.timeout(57000),
+    headers: { "content-type": "application/json", "x-api-key": cfg.key, "anthropic-version": "2023-06-01" },
+    body: JSON.stringify({
+      model: cfg.model, max_tokens: 3000, stream: true, system: SKILLS,
+      tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 4, user_location: { type: "approximate", country: "TH", timezone: "Asia/Bangkok" } }],
+      messages: [{ role: "user", content: user }],
+    }),
+  });
+  if (!r.ok) { const j = await r.json().catch(() => ({})); return friendlyError(cfg, j?.error?.message || r.status); }
+  on.status("บอท (Claude) เริ่มค้นข่าวและเขียนบท");
+  let q = "", inSearch = false;
+  await eachEvent(r.body, (ev) => {
+    if (ev.type === "content_block_start") {
+      const b = ev.content_block || {};
+      if (b.type === "server_tool_use") { inSearch = true; q = ""; }
+      if (b.type === "web_search_tool_result" && Array.isArray(b.content)) { on.status(`พบข้อมูล ${b.content.length} แหล่ง`); for (const x of b.content.slice(0, 6)) on.source(x.url, x.title); }
+    } else if (ev.type === "content_block_delta") {
+      const d = ev.delta || {};
+      if (d.type === "text_delta") on.text(d.text);
+      else if (d.type === "input_json_delta" && inSearch) q += d.partial_json || "";
+      else if (d.type === "citations_delta" && d.citation?.url) on.source(d.citation.url, d.citation.title);
+    } else if (ev.type === "content_block_stop" && inSearch) {
+      inSearch = false; const qq = parse(q, {})?.query; if (qq) on.status(`กำลังค้น: ${qq}`);
+    } else if (ev.type === "message_delta") on.stop(ev.delta?.stop_reason);
+    else if (ev.type === "error") on.status(friendlyError(cfg, ev.error?.message));
+  });
+  return null;
+}
+
+/* Grok: xAI Responses API with live web search and X search */
+async function streamGrok(cfg, user, on) {
+  const r = await fetch("https://api.x.ai/v1/responses", {
+    method: "POST", signal: AbortSignal.timeout(57000),
+    headers: { "content-type": "application/json", authorization: `Bearer ${cfg.key}` },
+    body: JSON.stringify({
+      model: cfg.model, stream: true, max_output_tokens: 3000,
+      input: [{ role: "system", content: SKILLS }, { role: "user", content: user }],
+      tools: [{ type: "web_search" }, { type: "x_search" }],
+    }),
+  });
+  if (!r.ok) { const j = await r.json().catch(() => ({})); return friendlyError(cfg, j?.error?.message || j?.error || j?.code || r.status); }
+  on.status("บอท (Grok) เริ่มค้นข่าว ค้นโพสต์บน X และเขียนบท");
+  const said = new Set();
+  const takeCitations = (resp) => {
+    for (const u of resp?.citations || []) on.source(typeof u === "string" ? u : u?.url, typeof u === "string" ? u : u?.title);
+    for (const o of resp?.output || []) for (const c of o?.content || []) for (const an of c?.annotations || []) if (an?.url) on.source(an.url, an.title);
+  };
+  await eachEvent(r.body, (ev) => {
+    const t = String(ev.type || "");
+    if (t.endsWith("output_text.delta") && typeof ev.delta === "string") on.text(ev.delta);
+    else if (t.includes("annotation") && ev.annotation?.url) on.source(ev.annotation.url, ev.annotation.title);
+    else if (/web_search_call|x_search_call/.test(t)) {
+      const what = t.includes("x_search") ? "กำลังค้นโพสต์บน X" : "กำลังค้นเว็บ";
+      const q = ev.item?.action?.query || ev.query; const msg = q ? `${what}: ${q}` : what;
+      if (!said.has(msg)) { said.add(msg); on.status(msg); }
+    } else if (t === "response.completed") { takeCitations(ev.response); on.stop(ev.response?.status === "incomplete" ? "max_tokens" : "end_turn"); }
+    else if (t === "response.failed" || t === "error") on.status(friendlyError(cfg, ev.error?.message || ev.response?.error?.message || "error"));
+  });
+  return null;
 }

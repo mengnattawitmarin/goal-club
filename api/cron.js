@@ -5,7 +5,8 @@
 // 4. records scorers and assisters per player from ESPN match summaries
 // 5. scores the model against the market for the day (log loss, Brier, hit rate)
 // 6. weekly: re-tunes the market blend weight on everything learned so far
-import { kv, kvPipe, kvEnabled, parse, anthropicKey } from "../lib/kv.js";
+import { kv, kvPipe, kvEnabled, parse } from "../lib/kv.js";
+import { aiConfig, aiText } from "../lib/ai.js";
 import { updateRatings, probs, logLoss, brier, outcome, blend, tune, totalLoss, predictRow, PICK_VALUE } from "../lib/learn.js";
 
 const LEAGUES = ["tha.1","eng.1","esp.1","ger.1","ita.1","fra.1","uefa.champions","uefa.europa","uefa.europa.conf","eng.2","eng.league_cup","ned.1","por.1","bel.1","sco.1","tur.1","usa.1","mex.1","bra.1","arg.1","ksa.1","jpn.1","chn.1","aus.1"];
@@ -165,7 +166,7 @@ export default async function handler(req, res) {
   }
 
   /* 7. player news: who is out or doubtful, from today's headlines (needs ANTHROPIC_API_KEY) */
-  if (anthropicKey() && Date.now() - t0 < 32000) {
+  if (aiConfig() && Date.now() - t0 < 32000) {
     try { report.newsPlayers = await scanPlayerNews(today); } catch { report.newsPlayers = "failed"; }
   }
   report.ms = Date.now() - t0;
@@ -182,12 +183,7 @@ async function scanPlayerNews(today) {
   const prompt = `จากหัวข่าวฟุตบอลด้านล่าง ดึงเฉพาะนักเตะที่ข่าวระบุชัดว่า บาดเจ็บ/โดนแบน/ไม่ได้ลงนัดถัดไป (out) หรือ ไม่แน่ว่าจะได้ลง (doubtful) หรือ หายเจ็บกลับมา (back)
 ห้ามเดา ถ้าข่าวไม่ระบุชัดให้ข้าม ตอบ JSON เท่านั้น: {"players":[{"name":"ชื่อตามข่าว","team":"สโมสร","status":"out|doubtful|back","reason":"สั้น ๆ ภาษาไทย"}]}
 หัวข่าว: ${JSON.stringify(lines)}`;
-  const r = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST", signal: AbortSignal.timeout(22000),
-    headers: { "content-type": "application/json", "x-api-key": anthropicKey(), "anthropic-version": "2023-06-01" },
-    body: JSON.stringify({ model: process.env.ANTHROPIC_MODEL || "claude-sonnet-5-5", max_tokens: 1500, messages: [{ role: "user", content: prompt }] }),
-  });
-  const j = await r.json(); const text = (j.content || []).map((c) => c.text || "").join("");
+  const text = await aiText(prompt, { maxTokens: 1500, timeout: 22000 });
   const out = parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1), { players: [] });
   const blob = lines.join(" ").toLowerCase();
   const ok = (out.players || []).filter((p) => p?.name && /^(out|doubtful|back)$/.test(p.status) && String(p.name).toLowerCase().split(/\s+/).some((w) => w.length > 2 && blob.includes(w)));

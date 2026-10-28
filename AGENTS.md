@@ -30,6 +30,7 @@ api/cron.js        งานประจำวัน (Vercel Cron 05:30 UTC): �
 lib/learn.js       สูตรเรียนรู้ของงานประจำวัน (rating, log loss, Brier)
 api/analysis.js    บอท Goal Club: ค้นเว็บ (web_search) + ข้อมูล ESPN + ตัวเลขทั้งหมดของแอป แล้วเขียนทัศนะบอล สตรีมเป็น NDJSON (แคช ana2:<id>)
 lib/kv.js          Upstash REST client (หา env ได้ทุก prefix)
+lib/ai.js          เลือก Claude หรือ Grok ตามคีย์ + aiText() สำหรับคำตอบสั้น
 tests/             mock-server.mjs (ฟีด ESPN + Redis ปลอม) และ smoke.mjs (ทดสอบ end-to-end)
 ```
 `src/logic.js` ถูกต่อหน้า `src/ui.js` ในแท็ก `<script>` เดียว ไม่มี bundler ไม่มี framework ใช้ JavaScript ล้วน ฟังก์ชันประกาศแบบ global
@@ -94,7 +95,7 @@ npm test           # build + ทดสอบงานประจำวัน + 
 ถ้าไม่ได้ต่อ Redis แอปยังทำงานได้ โดยเก็บข้อมูลเหล่านี้ใน localStorage ของแต่ละเครื่อง (prefix `gc:`)
 
 ## Environment Variables (ตั้งใน Vercel)
-- `ANTHROPIC_API_KEY` สำหรับ /api/brief และ /api/analysis (ตัวเลือก `ANTHROPIC_MODEL`)
+- คีย์ AI สำหรับ /api/brief, /api/analysis และสแกนข่าวในงานประจำวัน ใส่ใน `ANTHROPIC_API_KEY` หรือ `XAI_API_KEY` ก็ได้ `lib/ai.js` เลือกผู้ให้บริการจากหัวคีย์: `xai-` = Grok (รุ่น `GROK_MODEL`, ค่าเริ่ม grok-4.5, ค้นเว็บ+X) · `sk-ant-` = Claude (รุ่น `ANTHROPIC_MODEL`, ค่าเริ่ม claude-sonnet-5-5, ค้นเว็บ) สลับได้ด้วยการเปลี่ยนคีย์แล้ว Redeploy
 - `KV_REST_API_URL`, `KV_REST_API_TOKEN` (หรือ prefix อื่นจาก Upstash integration) สำหรับข้อมูลร่วม
 
 ## ดีไซน์
