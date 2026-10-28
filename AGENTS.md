@@ -26,6 +26,8 @@ public/            ไฟล์ที่ขึ้นเว็บ: index.html (�
 api/espn.js        ตัวกลางดึง ESPN ฝั่งเซิร์ฟเวอร์ (allowlist path, แคช CDN)
 api/store.js       ข้อมูลร่วมทุกเครื่อง (Upstash Redis): ฟันธง, คำทำนาย, ผลจริง, ผลงานย้อนหลัง, calibration, ข่าว
 api/brief.js       บทวิเคราะห์ประจำวัน: อ่าน RSS BBC/Guardian + ESPN news แล้วเรียก Claude
+api/cron.js        งานประจำวัน (Vercel Cron 05:30 UTC): เก็บผล, ตัดสิน, เรียนรู้ ratings/players, วัดผลเทียบตลาด, ปรับน้ำหนัก ตั้ง CRON_SECRET ได้ถ้าต้องการกันคนอื่นเรียก
+lib/learn.js       สูตรเรียนรู้ของงานประจำวัน (rating, log loss, Brier)
 api/analysis.js    บอท Goal Club: ค้นเว็บ (web_search) + ข้อมูล ESPN + ตัวเลขทั้งหมดของแอป แล้วเขียนทัศนะบอล สตรีมเป็น NDJSON (แคช ana2:<id>)
 lib/kv.js          Upstash REST client (หา env ได้ทุก prefix)
 tests/             mock-server.mjs (ฟีด ESPN + Redis ปลอม) และ smoke.mjs (ทดสอบ end-to-end)
@@ -36,7 +38,7 @@ tests/             mock-server.mjs (ฟีด ESPN + Redis ปลอม) แล�
 ```bash
 npm run build      # สร้าง public/index.html จาก src/ (Vercel รันให้เองตอน deploy)
 npm run dev        # build แล้วเปิด mock server ที่ http://localhost:8099 (ฟีดปลอม เดินนัดได้ที่ /step รีเซ็ตที่ /reset)
-npm test           # build + ทดสอบ end-to-end (ครั้งแรก: npm i && npx playwright install chromium)
+npm test           # build + ทดสอบงานประจำวัน + ทดสอบ end-to-end (ครั้งแรก: npm i && npx playwright install chromium)
 ```
 แก้ที่ `src/` เสมอ แล้วรัน `npm test` ให้ผ่านก่อน push และ commit `public/index.html` ที่ build แล้วไปด้วย ถ้าแก้ไฟล์ใน `public/` อื่น ๆ (เช่น sw.js) ให้เปลี่ยนชื่อ cache ใน `public/sw.js` (`goalclub-vN`) เพื่อให้มือถือโหลดของใหม่
 
@@ -54,7 +56,8 @@ npm test           # build + ทดสอบ end-to-end (ครั้งแร�
 | 8 | news / newsOld | ข่าวยืนยันว่านักเตะหลักไม่ได้ลง จาก /api/brief: −5% ถึง +3% และพาไปนัดถัดไป 3 วันแบบลดลงทุกวัน |
 | 9 | trend | ประตูเฉลี่ย 14 วันล่าสุดของลีก เทียบทั้งฤดูกาล ±8% |
 | 10 | calib | เทียบ λ ก่อนเตะ (lh0/la0) กับสกอร์จริงที่สะสม ต่อลีก ≥10 นัด (หรือรวม ≥30) shrink n/(n+40) ±10% |
-| 11 | market | หา λ ที่ตรงกับราคา 1X2 (+ เส้นสูงต่ำ) ของ DraftKings หลังหักน้ำ (`marketLambdas`) แล้วผสมแบบ geometric 35% |
+| 12 | rating | คะแนนเกมรุก/รับของทีมที่งานประจำวันเรียนรู้จากทุกนัด (`ratings`, `lgavg`) ทั้งสองทีม ≥6 นัด ผสม 12–30% |
+| 11 | market | หา λ ที่ตรงกับราคา 1X2 (+ เส้นสูงต่ำ) ของ DraftKings หลังหักน้ำ (`marketLambdas`) แล้วผสมแบบ geometric ตามน้ำหนัก `weights.market` (เริ่ม 35% งานประจำวันปรับเองทุกสัปดาห์ 15–70%) |
 ผลลัพธ์เสริมที่คำนวณจาก λ ชุดเดียวกัน (ใน `refine` ต่อท้าย):
 - `liveModel`: ระหว่างแข่ง ใช้ λ × เวลาที่เหลือ (94 นาที) บวกสกอร์ปัจจุบัน ได้โอกาสชนะ/เสมอ/แพ้ตอนนี้
 - `extraMarkets`: ครึ่งแรกมีประตู (ครึ่งแรก = 45% ของ λ), ผลครึ่งแรก, ครึ่ง/จบ, ทีมยิงก่อน, ชนะไม่เสียประตู, ส่วนต่าง, สูง 1.5/3.5, คี่/คู่
@@ -76,6 +79,12 @@ npm test           # build + ทดสอบ end-to-end (ครั้งแร�
 | `pickhist` | list (เก็บ 1000) | ผลฟันธงที่ตัดสินแล้ว `{d, id, label, type, prob, match, res}` |
 | `newsteam` | hash teamId → JSON | ข่าวที่พาไปนัดถัดไป `{e, reason, d}` |
 | `brief:YYYY-MM-DD` | string JSON | บทวิเคราะห์ประจำวัน |
+| `ratings` | hash teamId → JSON | `{att, def, n, name, lg, at}` เรียนรู้จากทุกนัด |
+| `lgavg` | hash league → JSON | `{g, n}` ประตูต่อทีมต่อนัด |
+| `players` | hash athleteId → JSON | `{name, team, g, a, apps}` สะสมจาก scoringPlays/rosters |
+| `evals` | hash YYYY-MM-DD → JSON | ผลวัดรายวัน `{n, llM, llK, nK, brM, brK, hitM, hitK}` (M=โมเดล K=ตลาด) |
+| `weights` | string JSON | `{market, n, at}` น้ำหนักราคาตลาดที่ปรับเอง |
+| `learned` | set | นัดที่งานประจำวันเรียนรู้แล้ว (กันซ้ำ) |
 | `ana2:<matchId>` | string JSON, หมดอายุ 5 วัน | ทัศนะบอลจากบอท `{at, text, sources, bot}` |
 ถ้าไม่ได้ต่อ Redis แอปยังทำงานได้ โดยเก็บข้อมูลเหล่านี้ใน localStorage ของแต่ละเครื่อง (prefix `gc:`)
 

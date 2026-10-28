@@ -199,6 +199,13 @@ function refine(m){
     lh=clamp(lh*k,0.15,4.2); la=clamp(la*k,0.15,4.2);
     push("trend","แนวโน้มลีก 14 วัน",`${tr.n} นัดหลังสุดเฉลี่ย ${tr.gpg.toFixed(2)} ประตู เทียบทั้งฤดูกาล ${(m.lgAvg*2).toFixed(2)}`,bh,ba);
   }
+  /* team strength learned from every finished match (daily job): attack/defence ratings */
+  const RH=S?.ratings?.[m.h.id], RA=S?.ratings?.[m.a.id], avg=S?.lgavg?.[m.lg];
+  if(RH&&RA&&RH.n>=6&&RA.n>=6){
+    const mu=avg>0.4?avg:1.35, rlh=mu*1.12*RH.att*RA.def, rla=mu/1.12*RA.att*RH.def, W=Math.min(.3,.12+(Math.min(RH.n,RA.n)-6)*.01);
+    const bh=lh, ba=la; lh=clamp(Math.exp(Math.log(lh)*(1-W)+Math.log(rlh)*W),0.15,4.2); la=clamp(Math.exp(Math.log(la)*(1-W)+Math.log(rla)*W),0.15,4.2);
+    push("rating","ความแข็งของทีม (เรียนรู้ทุกวัน)",`เกมรุก/รับ ${m.h.short} ${RH.att.toFixed(2)}/${RH.def.toFixed(2)} · ${m.a.short} ${RA.att.toFixed(2)}/${RA.def.toFixed(2)} จาก ${RH.n}/${RA.n} นัดที่บันทึก → ${rlh.toFixed(2)}–${rla.toFixed(2)} ผสม ${Math.round(W*100)}%`,bh,ba);
+  }
   /* learned from this app's own past predictions vs real scores */
   const lh0=lh, la0=la;
   const cal=S?.calib?.[m.lg]?.n>=10?S.calib[m.lg]:S?.calib?._all?.n>=30?S.calib._all:null;
@@ -208,14 +215,15 @@ function refine(m){
   }
   /* market: blend in the expected goals implied by DraftKings prices (bookmaker prices carry
      information the stats miss: injuries, rotation, motivation). Weight 35%, geometric blend. */
+  const pH=lh, pA=la;
   const mkt=marketLambdas(m, lh+la);
   if(mkt){
-    const bh=lh, ba=la, W=.35;
+    const bh=lh, ba=la, W=S?.weights?.market??.35;
     lh=clamp(Math.exp(Math.log(lh)*(1-W)+Math.log(mkt.lh)*W),0.15,4.2); la=clamp(Math.exp(Math.log(la)*(1-W)+Math.log(mkt.la)*W),0.15,4.2);
-    push("market","ราคาตลาด",`ราคา ${m.mk.book} บอกประตูที่คาด ${mkt.lh.toFixed(2)} – ${mkt.la.toFixed(2)}${mkt.fromTotal?"":" (ไม่มีเส้นสูงต่ำ ใช้ผลรวมจากโมเดล)"} ผสม 35%`,bh,ba);
+    push("market","ราคาตลาด",`ราคา ${m.mk.book} บอกประตูที่คาด ${mkt.lh.toFixed(2)} – ${mkt.la.toFixed(2)}${mkt.fromTotal?"":" (ไม่มีเส้นสูงต่ำ ใช้ผลรวมจากโมเดล)"} ผสม ${Math.round(W*100)}%${S?.weights?.n?` (ปรับเองจากผลจริง ${S.weights.n} นัด)`:""}`,bh,ba);
   }
   const g=grid(lh,la), sum=summarize(g);
-  const out={...m, raw:m.raw||m, lh, la, lh0, la0, basis, g, sum, steps, factors, hs, as, meets};
+  const out={...m, raw:m.raw||m, lh, la, lh0, la0, pH, pA, mkt, basis, g, sum, steps, factors, hs, as, meets};
   out.live=liveModel(out); out.extra=extraMarkets(out); out.scorers=scorerModel(out);
   return out;
 }
@@ -296,7 +304,9 @@ function scorerModel(m){
     const lam=s==="h"?m.lh:m.la, tg=teamGoals(s);
     const play = known ? (p.id&&starters.has(String(p.id))?1:.25) : .85;
     const gShare=clamp((p.goals||0)/tg,0,.6), aShare=clamp((p.assists||0)/tg,0,.5);
-    const xg=lam*gShare*play, xa=lam*aShare*play;
+    let xg=lam*gShare*play, xa=lam*aShare*play;
+    const rec=p.id?S?.players?.[p.id]:null;
+    if(rec&&rec.apps>=3){ xg=.5*xg+.5*(rec.g/rec.apps)*play; xa=.5*xa+.5*(rec.a/rec.apps)*play; }
     out.push({name:p.name, side:s, team:s==="h"?m.h.short:m.a.short, goals:p.goals, assists:p.assists, play,
       pGoal:1-Math.exp(-xg), pAssist:1-Math.exp(-xa), pFirst:(s==="h"?m.extra?.first?.h:m.extra?.first?.a)??0, xg, xa, gShare});
   }
@@ -361,14 +371,21 @@ const Shared={on:false, picks:{}, pickHist:[], histN:0, pulled:{}};
 async function syncPull(date){
   if(window.claude || S.liveOk===false) return false;
   try{
-    const j=await getJson(`/api/store?date=${date}`,6000);
+    const day=S.days[date]; const teams=[...new Set((day?.matches||[]).flatMap(m=>[m.h.id,m.a.id]))].filter(Boolean).slice(0,200).join(",");
+    const j=await getJson(`/api/store?date=${date}${teams?`&teams=${teams}`:""}`,8000);
     if(!j?.enabled) return false;
     Shared.on=true; Shared.picks[date]=j.picks||{}; Shared.pickHist=j.pickHist||[]; Shared.histN=j.histN||0; Shared.pulled[date]=Date.now();
     if(j.calib) S.calib=j.calib;
+    S.ratings={...(S.ratings||{}),...(j.ratings||{})}; S.lgavg={...(S.lgavg||{}),...(j.lgavg||{})}; if(j.weights) S.weights=j.weights; if(j.evals) S.evals=j.evals;
+    if(day?.matches?.length) S.days[date]=prepare({...day,matches:day.matches.map(x=>x.raw||x)});
     if(j.newsTeam){ S.newsTeam={...S.newsTeam,...j.newsTeam}; }
     if(j.brief && (!store.get("brief:"+date,null) || store.get("brief:"+date).at < j.brief.at)) store.set("brief:"+date,j.brief);
     return true;
   }catch{ return false; }
+}
+async function syncPlayers(ids){
+  if(!Shared.on||!ids.length) return false;
+  try{ const j=await getJson(`/api/store?date=${bkkToday()}&players=${ids.slice(0,60).join(",")}`,6000); S.players={...(S.players||{}),...(j.players||{})}; return Object.keys(j.players||{}).length>0; }catch{ return false; }
 }
 function syncPush(body){
   if(!Shared.on) return Promise.resolve();
@@ -439,7 +456,9 @@ function recordDay(date){
   if(Shared.on){
     const now=Date.now(), preds=[], results=[];
     for(const m of day.matches){
-      if(m.st==="pre" && m.lh0!=null && (!sentPred[m.id] || now-sentPred[m.id]>30*60e3)){ sentPred[m.id]=now; preds.push({id:m.id,lg:m.lg,lh0:+m.lh0.toFixed(3),la0:+m.la0.toFixed(3),ph:+m.sum.home.toFixed(3),pa:+m.sum.away.toFixed(3),ko:m.ko}); }
+      if(m.st==="pre" && m.lh0!=null && (!sentPred[m.id] || now-sentPred[m.id]>30*60e3)){ sentPred[m.id]=now; const mk=m.mk?.home&&m.mk.draw&&m.mk.away?devig([m.mk.home.decimal,m.mk.draw.decimal,m.mk.away.decimal]):null;
+        preds.push({id:m.id,lg:m.lg,lh0:+m.lh0.toFixed(3),la0:+m.la0.toFixed(3),ph:+m.sum.home.toFixed(3),pa:+m.sum.away.toFixed(3),ko:m.ko,hid:m.h.id,aid:m.a.id,
+          pH:+m.pH.toFixed(3),pA:+m.pA.toFixed(3),mkH:m.mkt?+m.mkt.lh.toFixed(3):undefined,mkA:m.mkt?+m.mkt.la.toFixed(3):undefined,mh:mk?.[0],md:mk?.[1],ma:mk?.[2]}); }
       if(m.st==="post" && m.h.score!=null && !sentRes[m.id]){ sentRes[m.id]=1; results.push({id:m.id,hs:m.h.score,as:m.a.score,match:`${m.h.short} ${m.h.score}–${m.a.score} ${m.a.short}`}); }
     }
     if(preds.length||results.length) syncPush({date,preds,results}).then(()=>{ if(results.length) syncPull(date).then(ok=>{ if(ok&&!S.open) render(); }); });

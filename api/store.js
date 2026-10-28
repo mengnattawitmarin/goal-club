@@ -37,9 +37,16 @@ export default async function handler(req, res) {
     if (req.method === "GET") {
       const date = String(req.query.date || "");
       if (!DAY.test(date)) { res.status(400).json({ error: "bad date" }); return; }
-      const [picks, brief, ph, hist, news] = await kvPipe([
+      const teams = String(req.query.teams || "").split(",").filter((x) => ID.test(x)).slice(0, 200);
+      const players = String(req.query.players || "").split(",").filter((x) => ID.test(x)).slice(0, 60);
+      const [picks, brief, ph, hist, news, weights, evals, lgavg, rat, pl] = await kvPipe([
         ["GET", `picks:${date}`], ["GET", `brief:${date}`], ["LRANGE", "pickhist", "0", "299"], ["LRANGE", "hist", "0", "1999"], ["HGETALL", "newsteam"],
+        ["GET", "weights"], ["HGETALL", "evals"], ["HGETALL", "lgavg"],
+        teams.length ? ["HMGET", "ratings", ...teams] : ["GET", "__none"], players.length ? ["HMGET", "players", ...players] : ["GET", "__none"],
       ]);
+      const pairs = (arr) => { const o = {}; for (let i = 0; Array.isArray(arr) && i < arr.length; i += 2) o[arr[i]] = parse(arr[i + 1]); return o; };
+      const pick = (keys, vals) => { const o = {}; keys.forEach((k, i) => { const v = parse(Array.isArray(vals) ? vals[i] : null); if (v) o[k] = v; }); return o; };
+      const ev = pairs(evals); const evalDays = Object.keys(ev).sort().slice(-21);
       const newsTeam = {};
       for (let i = 0; Array.isArray(news) && i < news.length; i += 2) newsTeam[news[i]] = parse(news[i + 1]);
       const histRows = (hist || []).map((x) => parse(x)).filter(Boolean);
@@ -51,6 +58,11 @@ export default async function handler(req, res) {
         calib: calib(histRows),
         histN: histRows.length,
         newsTeam,
+        weights: parse(weights),
+        evals: Object.fromEntries(evalDays.map((d) => [d, ev[d]])),
+        lgavg: Object.fromEntries(Object.entries(pairs(lgavg)).map(([k, v]) => [k, v && v.n ? v.g / v.n : null])),
+        ratings: pick(teams, rat),
+        players: pick(players, pl),
       });
       return;
     }
@@ -78,7 +90,9 @@ export default async function handler(req, res) {
     const cmds = [];
     for (const p of (Array.isArray(b.preds) ? b.preds : []).slice(0, 80)) {
       if (!p || !ID.test(String(p.id)) || !(Date.parse(p.ko) > now - 15 * 60e3)) continue;
-      const row = { id: String(p.id), d: date, lg: String(p.lg || "").slice(0, 24), lh0: +p.lh0, la0: +p.la0, ph: +p.ph, pa: +p.pa, ko: p.ko };
+      const num = (x) => (Number.isFinite(+x) && +x > 0 ? +(+x).toFixed(4) : undefined);
+      const row = { id: String(p.id), d: date, lg: String(p.lg || "").slice(0, 24), lh0: +p.lh0, la0: +p.la0, ph: +p.ph, pa: +p.pa, ko: p.ko,
+        pH: num(p.pH), pA: num(p.pA), mkH: num(p.mkH), mkA: num(p.mkA), mh: num(p.mh), md: num(p.md), ma: num(p.ma), hid: String(p.hid || ""), aid: String(p.aid || "") };
       if (!(row.lh0 > 0 && row.la0 > 0)) continue;
       cmds.push(["SET", `pred:${row.id}`, JSON.stringify(row), "EX", String(14 * 86400)]);
     }

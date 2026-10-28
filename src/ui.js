@@ -272,7 +272,33 @@ function viewAnalyze(){
         <span class="main"><div>${esc(m.h.short)} – ${esc(m.a.short)}${m.st!=="pre"?` <b class="num">${m.h.score??0}–${m.a.score??0}</b>`:""}</div><div class="sub num">${timeCell(m)} · คาด ${(m.lh+m.la).toFixed(2)} ประตู · สูง 2.5 ${pct(m.sum.over25)}</div></span>
         <span class="r num">${m.sum.top.slice(0,3).map(c=>`${c.h}-${c.a} <span class="faint">${pct(c.p)}</span>`).join("<br>")}</span></button>`).join("")}</div>`;
   }
-  return `<div style="margin-bottom:12px">${seg("mode",[["picks","ฟันธง"],["edge","เทียบราคา"],["goals","สกอร์และประตู"]],S.mode)}</div>${body}`;
+  if(S.mode==="acc") body=accuracyView();
+  return `<div style="margin-bottom:12px">${seg("mode",[["picks","ฟันธง"],["edge","เทียบราคา"],["goals","สกอร์"],["acc","ความแม่น"]],S.mode)}</div>${body}`;
+}
+function accuracyView(){
+  const E=S.evals||{}, days=Object.keys(E).sort().reverse(), R=pickRecord(30);
+  const tot=days.reduce((a,d)=>{ const e=E[d]; for(const k in e) a[k]=(a[k]||0)+(e[k]||0); return a; },{});
+  const avg=(x,n)=>n?(x/n):null, f2=x=>x==null?"–":x.toFixed(3);
+  const llM=avg(tot.llM,tot.n), llK=avg(tot.llK,tot.nK);
+  const verdict = llM==null||llK==null ? "ยังมีผลไม่พอเทียบ" : llM<llK ? "โมเดลทายแม่นกว่าราคาตลาด" : "ราคาตลาดยังแม่นกว่าโมเดล";
+  if(!Shared.on) return `<div class="card empty"><h3>ยังวัดผลไม่ได้</h3><p>การวัดความแม่นต้องเปิดข้อมูลร่วมทุกเครื่อง (ฐานข้อมูล Upstash) ซึ่งเปิดได้ในเว็บที่ติดตั้ง</p></div>`;
+  return `<p class="pagelead">ทุกวันระบบเก็บผลจริงของทุกคู่ เทียบกับที่โมเดลและราคาตลาดทายไว้ก่อนเตะ แล้วใช้ผลนี้ปรับโมเดลเอง</p>
+    <div class="tiles">
+      <div class="tile c-gold"><div class="tt"><span class="k">คู่ที่วัดผลแล้ว</span></div><span class="v num">${tot.n||0}</span><span class="u">${days.length} วัน</span></div>
+      <div class="tile c-green"><div class="tt"><span class="k">ทายผลถูก (โมเดล)</span></div><span class="v num">${tot.n?Math.round(tot.hitM/tot.n*100)+"%":"–"}</span><span class="u">ตลาด ${tot.nK?Math.round(tot.hitK/tot.nK*100)+"%":"–"}</span></div>
+      <div class="tile c-blue"><div class="tt"><span class="k">ฟันธงเข้า 30 วัน</span></div><span class="v num">${R.n?Math.round(R.won/R.n*100)+"%":"–"}</span><span class="u">${R.won}/${R.n}</span></div>
+    </div>
+    ${sec("โมเดลเทียบราคาตลาด","log loss ยิ่งต่ำยิ่งแม่น")}
+    <div class="card"><div class="row"><b>${verdict}</b><span class="spacer"></span></div>
+      <div class="statgrid" style="margin-top:8px"><span class="h">ตัวชี้วัด</span><span class="h">โมเดล</span><span class="h">ตลาด</span>
+        <span>log loss เฉลี่ย</span><span class="num">${f2(llM)}</span><span class="num">${f2(llK)}</span>
+        <span>Brier score เฉลี่ย</span><span class="num">${f2(avg(tot.brM,tot.n))}</span><span class="num">${f2(avg(tot.brK,tot.nK))}</span>
+        <span>ทายผลถูก (เลือกฝั่งที่ % สูงสุด)</span><span class="num">${tot.n?pct(tot.hitM/tot.n):"–"}</span><span class="num">${tot.nK?pct(tot.hitK/tot.nK):"–"}</span></div>
+      <p class="note">น้ำหนักราคาตลาดในโมเดลตอนนี้ ${Math.round((S.weights?.market??.35)*100)}%${S.weights?.n?` ปรับเองล่าสุด ${stampTime(S.weights.at)} จากผลจริง ${S.weights.n} นัด`:" (ค่าเริ่มต้น ระบบจะปรับเองเมื่อสะสมครบ 120 นัด)"}</p></div>
+    ${sec("รายวัน")}
+    ${days.length?`<div class="list">${days.map(d=>{ const e=E[d]; return `<div class="lrow"><span class="main"><div>${relLabel(d)}</div><div class="sub num">${e.n} คู่ · ทายถูก ${pct(e.hitM/e.n)} · ตลาด ${e.nK?pct(e.hitK/e.nK):"–"}</div></span><span class="r num">${f2(e.llM/e.n)}<div class="faint">${e.nK?f2(e.llK/e.nK):"–"}</div></span></div>`; }).join("")}</div>`
+      :`<div class="card muted">ยังไม่มีผล ระบบจะวัดผลครั้งแรกหลังงานประจำวันรอบเที่ยง (เวลาไทย) ของวันพรุ่งนี้</div>`}
+    <p class="note">ตัวเลขขวาบน = log loss ของโมเดล ล่าง = ของตลาด · ยิ่งต่ำยิ่งแม่น</p>`;
 }
 function viewSaved(){
   const ids=Object.keys(S.favs);
@@ -395,7 +421,7 @@ function analysisParas(m){
     const avg=m.meets.reduce((s,x)=>s+x.f+x.a,0)/m.meets.length;
     P.push({h:"สถิติพบกัน", t:`${m.meets.length} นัดหลังสุด ${m.h.short} ชนะ ${w} เสมอ ${d} แพ้ ${l} เฉลี่ย ${avg.toFixed(1)} ประตูต่อนัด${avg>=3?" เจอกันทีไรยิงกันมันส์":avg<=2?" มักเป็นเกมปิดไม่ค่อยมีประตู":""}${m.meets.length>=3?" ผลส่วนนี้ถูกผสมเข้าโมเดลแล้ว":""}`});
   }
-  const extra=(m.factors||[]).filter(f=>["venue","rest","lineup","weather","news","newsOld","trend","calib","market"].includes(f.k));
+  const extra=(m.factors||[]).filter(f=>["venue","rest","lineup","weather","news","newsOld","trend","rating","calib","market"].includes(f.k));
   if(extra.length) P.push({h:"ปัจจัยหน้างาน", list:extra.map(f=>`${f.label}: ${f.text}`)});
   const tot=m.lh+m.la, top=m.sum.top;
   P.push({h:"เกมรุกและประตู", t:`โมเดลคาด ${m.h.short} ยิง ${m.lh.toFixed(2)} ลูก ${m.a.short} ยิง ${m.la.toFixed(2)} ลูก รวม ${tot.toFixed(2)} ${tot>=3?"มีลุ้นเกมเปิดหน้าแลกกัน":tot<=2.2?"น่าจะเป็นเกมแน่นกลางสนาม ประตูไม่มาก":"จำนวนประตูน่าจะอยู่ระดับกลาง"} โอกาสสูง 2.5 ${pct(m.sum.over25)} ทั้งสองทีมยิงได้ ${pct(m.sum.btts)} สกอร์ที่โมเดลให้น้ำหนักที่สุดคือ ${top.slice(0,3).map(c=>`${c.h}-${c.a}`).join(", ")}`});
@@ -427,6 +453,7 @@ function factorRows(m){
   if(!have.has("news")) missing.push(["ข่าววันนี้","กดวิเคราะห์วันนี้ที่หน้าหลักเพื่ออ่านข่าว"]);
   if(!have.has("trend")) missing.push(["แนวโน้มลีก 14 วัน", window.claude?"ดูได้ในเว็บที่ติดตั้ง":"ต้องมีผลในลีกอย่างน้อย 8 นัดและค่าเฉลี่ยทั้งฤดูกาล"]);
   if(!have.has("calib")){ const c=S.calib?.[m.lg]; missing.push(["เรียนรู้จากผลที่ผ่านมา",`สะสมผลเทียบคำทำนายในลีกนี้แล้ว ${c?.n||0} นัด ต้องครบ 10 นัด`]); }
+  if(!have.has("rating")) missing.push(["ความแข็งของทีม (เรียนรู้ทุกวัน)", Shared.on?"ระบบบันทึกผลของทีมใดทีมหนึ่งไม่ถึง 6 นัด":"ต้องเปิดข้อมูลร่วมทุกเครื่อง"]);
   if(!have.has("market")) missing.push(["ราคาตลาด", m.mk?.home?"ราคาผิดรูปจนหาประตูที่คาดไม่ได้":"ฟีดยังไม่มีราคาผลการแข่งขันของคู่นี้"]);
   missing.push(["เสียงเชียร์และโซเชียลมีเดีย","ไม่มีฟีดสาธารณะที่วัดได้จริง จึงไม่เอามาคำนวณ"]);
   missing.push(["xG, ใบเหลือง-แดง, เตะมุม, ผู้ตัดสิน, ระยะเดินทาง","ฟีดฟรีที่ใช้อยู่ไม่มีข้อมูลเหล่านี้ก่อนเกม"]);
@@ -644,7 +671,7 @@ async function enrichOpen(m, day){
   if(!m.ds && S.liveOk){
     const ds=await loadLiveDossier(m);
     if(S.open?.id!==id) return;
-    if(ds){ m.raw.ds=ds; swap(); } else { const el=$("#dsLoading"); if(el) el.textContent="ดึงสถิติเชิงลึกไม่สำเร็จ"; }
+    if(ds){ m.raw.ds=ds; swap(); const pids=(ds.players||[]).map(p=>p.id).filter(Boolean); if(await syncPlayers(pids)) swap(); } else { const el=$("#dsLoading"); if(el) el.textContent="ดึงสถิติเชิงลึกไม่สำเร็จ"; }
   }
   if(window.claude || S.liveOk===false) return;
   if(Shared.on && !store.get("bot:"+id,null)){ getJson(`/api/analysis?id=${id}`,5000).then(a=>{ if(a?.text){ store.set("bot:"+id,a); if(S.open?.id===id&&!S.bot[id]) paintSheet(); } }).catch(()=>{}); }
