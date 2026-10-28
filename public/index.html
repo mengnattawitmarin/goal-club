@@ -484,6 +484,24 @@ label.f input,label.f select{height:42px;border-radius:var(--r-sm);border:1px so
 .botsrc summary{cursor:pointer;color:var(--muted)}
 .botsrc ul{margin:6px 0 0;padding-left:18px}
 .botsrc a{color:var(--fg)}
+/* verdicts + live stats */
+.vbs{display:inline-flex;flex-wrap:wrap;gap:4px 6px}
+.vb{display:inline-flex;align-items:center;gap:3px;height:22px;padding:0 8px;border-radius:6px;font-size:11.5px;font-weight:600;white-space:nowrap}
+.vb.ok{background:color-mix(in srgb,var(--win) 18%,transparent);color:var(--win)}
+.vb.no{background:color-mix(in srgb,var(--loss) 16%,transparent);color:var(--loss)}
+.vb.push{background:var(--surface-2);color:var(--muted)}
+.verdictcard{margin-top:12px;border-radius:var(--r-lg);padding:14px 16px;border:1px solid var(--line);background:linear-gradient(180deg,var(--surface-2),var(--surface))}
+.vrows{margin-top:8px}
+.vrow{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line-soft);font-size:13.5px}
+.vrow:first-child{border-top:0}
+.vrow small{color:var(--faint);font-size:11.5px}
+.lstats{display:flex;flex-direction:column;gap:6px;margin-top:12px}
+.lsrow{display:grid;grid-template-columns:34px minmax(0,1fr) 34px;gap:8px;align-items:center;font-size:13px;position:relative}
+.lsrow > span:last-of-type{text-align:right}
+.lsrow small{grid-column:1 / 4;text-align:center;font-size:11px;color:var(--faint);margin-top:-4px}
+.lsbar{height:6px;border-radius:99px;background:color-mix(in srgb,#e8e0d2 60%,transparent);overflow:hidden}
+.lsbar i{display:block;height:100%;background:var(--win)}
+.lsrow.red span{color:var(--loss);font-weight:700}
 /* ---------- bottom tabs ---------- */
 nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:30;background:color-mix(in srgb,var(--bg) 96%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid var(--line-soft);padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
 nav.tabs .in{max-width:680px;margin:0 auto;display:flex}
@@ -781,6 +799,21 @@ function marketLambdas(m, modelTotal){
   return best.e<.01 ? {lh:best.lh, la:best.la, fromTotal:tOver!=null} : null;
 }
 
+/* ---------- in-play stats: shots, shots on target, possession, red cards (from scoreboard or summary) ---------- */
+function statMap(list){ const o={}; for(const x of list||[]){ const k=String(x.name||x.label||"").toLowerCase().replace(/[^a-z]/g,""); const v=parseFloat(String(x.displayValue??x.value??"").replace("%","")); if(k&&Number.isFinite(v)) o[k]=v; } return o; }
+function liveStatsOf(comps, details, H, A){
+  const pick=t=>{ const o=statMap(t?.statistics); return {shots:o.totalshots??o.shots??null, sot:o.shotsontarget??o.ontargetshots??null, poss:o.possessionpct??o.possession??null, corners:o.woncorners??o.cornerkicks??null, red:0}; };
+  const h=pick(H), a=pick(A);
+  for(const d of details||[]){ if(d.redCard||/red card/i.test(d.type?.text||"")){ const tid=String(d.team?.id??""); if(tid===String(H?.team?.id)) h.red++; else if(tid===String(A?.team?.id)) a.red++; } }
+  const any=[h.shots,h.sot,h.poss,a.shots,a.sot,a.poss].some(v=>v!=null)||h.red||a.red;
+  return any?{h,a}:null;
+}
+function liveStatsFromSummary(p){
+  const T=p?.boxscore?.teams||[]; const H=T.find(t=>t.homeAway==="home")||T[0], A=T.find(t=>t.homeAway==="away")||T[1]; if(!H||!A) return null;
+  const pick=t=>{ const o=statMap(t.statistics); return {shots:o.totalshots??o.shots??null, sot:o.shotsontarget??null, poss:o.possessionpct??null, corners:o.woncorners??null, red:o.redcards??0}; };
+  return {h:pick(H), a:pick(A)};
+}
+
 /* ---------- in-play: remaining expected goals on top of the current score ---------- */
 function matchMinute(m){
   if(m.st!=="in") return null;
@@ -792,10 +825,32 @@ function matchMinute(m){
 function liveModel(m){
   const min=matchMinute(m); if(min==null||m.h.score==null) return null;
   const left=Math.max(0,(94-min)/94);
-  const g=grid(Math.max(.01,m.lh*left),Math.max(.01,m.la*left));
-  let ph=0,pd=0,pa=0,best={p:0}; g.forEach((r,i)=>r.forEach((p,j)=>{ const H=m.h.score+i, A=m.a.score+j; if(H>A) ph+=p; else if(H===A) pd+=p; else pa+=p; if(p>best.p) best={p,h:H,a:A}; }));
-  const pMore=1-g[0][0];
-  return {min, ph, pd, pa, final:best, pMore};
+  let rh=m.lh*left, ra=m.la*left; const notes=[];
+  /* momentum: who is creating more than the pre-match model expected (shots on target, then shots) */
+  const L=m.ls||m.raw?.ls||m.ds?.ls;
+  if(L){
+    const expShare=m.lh/(m.lh+m.la), k=Math.min(1,min/60)*.5;
+    const sh=(L.h.sot!=null&&L.a.sot!=null&&L.h.sot+L.a.sot>=3)?{x:L.h.sot,y:L.a.sot,n:"ยิงเข้ากรอบ"}:(L.h.shots!=null&&L.a.shots!=null&&L.h.shots+L.a.shots>=6)?{x:L.h.shots,y:L.a.shots,n:"ยิง"}:null;
+    if(sh){
+      const obs=(sh.x+1)/(sh.x+sh.y+2), mh=clamp((obs/expShare)**k,.7,1.4), ma=clamp(((1-obs)/(1-expShare))**k,.7,1.4);
+      rh*=mh; ra*=ma;
+      if(Math.abs(mh-1)>.05||Math.abs(ma-1)>.05) notes.push(`${sh.n} ${sh.x}–${sh.y} ${mh>ma?m.h.short:m.a.short}คุมเกมกว่าที่คาด ขยับโอกาสยิงที่เหลือ ${m.h.short} ${mh>1?"+":""}${Math.round((mh-1)*100)}% ${m.a.short} ${ma>1?"+":""}${Math.round((ma-1)*100)}%`);
+    }
+    if(L.h.red||L.a.red){
+      const d=(L.h.red||0)-(L.a.red||0);
+      if(d>0){ rh*=.7; ra*=1.25; notes.push(`${m.h.short} โดนใบแดง ${L.h.red} ใบ เหลือคนน้อยกว่า`); }
+      if(d<0){ ra*=.7; rh*=1.25; notes.push(`${m.a.short} โดนใบแดง ${L.a.red} ใบ เหลือคนน้อยกว่า`); }
+    }
+    if(L.h.poss!=null&&L.a.poss!=null) notes.push(`ครองบอล ${Math.round(L.h.poss)}–${Math.round(L.a.poss)}%`);
+  }
+  /* late game: a trailing side pushes, the leader sits back */
+  if(min>=70&&m.h.score!==m.a.score){ const lead=m.h.score>m.a.score?"h":"a"; if(lead==="h"){ ra*=1.1; rh*=.95; } else { rh*=1.1; ra*=.95; } }
+  const g=grid(Math.max(.01,rh),Math.max(.01,ra));
+  let ph=0,pd=0,pa=0,over=0; const cells=[];
+  g.forEach((r,i)=>r.forEach((p,j)=>{ const H=m.h.score+i, A=m.a.score+j; if(H>A) ph+=p; else if(H===A) pd+=p; else pa+=p; if(H+A>=3) over+=p; cells.push({h:H,a:A,p}); }));
+  cells.sort((a,b)=>b.p-a.p);
+  const pMore=1-g[0][0], next={h:pMore*rh/(rh+ra), a:pMore*ra/(rh+ra)};
+  return {min, ph, pd, pa, final:cells[0], top:cells.slice(0,4), pMore, over25:over, next, rh, ra, notes, stats:L||null};
 }
 
 /* ---------- extra markets from the same expected goals ---------- */
@@ -986,10 +1041,36 @@ function settlePick(p, hs, as){
 }
 const RES_LABEL={win:"เข้า",half:"เข้าครึ่ง",push:"คืนทุน",halflose:"เสียครึ่ง",lose:"ไม่เข้า"};
 
+/* ---------- pre-match calls, frozen at kickoff, and the verdict after full time ---------- */
+function preCall(m){
+  const top=m.sum.top[0], res=m.sum.home>=m.sum.away&&m.sum.home>=m.sum.draw?"h":m.sum.away>=m.sum.draw?"a":"d";
+  const c={d:bkkDateOf(m.ko),res,ph:+m.sum.home.toFixed(3),pd:+m.sum.draw.toFixed(3),pa:+m.sum.away.toFixed(3),ou:m.sum.over25>=.5?"o":"u",o25:+m.sum.over25.toFixed(3),sh:top.h,sa:top.a,btts:m.sum.btts>=.5};
+  if(m.mk?.spread){ const hc=cover(hdpSplit(m.g,m.mk.spread.line)); c.line=m.mk.spread.line; c.side=hc>=.5?"h":"a"; c.cv=+Math.max(hc,1-hc).toFixed(3); }
+  return c;
+}
+function freezeCalls(day){
+  if(!day?.matches?.length||day.source==="snapshot") return;
+  const all=store.get("calls",{}); let dirty=false;
+  for(const m of day.matches) if(m.st==="pre"){ const c=preCall(m); if(JSON.stringify(all[m.id])!==JSON.stringify(c)){ all[m.id]=c; dirty=true; } }
+  if(!dirty) return;
+  const cut=shiftDate(bkkToday(),-6); for(const k in all) if(all[k].d<cut) delete all[k];
+  store.set("calls",all);
+}
+function verdict(m){
+  if(m.st!=="post"||m.h.score==null) return null;
+  const c=store.get("calls",{})[m.id]||preCall(m), hs=m.h.score, as=m.a.score;
+  const actual=hs>as?"h":hs===as?"d":"a";
+  const v={frozen:!!store.get("calls",{})[m.id], res:{pred:c.res,ok:c.res===actual,p:c[c.res==="h"?"ph":c.res==="a"?"pa":"pd"]}, ou:{pred:c.ou,ok:(hs+as>=3)===(c.ou==="o"),p:c.ou==="o"?c.o25:1-c.o25},
+    exact:{pred:`${c.sh}-${c.sa}`,ok:c.sh===hs&&c.sa===as}, btts:{pred:c.btts,ok:(hs>0&&as>0)===c.btts}};
+  if(c.line!=null){ const r=settlePick({type:"ah",side:c.side,line:c.line},hs,as); v.hdp={side:c.side,line:c.line,res:r,ok:r==="win"||r==="half",push:r==="push"}; }
+  return v;
+}
+
 /* ---------- learning from finished matches ---------- */
 const sentPred={}, sentRes={};
 function recordDay(date){
   const day=S.days[date]; if(!day?.matches?.length || day.source==="snapshot") return;
+  freezeCalls(day);
   if(Shared.on){
     const now=Date.now(), preds=[], results=[];
     for(const m of day.matches){
@@ -1122,7 +1203,8 @@ async function loadLiveDay(date, onlySlugs){
         const h=side(H), a=side(A), base=baseLambdas(h,a,tbl?.avg??null);
         const name=c?.status?.type?.name||"", state=c?.status?.type?.state||"pre";
         const clock = state!=="in" ? null : name.includes("HALFTIME") ? "พักครึ่ง" : name.includes("PENALT") ? "ยิงจุดโทษ" : (c?.status?.displayClock||"สด");
-        return {id:ev.id,lg:slug,ko:ev.date,st:name.includes("POSTPONED")?"pp":name.includes("CANCEL")?"pp":state,clock,h,a,lh:base.lh,la:base.la,basis:base.basis,mk:parseMarket(c?.odds?.[0]),ds:null,live:true,lgAvg:tbl?.avg??null};
+        return {id:ev.id,lg:slug,ko:ev.date,st:name.includes("POSTPONED")?"pp":name.includes("CANCEL")?"pp":state,clock,h,a,lh:base.lh,la:base.la,basis:base.basis,mk:parseMarket(c?.odds?.[0]),ds:null,live:true,lgAvg:tbl?.avg??null,
+          ls:state==="pre"?null:liveStatsOf(c?.competitors||[],c?.details||[],H,A)};
       }).filter(Boolean);
     }catch{ return null; }
   });
@@ -1164,7 +1246,7 @@ async function loadLiveDossier(m){
     const v=p.gameInfo?.venue;
     const players=[...Object.values(leaders[m.h.id]||{}),...Object.values(leaders[m.a.id]||{})].map(x=>({...x,team:x.team===m.h.id?m.h.name:m.a.name,side:x.team===m.h.id?"h":"a"}));
     return {h2h:ser?.summary||null,meet,hf:five(m.h.id),af:five(m.a.id),venue:v?.fullName||null,city:v?.address?.city||null,country:v?.address?.country||null,
-      players, marks:[], lineup: known?{known:true,hMiss:miss(m.h.id),aMiss:miss(m.a.id),starters:[...(starters[m.h.id]||[]),...(starters[m.a.id]||[])]}:null};
+      players, marks:[], ls:liveStatsFromSummary(p), lineup: known?{known:true,hMiss:miss(m.h.id),aMiss:miss(m.a.id),starters:[...(starters[m.h.id]||[]),...(starters[m.a.id]||[])]}:null};
   }catch{ return null; }
 }
 
@@ -1333,9 +1415,13 @@ document.addEventListener("visibilitychange",()=>{
   if(S.liveOk && (!d?.fetchedAt || d.source!=="live" || Date.now()-Date.parse(d.fetchedAt)>60e3)) refresh(S.date,false); else render();
 });
 function updateSheetScore(nm){
+  if(nm.st==="in"&&S.open?.id===nm.id&&(!S.lsAt||Date.now()-S.lsAt>110e3)){ S.lsAt=Date.now();
+    loadLiveDossier(nm).then(ds=>{ if(ds&&S.open?.id===nm.id){ const cur=S.open; const keep=cur.raw?.ds; const merged=refine({...cur.raw, ds:{...(keep||ds), ls:ds.ls, lineup:ds.lineup||keep?.lineup}}); S.open=merged; const el=$("#liveBox"); if(el) el.outerHTML=liveBox(merged); } }); }
   if(!S.open||S.open.id!==nm.id) return;
   const keepDs=S.open.ds; const merged=keepDs&&!nm.ds?refine({...nm.raw, ds:keepDs}):nm;
   S.open=merged; const mid=$("#sheet .face .mid"); if(mid){ mid.innerHTML=midHtml(merged); mid.classList.toggle("live",merged.st==="in"); }
+  const lb=$("#liveBox"); if(lb) lb.outerHTML=liveBox(merged);
+  if(merged.st==="post"&&S.sheetTab==="overview") paintSheet();
 }
 
 /* =====================================================================
@@ -1431,7 +1517,7 @@ function matchRow(m, lead){
     <span class="tm">${badge(m.h,"sm")}<span>${esc(m.h.short)}</span></span>
     <span class="r" style="grid-row:span 2">${right}</span>
     <span class="tm">${badge(m.a,"sm")}<span>${esc(m.a.short)}</span></span>
-    <span class="meta">${m.mk?.spread?`<span><b>${esc(ahPhrase(m.h.short,m.a.short,m.mk.spread.line))}</b></span>`:`<span>ทาย ${m.sum.top[0].h}-${m.sum.top[0].a}</span>`}<span>สูง 2.5 ${pct(m.sum.over25)}</span>${v?`<span class="tag value">มีค่า ${pts(v.edge)}</span>`:""}${isGoal(m)?`<span class="tag value">ประตู!</span>`:""}</span>
+    <span class="meta">${m.st==="post"&&m.h.score!=null?verdictBadges(m,true):m.mk?.spread?`<span><b>${esc(ahPhrase(m.h.short,m.a.short,m.mk.spread.line))}</b></span>`:`<span>ทาย ${m.sum.top[0].h}-${m.sum.top[0].a}</span>`}<span>สูง 2.5 ${pct(m.sum.over25)}</span>${v?`<span class="tag value">มีค่า ${pts(v.edge)}</span>`:""}${isGoal(m)?`<span class="tag value">ประตู!</span>`:""}</span>
   </button>`;
 }
 function skeleton(n=3){
@@ -1535,7 +1621,7 @@ function progCard(m){
   return `<div class="pcard${liveCls(m)}" role="button" tabindex="0" data-open="${m.id}">
     <div class="pc-head"><span class="flag" aria-hidden="true">${flagOf(m)}</span><span class="lg">${esc(lg(m))}</span>${isGoal(m)?`<span class="tag value">ประตู!</span>`:""}${m.st==="pre"?`<span class="time num">${kickTime(m.ko)}</span>`:stateTag(m)}${starBtn(m)}</div>
     ${side(m.h,m.h.score)}${side(m.a,m.a.score)}
-    <div class="pc-foot">${m.live?`<span class="num" style="color:var(--win)">ตอนนี้ ${esc(m.h.short)} ${pct(m.live.ph)} · เสมอ ${pct(m.live.pd)} · ${esc(m.a.short)} ${pct(m.live.pa)}</span>`:`<span class="num">${esc(m.h.short)} ${pct(m.sum.home)} · เสมอ ${pct(m.sum.draw)} · ${esc(m.a.short)} ${pct(m.sum.away)}</span>`}${m.mk?.spread?`<span><b>${esc(ahPhrase(m.h.short,m.a.short,m.mk.spread.line))}</b></span>`:""}${v?`<span class="tag value">มีค่า ${pts(v.edge)}</span>`:""}</div>
+    <div class="pc-foot">${m.st==="post"&&m.h.score!=null?verdictBadges(m):""}${m.live?`<span class="num" style="color:var(--win)">ตอนนี้ ${esc(m.h.short)} ${pct(m.live.ph)} · เสมอ ${pct(m.live.pd)} · ${esc(m.a.short)} ${pct(m.live.pa)} · ทายจบ ${m.live.final.h}-${m.live.final.a}</span>`:m.st==="post"?"":`<span class="num">${esc(m.h.short)} ${pct(m.sum.home)} · เสมอ ${pct(m.sum.draw)} · ${esc(m.a.short)} ${pct(m.sum.away)}</span>`}${m.mk?.spread?`<span><b>${esc(ahPhrase(m.h.short,m.a.short,m.mk.spread.line))}</b></span>`:""}${v?`<span class="tag value">มีค่า ${pts(v.edge)}</span>`:""}</div>
   </div>`;
 }
 function spark(vals, color){
@@ -1568,7 +1654,7 @@ function viewHome(){
   ${favs.length&&!S.q?sec("ทีมโปรดวันนี้")+`<div class="list">${favs.map(m=>matchRow(m)).join("")}</div>`:""}
   ${sec(live.length?"โปรแกรมถัดไป":"โปรแกรม",`เวลาไทย · ${upcoming.length} คู่`,`<button class="act" data-goto="schedule:all">ดูตามลีก</button>`)}
   ${upcoming.length?`<div class="stack">${upcoming.map(progCard).join("")}</div>`:`<div class="card muted" style="text-align:center">${ms.length?"ไม่มีคู่ที่ยังไม่เตะในตัวกรองนี้":"ไม่มีคู่ที่ตรงกับตัวกรอง"}</div>`}
-  ${done.length?sec("ผลการแข่งขัน",`จบแล้ว ${done.length} คู่`)+`<div class="list">${done.slice().reverse().map(m=>matchRow(m)).join("")}</div>`:""}`;
+  ${done.length?sec("ผลการแข่งขัน",(()=>{ const vs=done.map(verdict).filter(Boolean); if(!vs.length) return `จบแล้ว ${done.length} คู่`; const c=k=>vs.filter(v=>v[k]?.ok).length; const hd=vs.filter(v=>v.hdp&&!v.hdp.push); return `ทายผลชนะถูก ${c("res")}/${vs.length} · สูงต่ำ ${c("ou")}/${vs.length}${hd.length?` · แฮนดิแคป ${hd.filter(v=>v.hdp.ok).length}/${hd.length}`:""} · สกอร์ตรง ${c("exact")}`; })())+`<div class="list">${done.slice().reverse().map(m=>matchRow(m)).join("")}</div>`:""}`;
 }
 function viewSchedule(){
   const day=getDay(S.date);
@@ -1824,11 +1910,53 @@ function scorerLuck(m){
   return {byName, list, best:list.find(x=>x.luck.score>0)||null};
 }
 function liveBox(m){
-  const L=m.live; if(!L) return "";
-  return `<div class="livebox"><div class="row"><span class="tag live"><span class="dot live pulse"></span>ตอนนี้ นาที ${L.min}</span><span class="spacer"></span><span class="faint" style="font-size:12px">คำนวณจากสกอร์ปัจจุบัน + เวลาที่เหลือ</span></div>
-    <div class="probbar" style="height:8px;margin-top:12px"><i class="h" style="width:${L.ph*100}%;background:var(--win)"></i><i class="d" style="width:${L.pd*100}%"></i><i class="a" style="width:${L.pa*100}%"></i></div>
+  const L=m.live; if(!L) return `<div id="liveBox"></div>`;
+  const st=L.stats;
+  const bar=(label,x,y,suf="")=>x==null||y==null?"":`<div class="lsrow"><span class="num">${x}${suf}</span><div class="lsbar"><i style="width:${x+y>0?x/(x+y)*100:50}%"></i></div><span class="num">${y}${suf}</span><small>${label}</small></div>`;
+  return `<div class="livebox" id="liveBox">
+    <div class="row"><span class="tag live"><span class="dot live pulse"></span>สด นาที ${L.min}</span><span class="spacer"></span><b class="num" style="font-size:20px;color:var(--win)">${m.h.score}–${m.a.score}</b></div>
+    ${st?`<div class="lstats">${bar("ยิงเข้ากรอบ",st.h.sot,st.a.sot)}${bar("ยิงทั้งหมด",st.h.shots,st.a.shots)}${bar("ครองบอล",st.h.poss!=null?Math.round(st.h.poss):null,st.a.poss!=null?Math.round(st.a.poss):null,"%")}${bar("เตะมุม",st.h.corners,st.a.corners)}${st.h.red||st.a.red?`<div class="lsrow red"><span class="num">${st.h.red||0}</span><div></div><span class="num">${st.a.red||0}</span><small>ใบแดง</small></div>`:""}</div>`:""}
+    <div class="sc-k" style="margin-top:12px;text-align:left">โอกาสตอนนี้ (ขยับตามเกมสด)</div>
+    <div class="probbar" style="height:8px;margin-top:8px"><i class="h" style="width:${L.ph*100}%;background:var(--win)"></i><i class="d" style="width:${L.pd*100}%"></i><i class="a" style="width:${L.pa*100}%"></i></div>
     <div class="problabels num"><span>${esc(m.h.short)} <b>${pct(L.ph)}</b></span><span>เสมอ <b>${pct(L.pd)}</b></span><span>${esc(m.a.short)} <b>${pct(L.pa)}</b></span></div>
-    <div class="note" style="margin-top:8px">สกอร์จบที่น่าจะเป็น <b class="num" style="color:var(--fg)">${L.final.h}-${L.final.a}</b> · มีประตูเพิ่มอีก ${pct(L.pMore)}</div></div>`;
+    <div class="funs" style="margin-top:12px">
+      <div><em>ทายสกอร์จบ (สด)</em><b class="num">${L.final.h}-${L.final.a} <span class="faint" style="font-weight:400">${pct(L.final.p)}</span></b></div>
+      <div><em>ประตูต่อไป</em><b>${L.pMore<.15?"น่าจะไม่มีแล้ว":`${L.next.h>=L.next.a?esc(m.h.short):esc(m.a.short)} ${pct(Math.max(L.next.h,L.next.a))}`}</b></div>
+      <div><em>จบสูง 2.5</em><b class="num">${pct(L.over25)}</b></div>
+      <div><em>มีประตูเพิ่ม</em><b class="num">${pct(L.pMore)}</b></div>
+    </div>
+    <div class="scorechips">${L.top.map((c,i)=>`<span class="${i===0?"best":""}"><b class="num">${c.h}-${c.a}</b><small class="num">${pct(c.p)}</small></span>`).join("")}</div>
+    <div class="note" style="margin-top:10px">${liveCommentary(m)}</div></div>`;
+}
+function liveCommentary(m){
+  const L=m.live, lead=m.h.score>m.a.score?m.h.short:m.a.score>m.h.score?m.a.short:null;
+  const fav=L.ph>=L.pa?m.h.short:m.a.short, pf=Math.max(L.ph,L.pa);
+  const parts=[`นาที ${L.min} ${lead?`${lead} นำอยู่`:"ยังเสมอ"} ${m.h.score}–${m.a.score}`];
+  parts.push(...L.notes);
+  parts.push(pf>=.75?`${fav} คุมผลไว้แน่น โอกาสชนะ ${pct(pf)}`:pf>=.5?`${fav} ยังมีภาษีกว่า ${pct(pf)}`:`เกมยังเปิด ลุ้นได้ทุกทาง เสมอ ${pct(L.pd)}`);
+  parts.push(`ที่เหลือคาด ${m.h.short} ยิงอีก ${L.rh.toFixed(2)} ลูก ${m.a.short} ${L.ra.toFixed(2)} ลูก`);
+  return esc(parts.join(" · "));
+}
+function verdictBadges(m, short){
+  const v=verdict(m); if(!v) return "";
+  const b=(ok,label,push)=>`<span class="vb ${push?"push":ok?"ok":"no"}">${push?"–":ok?"✓":"✗"} ${label}</span>`;
+  const resName=v.res.pred==="h"?m.h.short:v.res.pred==="a"?m.a.short:"เสมอ";
+  return `<span class="vbs">${b(v.res.ok,short?"ผลชนะ":`ทาย${v.res.pred==="d"?"เสมอ":resName+" ชนะ"}`)}${b(v.ou.ok,short?"สูงต่ำ":`ทาย${v.ou.pred==="o"?"สูง":"ต่ำ"} 2.5`)}${v.hdp?b(v.hdp.ok,short?"แฮนดิแคป":`แฮนดิแคป ${v.hdp.side==="h"?m.h.short:m.a.short}`,v.hdp.push):""}${v.exact.ok?b(true,`สกอร์ตรง ${v.exact.pred}`):short?"":b(false,`สกอร์ ${v.exact.pred}`)}</span>`;
+}
+function verdictCard(m){
+  const v=verdict(m); if(!v) return "";
+  const row=(label,pred,ok,extra="",push=false)=>`<div class="vrow"><span>${label}</span><span>${pred}</span><span class="vb ${push?"push":ok?"ok":"no"}">${push?"คืนทุน":ok?"✓ ถูก":"✗ ผิด"}</span></div>${extra}`;
+  const resName=v.res.pred==="h"?m.h.short:v.res.pred==="a"?m.a.short:"เสมอ";
+  const n=[v.res.ok,v.ou.ok,v.exact.ok,v.btts.ok,v.hdp?.ok].filter(x=>x===true).length, tot=v.hdp?5:4;
+  return `<div class="verdictcard"><div class="row"><b>ผลการทายคู่นี้</b><span class="spacer"></span><span class="tag ${n>=tot/2?"value":"warn"}">ถูก ${n}/${tot}</span></div>
+    <div class="vrows">
+      ${row("ผลการแข่งขัน",`${v.res.pred==="d"?"เสมอ":resName+" ชนะ"} <small class="num">${pct(v.res.p)}</small>`,v.res.ok)}
+      ${row("สูง/ต่ำ 2.5",`${v.ou.pred==="o"?"สูง":"ต่ำ"} <small class="num">${pct(v.ou.p)}</small>`,v.ou.ok)}
+      ${v.hdp?row("แฮนดิแคป",`${v.hdp.side==="h"?esc(m.h.short)+" "+signed(v.hdp.line):esc(m.a.short)+" "+signed(-v.hdp.line)}`,v.hdp.ok,"",v.hdp.push):""}
+      ${row("ทั้งสองทีมยิง",v.btts.pred?"ยิงทั้งคู่":"ไม่ยิงทั้งคู่",v.btts.ok)}
+      ${row("ทายสกอร์",`<span class="num">${v.exact.pred}</span>`,v.exact.ok)}
+    </div>
+    <p class="note">จบจริง ${m.h.score}–${m.a.score} · ${v.frozen?"เทียบกับที่ทายไว้ก่อนเตะ (บันทึกตอนเตะ)":"ไม่ได้บันทึกตอนก่อนเตะในเครื่องนี้ ใช้ตัวเลขของโมเดลตอนนี้แทน"}</p></div>`;
 }
 const HTFT_NAME=(m,k)=>{ const n=c=>c==="h"?m.h.short:c==="a"?m.a.short:"เสมอ"; return `${n(k[0])} / ${n(k[1])}`; };
 function scoreCard(m){
@@ -1878,6 +2006,7 @@ function sheetOverview(m){
       </div>
       <div class="scorechips">${m.sum.top.map((c,i)=>`<span class="${i===0?"best":""}"><b class="num">${c.h}-${c.a}</b><small class="num">${pct(c.p)}</small></span>`).join("")}</div>
     </div>
+    ${verdictCard(m)}
     ${liveBox(m)}
     ${botCard(m)}
     ${scoreCard(m)}

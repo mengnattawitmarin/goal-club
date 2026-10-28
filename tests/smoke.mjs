@@ -43,14 +43,23 @@ try {
   await A.goBack(); await A.waitForTimeout(300);
   check("back button closes the sheet", !(await A.isVisible("#sheet")));
 
+  // live: step to 1st half, re-render and open the live match
+  await fetch(`${BASE}/step`); await A.evaluate(() => refresh(S.date, false)); await A.waitForTimeout(1200);
+  await A.click('#view .pcard[data-open="9001"]'); await A.waitForTimeout(800);
+  const live = await A.evaluate(() => document.querySelector("#liveBox")?.innerText || "");
+  check("live box shows match stats and a live score prediction", live.includes("ยิงเข้ากรอบ") && live.includes("ทายสกอร์จบ"), live.slice(0, 80).replace(/\s+/g, " "));
+  check("live model moves with the game (home dominating)", await A.evaluate(() => S.open.live.ph > S.open.sum.home));
+  await A.goBack(); await A.waitForTimeout(300);
   const B = await device();
   await B.goto(BASE); await B.waitForTimeout(2500);
   check("second device sees the same picks", (await B.evaluate(() => Object.keys(Shared.picks[S.date] || {}).length)) >= 1);
 
-  for (let i = 0; i < 4; i++) await fetch(`${BASE}/step`);
+  for (let i = 0; i < 3; i++) await fetch(`${BASE}/step`);
   await A.evaluate(() => refresh(S.date, false)); await A.waitForTimeout(1500);
   const card = await A.evaluate(() => document.querySelector('[data-open="9001"]')?.innerText || "");
   check("full-time score shown", card.includes("2") && card.includes("1"));
+  const badges = await A.evaluate(() => document.querySelector('#view [data-open="9001"] .vbs')?.innerText || "");
+  check("finished match shows right/wrong for winner and over/under", /ผล|ทาย/.test(badges) && /สูง|ต่ำ/.test(badges), badges.replace(/\s+/g, " "));
   await B.evaluate(() => syncPull(S.date)); await B.waitForTimeout(300);
   check("pick settled and visible on the other device", (await B.evaluate(() => Shared.pickHist.length)) >= 1);
   check("result stored for learning", (await B.evaluate(() => Shared.histN)) >= 1);

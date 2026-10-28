@@ -91,7 +91,7 @@ function matchRow(m, lead){
     <span class="tm">${badge(m.h,"sm")}<span>${esc(m.h.short)}</span></span>
     <span class="r" style="grid-row:span 2">${right}</span>
     <span class="tm">${badge(m.a,"sm")}<span>${esc(m.a.short)}</span></span>
-    <span class="meta">${m.mk?.spread?`<span><b>${esc(ahPhrase(m.h.short,m.a.short,m.mk.spread.line))}</b></span>`:`<span>ทาย ${m.sum.top[0].h}-${m.sum.top[0].a}</span>`}<span>สูง 2.5 ${pct(m.sum.over25)}</span>${v?`<span class="tag value">มีค่า ${pts(v.edge)}</span>`:""}${isGoal(m)?`<span class="tag value">ประตู!</span>`:""}</span>
+    <span class="meta">${m.st==="post"&&m.h.score!=null?verdictBadges(m,true):m.mk?.spread?`<span><b>${esc(ahPhrase(m.h.short,m.a.short,m.mk.spread.line))}</b></span>`:`<span>ทาย ${m.sum.top[0].h}-${m.sum.top[0].a}</span>`}<span>สูง 2.5 ${pct(m.sum.over25)}</span>${v?`<span class="tag value">มีค่า ${pts(v.edge)}</span>`:""}${isGoal(m)?`<span class="tag value">ประตู!</span>`:""}</span>
   </button>`;
 }
 function skeleton(n=3){
@@ -195,7 +195,7 @@ function progCard(m){
   return `<div class="pcard${liveCls(m)}" role="button" tabindex="0" data-open="${m.id}">
     <div class="pc-head"><span class="flag" aria-hidden="true">${flagOf(m)}</span><span class="lg">${esc(lg(m))}</span>${isGoal(m)?`<span class="tag value">ประตู!</span>`:""}${m.st==="pre"?`<span class="time num">${kickTime(m.ko)}</span>`:stateTag(m)}${starBtn(m)}</div>
     ${side(m.h,m.h.score)}${side(m.a,m.a.score)}
-    <div class="pc-foot">${m.live?`<span class="num" style="color:var(--win)">ตอนนี้ ${esc(m.h.short)} ${pct(m.live.ph)} · เสมอ ${pct(m.live.pd)} · ${esc(m.a.short)} ${pct(m.live.pa)}</span>`:`<span class="num">${esc(m.h.short)} ${pct(m.sum.home)} · เสมอ ${pct(m.sum.draw)} · ${esc(m.a.short)} ${pct(m.sum.away)}</span>`}${m.mk?.spread?`<span><b>${esc(ahPhrase(m.h.short,m.a.short,m.mk.spread.line))}</b></span>`:""}${v?`<span class="tag value">มีค่า ${pts(v.edge)}</span>`:""}</div>
+    <div class="pc-foot">${m.st==="post"&&m.h.score!=null?verdictBadges(m):""}${m.live?`<span class="num" style="color:var(--win)">ตอนนี้ ${esc(m.h.short)} ${pct(m.live.ph)} · เสมอ ${pct(m.live.pd)} · ${esc(m.a.short)} ${pct(m.live.pa)} · ทายจบ ${m.live.final.h}-${m.live.final.a}</span>`:m.st==="post"?"":`<span class="num">${esc(m.h.short)} ${pct(m.sum.home)} · เสมอ ${pct(m.sum.draw)} · ${esc(m.a.short)} ${pct(m.sum.away)}</span>`}${m.mk?.spread?`<span><b>${esc(ahPhrase(m.h.short,m.a.short,m.mk.spread.line))}</b></span>`:""}${v?`<span class="tag value">มีค่า ${pts(v.edge)}</span>`:""}</div>
   </div>`;
 }
 function spark(vals, color){
@@ -228,7 +228,7 @@ function viewHome(){
   ${favs.length&&!S.q?sec("ทีมโปรดวันนี้")+`<div class="list">${favs.map(m=>matchRow(m)).join("")}</div>`:""}
   ${sec(live.length?"โปรแกรมถัดไป":"โปรแกรม",`เวลาไทย · ${upcoming.length} คู่`,`<button class="act" data-goto="schedule:all">ดูตามลีก</button>`)}
   ${upcoming.length?`<div class="stack">${upcoming.map(progCard).join("")}</div>`:`<div class="card muted" style="text-align:center">${ms.length?"ไม่มีคู่ที่ยังไม่เตะในตัวกรองนี้":"ไม่มีคู่ที่ตรงกับตัวกรอง"}</div>`}
-  ${done.length?sec("ผลการแข่งขัน",`จบแล้ว ${done.length} คู่`)+`<div class="list">${done.slice().reverse().map(m=>matchRow(m)).join("")}</div>`:""}`;
+  ${done.length?sec("ผลการแข่งขัน",(()=>{ const vs=done.map(verdict).filter(Boolean); if(!vs.length) return `จบแล้ว ${done.length} คู่`; const c=k=>vs.filter(v=>v[k]?.ok).length; const hd=vs.filter(v=>v.hdp&&!v.hdp.push); return `ทายผลชนะถูก ${c("res")}/${vs.length} · สูงต่ำ ${c("ou")}/${vs.length}${hd.length?` · แฮนดิแคป ${hd.filter(v=>v.hdp.ok).length}/${hd.length}`:""} · สกอร์ตรง ${c("exact")}`; })())+`<div class="list">${done.slice().reverse().map(m=>matchRow(m)).join("")}</div>`:""}`;
 }
 function viewSchedule(){
   const day=getDay(S.date);
@@ -484,11 +484,53 @@ function scorerLuck(m){
   return {byName, list, best:list.find(x=>x.luck.score>0)||null};
 }
 function liveBox(m){
-  const L=m.live; if(!L) return "";
-  return `<div class="livebox"><div class="row"><span class="tag live"><span class="dot live pulse"></span>ตอนนี้ นาที ${L.min}</span><span class="spacer"></span><span class="faint" style="font-size:12px">คำนวณจากสกอร์ปัจจุบัน + เวลาที่เหลือ</span></div>
-    <div class="probbar" style="height:8px;margin-top:12px"><i class="h" style="width:${L.ph*100}%;background:var(--win)"></i><i class="d" style="width:${L.pd*100}%"></i><i class="a" style="width:${L.pa*100}%"></i></div>
+  const L=m.live; if(!L) return `<div id="liveBox"></div>`;
+  const st=L.stats;
+  const bar=(label,x,y,suf="")=>x==null||y==null?"":`<div class="lsrow"><span class="num">${x}${suf}</span><div class="lsbar"><i style="width:${x+y>0?x/(x+y)*100:50}%"></i></div><span class="num">${y}${suf}</span><small>${label}</small></div>`;
+  return `<div class="livebox" id="liveBox">
+    <div class="row"><span class="tag live"><span class="dot live pulse"></span>สด นาที ${L.min}</span><span class="spacer"></span><b class="num" style="font-size:20px;color:var(--win)">${m.h.score}–${m.a.score}</b></div>
+    ${st?`<div class="lstats">${bar("ยิงเข้ากรอบ",st.h.sot,st.a.sot)}${bar("ยิงทั้งหมด",st.h.shots,st.a.shots)}${bar("ครองบอล",st.h.poss!=null?Math.round(st.h.poss):null,st.a.poss!=null?Math.round(st.a.poss):null,"%")}${bar("เตะมุม",st.h.corners,st.a.corners)}${st.h.red||st.a.red?`<div class="lsrow red"><span class="num">${st.h.red||0}</span><div></div><span class="num">${st.a.red||0}</span><small>ใบแดง</small></div>`:""}</div>`:""}
+    <div class="sc-k" style="margin-top:12px;text-align:left">โอกาสตอนนี้ (ขยับตามเกมสด)</div>
+    <div class="probbar" style="height:8px;margin-top:8px"><i class="h" style="width:${L.ph*100}%;background:var(--win)"></i><i class="d" style="width:${L.pd*100}%"></i><i class="a" style="width:${L.pa*100}%"></i></div>
     <div class="problabels num"><span>${esc(m.h.short)} <b>${pct(L.ph)}</b></span><span>เสมอ <b>${pct(L.pd)}</b></span><span>${esc(m.a.short)} <b>${pct(L.pa)}</b></span></div>
-    <div class="note" style="margin-top:8px">สกอร์จบที่น่าจะเป็น <b class="num" style="color:var(--fg)">${L.final.h}-${L.final.a}</b> · มีประตูเพิ่มอีก ${pct(L.pMore)}</div></div>`;
+    <div class="funs" style="margin-top:12px">
+      <div><em>ทายสกอร์จบ (สด)</em><b class="num">${L.final.h}-${L.final.a} <span class="faint" style="font-weight:400">${pct(L.final.p)}</span></b></div>
+      <div><em>ประตูต่อไป</em><b>${L.pMore<.15?"น่าจะไม่มีแล้ว":`${L.next.h>=L.next.a?esc(m.h.short):esc(m.a.short)} ${pct(Math.max(L.next.h,L.next.a))}`}</b></div>
+      <div><em>จบสูง 2.5</em><b class="num">${pct(L.over25)}</b></div>
+      <div><em>มีประตูเพิ่ม</em><b class="num">${pct(L.pMore)}</b></div>
+    </div>
+    <div class="scorechips">${L.top.map((c,i)=>`<span class="${i===0?"best":""}"><b class="num">${c.h}-${c.a}</b><small class="num">${pct(c.p)}</small></span>`).join("")}</div>
+    <div class="note" style="margin-top:10px">${liveCommentary(m)}</div></div>`;
+}
+function liveCommentary(m){
+  const L=m.live, lead=m.h.score>m.a.score?m.h.short:m.a.score>m.h.score?m.a.short:null;
+  const fav=L.ph>=L.pa?m.h.short:m.a.short, pf=Math.max(L.ph,L.pa);
+  const parts=[`นาที ${L.min} ${lead?`${lead} นำอยู่`:"ยังเสมอ"} ${m.h.score}–${m.a.score}`];
+  parts.push(...L.notes);
+  parts.push(pf>=.75?`${fav} คุมผลไว้แน่น โอกาสชนะ ${pct(pf)}`:pf>=.5?`${fav} ยังมีภาษีกว่า ${pct(pf)}`:`เกมยังเปิด ลุ้นได้ทุกทาง เสมอ ${pct(L.pd)}`);
+  parts.push(`ที่เหลือคาด ${m.h.short} ยิงอีก ${L.rh.toFixed(2)} ลูก ${m.a.short} ${L.ra.toFixed(2)} ลูก`);
+  return esc(parts.join(" · "));
+}
+function verdictBadges(m, short){
+  const v=verdict(m); if(!v) return "";
+  const b=(ok,label,push)=>`<span class="vb ${push?"push":ok?"ok":"no"}">${push?"–":ok?"✓":"✗"} ${label}</span>`;
+  const resName=v.res.pred==="h"?m.h.short:v.res.pred==="a"?m.a.short:"เสมอ";
+  return `<span class="vbs">${b(v.res.ok,short?"ผลชนะ":`ทาย${v.res.pred==="d"?"เสมอ":resName+" ชนะ"}`)}${b(v.ou.ok,short?"สูงต่ำ":`ทาย${v.ou.pred==="o"?"สูง":"ต่ำ"} 2.5`)}${v.hdp?b(v.hdp.ok,short?"แฮนดิแคป":`แฮนดิแคป ${v.hdp.side==="h"?m.h.short:m.a.short}`,v.hdp.push):""}${v.exact.ok?b(true,`สกอร์ตรง ${v.exact.pred}`):short?"":b(false,`สกอร์ ${v.exact.pred}`)}</span>`;
+}
+function verdictCard(m){
+  const v=verdict(m); if(!v) return "";
+  const row=(label,pred,ok,extra="",push=false)=>`<div class="vrow"><span>${label}</span><span>${pred}</span><span class="vb ${push?"push":ok?"ok":"no"}">${push?"คืนทุน":ok?"✓ ถูก":"✗ ผิด"}</span></div>${extra}`;
+  const resName=v.res.pred==="h"?m.h.short:v.res.pred==="a"?m.a.short:"เสมอ";
+  const n=[v.res.ok,v.ou.ok,v.exact.ok,v.btts.ok,v.hdp?.ok].filter(x=>x===true).length, tot=v.hdp?5:4;
+  return `<div class="verdictcard"><div class="row"><b>ผลการทายคู่นี้</b><span class="spacer"></span><span class="tag ${n>=tot/2?"value":"warn"}">ถูก ${n}/${tot}</span></div>
+    <div class="vrows">
+      ${row("ผลการแข่งขัน",`${v.res.pred==="d"?"เสมอ":resName+" ชนะ"} <small class="num">${pct(v.res.p)}</small>`,v.res.ok)}
+      ${row("สูง/ต่ำ 2.5",`${v.ou.pred==="o"?"สูง":"ต่ำ"} <small class="num">${pct(v.ou.p)}</small>`,v.ou.ok)}
+      ${v.hdp?row("แฮนดิแคป",`${v.hdp.side==="h"?esc(m.h.short)+" "+signed(v.hdp.line):esc(m.a.short)+" "+signed(-v.hdp.line)}`,v.hdp.ok,"",v.hdp.push):""}
+      ${row("ทั้งสองทีมยิง",v.btts.pred?"ยิงทั้งคู่":"ไม่ยิงทั้งคู่",v.btts.ok)}
+      ${row("ทายสกอร์",`<span class="num">${v.exact.pred}</span>`,v.exact.ok)}
+    </div>
+    <p class="note">จบจริง ${m.h.score}–${m.a.score} · ${v.frozen?"เทียบกับที่ทายไว้ก่อนเตะ (บันทึกตอนเตะ)":"ไม่ได้บันทึกตอนก่อนเตะในเครื่องนี้ ใช้ตัวเลขของโมเดลตอนนี้แทน"}</p></div>`;
 }
 const HTFT_NAME=(m,k)=>{ const n=c=>c==="h"?m.h.short:c==="a"?m.a.short:"เสมอ"; return `${n(k[0])} / ${n(k[1])}`; };
 function scoreCard(m){
@@ -538,6 +580,7 @@ function sheetOverview(m){
       </div>
       <div class="scorechips">${m.sum.top.map((c,i)=>`<span class="${i===0?"best":""}"><b class="num">${c.h}-${c.a}</b><small class="num">${pct(c.p)}</small></span>`).join("")}</div>
     </div>
+    ${verdictCard(m)}
     ${liveBox(m)}
     ${botCard(m)}
     ${scoreCard(m)}

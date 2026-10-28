@@ -255,6 +255,21 @@ function marketLambdas(m, modelTotal){
   return best.e<.01 ? {lh:best.lh, la:best.la, fromTotal:tOver!=null} : null;
 }
 
+/* ---------- in-play stats: shots, shots on target, possession, red cards (from scoreboard or summary) ---------- */
+function statMap(list){ const o={}; for(const x of list||[]){ const k=String(x.name||x.label||"").toLowerCase().replace(/[^a-z]/g,""); const v=parseFloat(String(x.displayValue??x.value??"").replace("%","")); if(k&&Number.isFinite(v)) o[k]=v; } return o; }
+function liveStatsOf(comps, details, H, A){
+  const pick=t=>{ const o=statMap(t?.statistics); return {shots:o.totalshots??o.shots??null, sot:o.shotsontarget??o.ontargetshots??null, poss:o.possessionpct??o.possession??null, corners:o.woncorners??o.cornerkicks??null, red:0}; };
+  const h=pick(H), a=pick(A);
+  for(const d of details||[]){ if(d.redCard||/red card/i.test(d.type?.text||"")){ const tid=String(d.team?.id??""); if(tid===String(H?.team?.id)) h.red++; else if(tid===String(A?.team?.id)) a.red++; } }
+  const any=[h.shots,h.sot,h.poss,a.shots,a.sot,a.poss].some(v=>v!=null)||h.red||a.red;
+  return any?{h,a}:null;
+}
+function liveStatsFromSummary(p){
+  const T=p?.boxscore?.teams||[]; const H=T.find(t=>t.homeAway==="home")||T[0], A=T.find(t=>t.homeAway==="away")||T[1]; if(!H||!A) return null;
+  const pick=t=>{ const o=statMap(t.statistics); return {shots:o.totalshots??o.shots??null, sot:o.shotsontarget??null, poss:o.possessionpct??null, corners:o.woncorners??null, red:o.redcards??0}; };
+  return {h:pick(H), a:pick(A)};
+}
+
 /* ---------- in-play: remaining expected goals on top of the current score ---------- */
 function matchMinute(m){
   if(m.st!=="in") return null;
@@ -266,10 +281,32 @@ function matchMinute(m){
 function liveModel(m){
   const min=matchMinute(m); if(min==null||m.h.score==null) return null;
   const left=Math.max(0,(94-min)/94);
-  const g=grid(Math.max(.01,m.lh*left),Math.max(.01,m.la*left));
-  let ph=0,pd=0,pa=0,best={p:0}; g.forEach((r,i)=>r.forEach((p,j)=>{ const H=m.h.score+i, A=m.a.score+j; if(H>A) ph+=p; else if(H===A) pd+=p; else pa+=p; if(p>best.p) best={p,h:H,a:A}; }));
-  const pMore=1-g[0][0];
-  return {min, ph, pd, pa, final:best, pMore};
+  let rh=m.lh*left, ra=m.la*left; const notes=[];
+  /* momentum: who is creating more than the pre-match model expected (shots on target, then shots) */
+  const L=m.ls||m.raw?.ls||m.ds?.ls;
+  if(L){
+    const expShare=m.lh/(m.lh+m.la), k=Math.min(1,min/60)*.5;
+    const sh=(L.h.sot!=null&&L.a.sot!=null&&L.h.sot+L.a.sot>=3)?{x:L.h.sot,y:L.a.sot,n:"ยิงเข้ากรอบ"}:(L.h.shots!=null&&L.a.shots!=null&&L.h.shots+L.a.shots>=6)?{x:L.h.shots,y:L.a.shots,n:"ยิง"}:null;
+    if(sh){
+      const obs=(sh.x+1)/(sh.x+sh.y+2), mh=clamp((obs/expShare)**k,.7,1.4), ma=clamp(((1-obs)/(1-expShare))**k,.7,1.4);
+      rh*=mh; ra*=ma;
+      if(Math.abs(mh-1)>.05||Math.abs(ma-1)>.05) notes.push(`${sh.n} ${sh.x}–${sh.y} ${mh>ma?m.h.short:m.a.short}คุมเกมกว่าที่คาด ขยับโอกาสยิงที่เหลือ ${m.h.short} ${mh>1?"+":""}${Math.round((mh-1)*100)}% ${m.a.short} ${ma>1?"+":""}${Math.round((ma-1)*100)}%`);
+    }
+    if(L.h.red||L.a.red){
+      const d=(L.h.red||0)-(L.a.red||0);
+      if(d>0){ rh*=.7; ra*=1.25; notes.push(`${m.h.short} โดนใบแดง ${L.h.red} ใบ เหลือคนน้อยกว่า`); }
+      if(d<0){ ra*=.7; rh*=1.25; notes.push(`${m.a.short} โดนใบแดง ${L.a.red} ใบ เหลือคนน้อยกว่า`); }
+    }
+    if(L.h.poss!=null&&L.a.poss!=null) notes.push(`ครองบอล ${Math.round(L.h.poss)}–${Math.round(L.a.poss)}%`);
+  }
+  /* late game: a trailing side pushes, the leader sits back */
+  if(min>=70&&m.h.score!==m.a.score){ const lead=m.h.score>m.a.score?"h":"a"; if(lead==="h"){ ra*=1.1; rh*=.95; } else { rh*=1.1; ra*=.95; } }
+  const g=grid(Math.max(.01,rh),Math.max(.01,ra));
+  let ph=0,pd=0,pa=0,over=0; const cells=[];
+  g.forEach((r,i)=>r.forEach((p,j)=>{ const H=m.h.score+i, A=m.a.score+j; if(H>A) ph+=p; else if(H===A) pd+=p; else pa+=p; if(H+A>=3) over+=p; cells.push({h:H,a:A,p}); }));
+  cells.sort((a,b)=>b.p-a.p);
+  const pMore=1-g[0][0], next={h:pMore*rh/(rh+ra), a:pMore*ra/(rh+ra)};
+  return {min, ph, pd, pa, final:cells[0], top:cells.slice(0,4), pMore, over25:over, next, rh, ra, notes, stats:L||null};
 }
 
 /* ---------- extra markets from the same expected goals ---------- */
@@ -460,10 +497,36 @@ function settlePick(p, hs, as){
 }
 const RES_LABEL={win:"เข้า",half:"เข้าครึ่ง",push:"คืนทุน",halflose:"เสียครึ่ง",lose:"ไม่เข้า"};
 
+/* ---------- pre-match calls, frozen at kickoff, and the verdict after full time ---------- */
+function preCall(m){
+  const top=m.sum.top[0], res=m.sum.home>=m.sum.away&&m.sum.home>=m.sum.draw?"h":m.sum.away>=m.sum.draw?"a":"d";
+  const c={d:bkkDateOf(m.ko),res,ph:+m.sum.home.toFixed(3),pd:+m.sum.draw.toFixed(3),pa:+m.sum.away.toFixed(3),ou:m.sum.over25>=.5?"o":"u",o25:+m.sum.over25.toFixed(3),sh:top.h,sa:top.a,btts:m.sum.btts>=.5};
+  if(m.mk?.spread){ const hc=cover(hdpSplit(m.g,m.mk.spread.line)); c.line=m.mk.spread.line; c.side=hc>=.5?"h":"a"; c.cv=+Math.max(hc,1-hc).toFixed(3); }
+  return c;
+}
+function freezeCalls(day){
+  if(!day?.matches?.length||day.source==="snapshot") return;
+  const all=store.get("calls",{}); let dirty=false;
+  for(const m of day.matches) if(m.st==="pre"){ const c=preCall(m); if(JSON.stringify(all[m.id])!==JSON.stringify(c)){ all[m.id]=c; dirty=true; } }
+  if(!dirty) return;
+  const cut=shiftDate(bkkToday(),-6); for(const k in all) if(all[k].d<cut) delete all[k];
+  store.set("calls",all);
+}
+function verdict(m){
+  if(m.st!=="post"||m.h.score==null) return null;
+  const c=store.get("calls",{})[m.id]||preCall(m), hs=m.h.score, as=m.a.score;
+  const actual=hs>as?"h":hs===as?"d":"a";
+  const v={frozen:!!store.get("calls",{})[m.id], res:{pred:c.res,ok:c.res===actual,p:c[c.res==="h"?"ph":c.res==="a"?"pa":"pd"]}, ou:{pred:c.ou,ok:(hs+as>=3)===(c.ou==="o"),p:c.ou==="o"?c.o25:1-c.o25},
+    exact:{pred:`${c.sh}-${c.sa}`,ok:c.sh===hs&&c.sa===as}, btts:{pred:c.btts,ok:(hs>0&&as>0)===c.btts}};
+  if(c.line!=null){ const r=settlePick({type:"ah",side:c.side,line:c.line},hs,as); v.hdp={side:c.side,line:c.line,res:r,ok:r==="win"||r==="half",push:r==="push"}; }
+  return v;
+}
+
 /* ---------- learning from finished matches ---------- */
 const sentPred={}, sentRes={};
 function recordDay(date){
   const day=S.days[date]; if(!day?.matches?.length || day.source==="snapshot") return;
+  freezeCalls(day);
   if(Shared.on){
     const now=Date.now(), preds=[], results=[];
     for(const m of day.matches){
@@ -596,7 +659,8 @@ async function loadLiveDay(date, onlySlugs){
         const h=side(H), a=side(A), base=baseLambdas(h,a,tbl?.avg??null);
         const name=c?.status?.type?.name||"", state=c?.status?.type?.state||"pre";
         const clock = state!=="in" ? null : name.includes("HALFTIME") ? "พักครึ่ง" : name.includes("PENALT") ? "ยิงจุดโทษ" : (c?.status?.displayClock||"สด");
-        return {id:ev.id,lg:slug,ko:ev.date,st:name.includes("POSTPONED")?"pp":name.includes("CANCEL")?"pp":state,clock,h,a,lh:base.lh,la:base.la,basis:base.basis,mk:parseMarket(c?.odds?.[0]),ds:null,live:true,lgAvg:tbl?.avg??null};
+        return {id:ev.id,lg:slug,ko:ev.date,st:name.includes("POSTPONED")?"pp":name.includes("CANCEL")?"pp":state,clock,h,a,lh:base.lh,la:base.la,basis:base.basis,mk:parseMarket(c?.odds?.[0]),ds:null,live:true,lgAvg:tbl?.avg??null,
+          ls:state==="pre"?null:liveStatsOf(c?.competitors||[],c?.details||[],H,A)};
       }).filter(Boolean);
     }catch{ return null; }
   });
@@ -638,7 +702,7 @@ async function loadLiveDossier(m){
     const v=p.gameInfo?.venue;
     const players=[...Object.values(leaders[m.h.id]||{}),...Object.values(leaders[m.a.id]||{})].map(x=>({...x,team:x.team===m.h.id?m.h.name:m.a.name,side:x.team===m.h.id?"h":"a"}));
     return {h2h:ser?.summary||null,meet,hf:five(m.h.id),af:five(m.a.id),venue:v?.fullName||null,city:v?.address?.city||null,country:v?.address?.country||null,
-      players, marks:[], lineup: known?{known:true,hMiss:miss(m.h.id),aMiss:miss(m.a.id),starters:[...(starters[m.h.id]||[]),...(starters[m.a.id]||[])]}:null};
+      players, marks:[], ls:liveStatsFromSummary(p), lineup: known?{known:true,hMiss:miss(m.h.id),aMiss:miss(m.a.id),starters:[...(starters[m.h.id]||[]),...(starters[m.a.id]||[])]}:null};
   }catch{ return null; }
 }
 
@@ -807,8 +871,12 @@ document.addEventListener("visibilitychange",()=>{
   if(S.liveOk && (!d?.fetchedAt || d.source!=="live" || Date.now()-Date.parse(d.fetchedAt)>60e3)) refresh(S.date,false); else render();
 });
 function updateSheetScore(nm){
+  if(nm.st==="in"&&S.open?.id===nm.id&&(!S.lsAt||Date.now()-S.lsAt>110e3)){ S.lsAt=Date.now();
+    loadLiveDossier(nm).then(ds=>{ if(ds&&S.open?.id===nm.id){ const cur=S.open; const keep=cur.raw?.ds; const merged=refine({...cur.raw, ds:{...(keep||ds), ls:ds.ls, lineup:ds.lineup||keep?.lineup}}); S.open=merged; const el=$("#liveBox"); if(el) el.outerHTML=liveBox(merged); } }); }
   if(!S.open||S.open.id!==nm.id) return;
   const keepDs=S.open.ds; const merged=keepDs&&!nm.ds?refine({...nm.raw, ds:keepDs}):nm;
   S.open=merged; const mid=$("#sheet .face .mid"); if(mid){ mid.innerHTML=midHtml(merged); mid.classList.toggle("live",merged.st==="in"); }
+  const lb=$("#liveBox"); if(lb) lb.outerHTML=liveBox(merged);
+  if(merged.st==="post"&&S.sheetTab==="overview") paintSheet();
 }
 

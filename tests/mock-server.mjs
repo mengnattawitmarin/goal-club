@@ -43,7 +43,9 @@ const STEPS = [["pre", "STATUS_SCHEDULED", 0, 0, ""], ["in", "STATUS_FIRST_HALF"
 let step = 0;
 const team = (id, name) => ({ id, displayName: name, shortDisplayName: name, logo: `https://a.espncdn.com/i/teamlogos/soccer/500/${id}.png` });
 const ev = (id, h, a, st, ko) => ({ id, date: iso(ko), competitions: [{ status: { displayClock: st[4], type: { name: st[1], state: st[0] } },
-  competitors: [{ homeAway: "home", form: "WWDLW", score: String(st[2]), team: team(...h) }, { homeAway: "away", form: "LDWWL", score: String(st[3]), team: team(...a) }],
+  competitors: [{ homeAway: "home", form: "WWDLW", score: String(st[2]), team: team(...h), statistics: st[0] === "pre" ? [] : [{ name: "shotsOnTarget", displayValue: "6" }, { name: "totalShots", displayValue: "13" }, { name: "possessionPct", displayValue: "61.5" }] },
+    { homeAway: "away", form: "LDWWL", score: String(st[3]), team: team(...a), statistics: st[0] === "pre" ? [] : [{ name: "shotsOnTarget", displayValue: "1" }, { name: "totalShots", displayValue: "4" }, { name: "possessionPct", displayValue: "38.5" }] }],
+  details: step >= 3 && id === "9001" ? [{ type: { text: "Red Card" }, redCard: true, team: { id: a[0] } }] : [],
   odds: [{ provider: { displayName: "DraftKings" }, pointSpread: { home: { close: { line: "-0.5", odds: "-110" } }, away: { close: { line: "+0.5", odds: "-110" } } } }] }] });
 function summary() {
   const d = (k) => new Date(Date.now() - k * 864e5).toISOString();
