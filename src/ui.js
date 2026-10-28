@@ -483,7 +483,6 @@ function scoreCard(m){
 }
 function sheetOverview(m){
   const L=leanOf(m), conf=Math.max(m.sum.home,m.sum.away);
-  const ai=store.get("ana:"+m.id,null);
   const luck=teamLuck(m);
   return `<div class="verdict">
       <div class="vk">${m.st==="pre"?"มุมมองก่อนเกม":m.st==="in"?"มุมมองก่อนเกม · กำลังแข่ง":"มุมมองก่อนเกม · จบแล้ว"}</div>
@@ -498,12 +497,10 @@ function sheetOverview(m){
       <div class="scorechips">${m.sum.top.map((c,i)=>`<span class="${i===0?"best":""}"><b class="num">${c.h}-${c.a}</b><small class="num">${pct(c.p)}</small></span>`).join("")}</div>
     </div>
     ${liveBox(m)}
+    ${botCard(m)}
     ${scoreCard(m)}
     ${sec("บทวิเคราะห์")}
     <div class="card article">${analysisParas(m).map(p=>`<h4>${esc(p.h)}</h4>${p.list?`<ul>${p.list.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>`:`<p>${esc(p.t)}</p>`}`).join("")}
-      ${ai?`<h4>Claude วิเคราะห์เพิ่ม <span class="faint" style="font-weight:400;font-size:12px">${stampTime(ai.at)}</span></h4>${ai.paras.map(t=>`<p>${esc(t)}</p>`).join("")}`:""}
-      ${S.anaErr?`<p style="color:var(--loss);font-size:13px">${esc(S.anaErr)}</p>`:""}
-      <div class="row" style="margin-top:12px"><button class="btn small ghost" id="btnAna" ${S.anaBusy?"disabled":""}>${S.anaBusy?"กำลังเขียน…":ai?"ให้ Claude เขียนใหม่":"ให้ Claude เขียนบทวิเคราะห์เต็ม"}</button></div>
     </div>
     ${sec("ปัจจัยที่ใช้คำนวณ","ผลต่อประตูที่คาดของแต่ละทีม")}
     ${factorRows(m)}
@@ -650,7 +647,7 @@ async function enrichOpen(m, day){
     if(ds){ m.raw.ds=ds; swap(); } else { const el=$("#dsLoading"); if(el) el.textContent="ดึงสถิติเชิงลึกไม่สำเร็จ"; }
   }
   if(window.claude || S.liveOk===false) return;
-  if(Shared.on && !store.get("ana:"+id,null)){ getJson(`/api/analysis?id=${id}`,5000).then(a=>{ if(a?.paras?.length){ store.set("ana:"+id,a); if(S.open?.id===id) paintSheet(); } }).catch(()=>{}); }
+  if(Shared.on && !store.get("bot:"+id,null)){ getJson(`/api/analysis?id=${id}`,5000).then(a=>{ if(a?.text){ store.set("bot:"+id,a); if(S.open?.id===id&&!S.bot[id]) paintSheet(); } }).catch(()=>{}); }
   const cur=S.open; if(!cur||cur.id!==id) return;
   S.ext[id]=S.ext[id]||{};
   const [wx,people]=await Promise.all([S.ext[id].wx?S.ext[id].wx:loadWeather(cur), S.ext[id].people?S.ext[id].people:loadPeople(cur)]);
@@ -665,28 +662,83 @@ function closeSheet(){
 window.addEventListener("popstate",()=>{ if(S.open && !location.hash.startsWith("#match-")){ S.pushed=false; hideSheet(); } });
 
 /* ---------- AI: long analysis for one match ---------- */
-async function runAnalysis(){
-  const m=S.open; if(!m) return;
-  S.anaBusy=true; S.anaErr=""; paintSheet();
-  const data={id:m.id,match:`${m.h.name} - ${m.a.name}`,league:lg(m),kickoffThai:kickTime(m.ko),state:m.st,score:m.st!=="pre"?`${m.h.score}-${m.a.score}`:null,
-    ranks:[m.h.rank,m.a.rank],form:[m.h.form,m.a.form],model:{home:pct(m.sum.home),draw:pct(m.sum.draw),away:pct(m.sum.away),over25:pct(m.sum.over25),btts:pct(m.sum.btts),lambda:[+m.lh.toFixed(2),+m.la.toFixed(2)],topScores:m.sum.top.slice(0,3).map(c=>`${c.h}-${c.a}`)},
-    handicap:m.mk?.spread?ahPhrase(m.h.short,m.a.short,m.mk.spread.line):null,factors:(m.factors||[]).map(f=>`${f.label}: ${f.text}`),
-    h2h:m.meets.map(x=>`${x.date} ${x.f}-${x.a}`),scorers:(m.scorers?.list||[]).slice(0,5).map(p=>`${p.name} (${p.team}) ยิง ${pct(p.pGoal)} ส่ง ${pct(p.pAssist)}`),scoreStory:m.scorers?.story||null,live:m.live?{minute:m.live.min,home:pct(m.live.ph),draw:pct(m.live.pd),away:pct(m.live.pa)}:null,firstHalfGoal:pct(m.extra.goal1H),players:(m.ds?.players||[]).map(p=>`${p.name} (${p.team}) ยิง ${p.goals??"-"} แอส ${p.assists??"-"}`)};
+/* ---------- บอท Goal Club: research + full analysis + ทัศนะบอล ---------- */
+S.bot={};
+function mdLite(t){
+  t=String(t); const k=t.indexOf("## "); if(k>0) t=t.slice(k);   // drop the bot's "let me search" preamble
+  const out=[]; let list=false;
+  for(const raw of String(t).split("\n")){
+    const l=raw.trim(); if(!l){ if(list){ out.push("</ul>"); list=false; } continue; }
+    if(l.startsWith("## ")){ if(list){ out.push("</ul>"); list=false; } out.push(`<h4>${esc(l.slice(3))}</h4>`); }
+    else if(/^[-•] /.test(l)){ if(!list){ out.push("<ul>"); list=true; } out.push(`<li>${esc(l.slice(2))}</li>`); }
+    else { if(list){ out.push("</ul>"); list=false; } out.push(`<p>${esc(l.replace(/\*\*/g,""))}</p>`); }
+  }
+  if(list) out.push("</ul>"); return out.join("");
+}
+function botBody(m){
+  const st=S.bot[m.id], saved=store.get("bot:"+m.id,null);
+  if(st?.busy) return `<div class="botstatus">${st.status.slice(-3).map(s=>`<span><span class="dot live pulse"></span>${esc(s)}</span>`).join("")}</div><div class="article bottext">${mdLite(st.text)}<span class="caret"></span></div>`;
+  if(st?.err) return `<p style="color:var(--loss);font-size:13.5px;margin:0">${esc(st.err)}</p>`;
+  if(saved) return `<div class="article bottext">${mdLite(saved.text)}</div>${saved.sources?.length?`<details class="botsrc"><summary>แหล่งข้อมูล ${saved.sources.length} แหล่ง</summary><ul>${saved.sources.map(s=>`<li><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a></li>`).join("")}</ul></details>`:""}<p class="note">เขียนเมื่อ ${stampTime(saved.at)}${saved.bot?" · ค้นข่าวจากเว็บ":" · ไม่ได้ค้นเว็บ"}</p>`;
+  return `<p class="muted" style="margin:0;font-size:13.5px">บอทจะอ่านตัวเลขทุกอย่างของคู่นี้ในแอป ดึงข้อมูลเชิงลึกจาก ESPN ค้นข่าวล่าสุดจากเว็บ แล้วเขียนเป็นทัศนะบอลพร้อมทายสกอร์และดาวยิง ใช้เวลาราว 20–50 วินาที</p>`;
+}
+function botCard(m){
+  const st=S.bot[m.id], saved=store.get("bot:"+m.id,null);
+  return `<div class="botcard">
+    <div class="bothead"><span class="botav" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="7" width="16" height="12" rx="4"/><path d="M12 3v4M9 12h.01M15 12h.01M9.5 15.5h5"/></svg></span>
+      <div class="bt"><b>บอท Goal Club</b><small>ค้นเว็บ · ใช้โมเดลของแอป · เขียนทัศนะบอล</small></div></div>
+    <div id="botBody">${botBody(m)}</div>
+    <button class="btn${saved?" ghost":""}" id="btnBot" style="width:100%;margin-top:12px" ${st?.busy?"disabled":""}>${st?.busy?"บอทกำลังทำงาน…":saved?"ให้บอทวิเคราะห์ใหม่":"ให้บอทวิเคราะห์บทเต็ม"}</button>
+  </div>`;
+}
+function botPayload(m){
+  const luck=typeof scorerLuck==="function"?scorerLuck(m):null;
+  return {id:m.id,lg:m.lg,match:`${m.h.name} - ${m.a.name}`,league:lg(m),kickoffThai:`${relLabel(bkkDateOf(m.ko))} ${kickTime(m.ko)}`,state:m.st,score:m.st!=="pre"?`${m.h.score}-${m.a.score}`:null,
+    table:{home:{rank:m.h.rank,points:m.h.points,played:m.h.played,gf:m.h.gf,ga:m.h.ga,form:m.h.form},away:{rank:m.a.rank,points:m.a.points,played:m.a.played,gf:m.a.gf,ga:m.a.ga,form:m.a.form}},
+    model:{home:pct(m.sum.home),draw:pct(m.sum.draw),away:pct(m.sum.away),over25:pct(m.sum.over25),btts:pct(m.sum.btts),expectedGoals:[+m.lh.toFixed(2),+m.la.toFixed(2)],topScores:m.sum.top.map(c=>`${c.h}-${c.a} ${pct(c.p)}`),lean:leanOf(m).title},
+    factors:(m.factors||[]).map(f=>`${f.label}: ${f.text}${f.base?"":` (เจ้าบ้าน ${Math.round((f.h-1)*100)}%, เยือน ${Math.round((f.a-1)*100)}%)`}`),
+    market:m.mk?{book:m.mk.book,handicap:m.mk.spread?ahPhrase(m.h.short,m.a.short,m.mk.spread.line):null,total:m.mk.total?.line??null,edges:edgeRows(m).map(r=>`${r.label}: โมเดล ${pct(r.model)} ตลาด ${r.fair!=null?pct(r.fair):"-"}`)}:null,
+    pickCover:m.mk?.spread?(()=>{ const c=cover(hdpSplit(m.g,m.mk.spread.line)); return c>=.5?`${m.h.short} ${signed(m.mk.spread.line)} ${pct(c)}`:`${m.a.short} ${signed(-m.mk.spread.line)} ${pct(1-c)}`; })():null,
+    scorers:(m.scorers?.list||[]).slice(0,6).map(p=>`${p.name} (${p.team}) ยิง ${pct(p.pGoal)} ส่ง ${pct(p.pAssist)} ยิงแรก ${pct(p.pFirst)}`),scoreStory:m.scorers?.story||null,
+    funMarkets:{firstHalfGoal:pct(m.extra.goal1H),firstToScore:m.extra.first.h>=m.extra.first.a?`${m.h.short} ${pct(m.extra.first.h)}`:`${m.a.short} ${pct(m.extra.first.a)}`,htft:m.extra.htftTop.map(([k,p])=>`${HTFT_NAME(m,k)} ${pct(p)}`)},
+    live:m.live?{minute:m.live.min,home:pct(m.live.ph),draw:pct(m.live.pd),away:pct(m.live.pa)}:null,
+    h2h:m.meets.map(x=>`${x.date} ${m.h.short} ${x.f}-${x.a}`),weather:S.ext[m.id]?.wx||null,
+    luckForFun:luck?.list?.length?luck.list.map(p=>`${p.name}: ทักษา${p.luck.taksa} ปี${p.luck.animal} ${p.luck.zodiac} คะแนน ${p.luck.score}`):null};
+}
+async function runBot(){
+  const m=S.open; if(!m) return; const id=m.id;
+  S.bot[id]={busy:true,status:["กำลังเตรียมข้อมูลของคู่นี้"],text:""}; paintSheet();
+  const paint=()=>{ if(S.open?.id!==id) return; const el=$("#botBody"); if(el) el.innerHTML=botBody(S.open); };
+  const st=S.bot[id], data=botPayload(m);
   try{
-    let paras;
     const sample = window.claude ? await window.claude.use("sample") : null;
     if(sample){
-      const out=await sample.json(`เขียนบทวิเคราะห์ฟุตบอลภาษาไทย สำนวนนักข่าวกีฬาปัจจุบัน กระชับแต่มีสีสัน 5-7 ย่อหน้า ใช้เฉพาะข้อมูลที่ให้ ห้ามแต่งชื่อนักเตะ อาการบาดเจ็บ หรือข่าวที่ไม่มี ห้ามชวนเดิมพัน ห้ามอ้างว่าชัวร์ ตอบ JSON {"paras":["ย่อหน้า",...]} ข้อมูล: ${JSON.stringify(data)}`,{modelTier:"default"});
-      paras=out?.paras;
+      st.status.push("หน้านี้ค้นเว็บไม่ได้ บอทเขียนจากข้อมูลในแอป"); paint();
+      const r=await sample(`${"คุณคือบอท Goal Club เขียนทัศนะบอลภาษาไทย สำนวนนักข่าวกีฬาปัจจุบัน ใช้หัวข้อ ## และรายการ - ห้ามแต่งข้อมูล ห้ามชวนเดิมพัน หัวข้อ: ทัศนะบอล, สถานการณ์ล่าสุด, สถิติที่ต้องรู้, ตัวเลขจากโมเดล Goal Club, วิเคราะห์เกม, ทัศนะ (ทิศทางเกม แฮนดิแคปที่โมเดลเอียง สูงต่ำ ทายสกอร์ ดาวยิง ความมั่นใจเป็นดาว), ดวงวันนี้ (เพื่อความสนุก) ปิดท้ายว่าใช้ประกอบการดูบอล ไม่ใช่คำแนะนำให้เดิมพัน"}\nข้อมูล: ${JSON.stringify(data)}`,{modelTier:"default",onText:({text})=>{ st.text=text; paint(); }});
+      st.text=r.text; store.set("bot:"+id,{at:new Date().toISOString(),text:r.text,sources:[],bot:false});
     } else {
-      const out=await getJson("/api/analysis",60000,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});
-      if(out?.error) throw {message:out.error}; paras=out?.paras;
+      const resp=await fetch("/api/analysis",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});
+      if(!resp.ok||!resp.body) throw {message:"เรียกบอทไม่สำเร็จ ลองใหม่อีกครั้ง"};
+      const reader=resp.body.getReader(), dec=new TextDecoder(); let buf="", src=[], err="";
+      for(;;){
+        const {done,value}=await reader.read(); if(done) break;
+        buf+=dec.decode(value,{stream:true}); let i;
+        while((i=buf.indexOf("\n"))>=0){
+          const line=buf.slice(0,i); buf=buf.slice(i+1); let ev; try{ ev=JSON.parse(line); }catch{ continue; }
+          if(ev.t==="text"){ st.text+=ev.d; paint(); }
+          else if(ev.t==="status"){ st.status.push(ev.d); paint(); }
+          else if(ev.t==="src") src=ev.d||[];
+          else if(ev.t==="error") err=ev.d;
+        }
+      }
+      if(!st.text.trim()) throw {message:err||"บอทไม่ได้ส่งบทวิเคราะห์กลับมา ลองใหม่อีกครั้ง"};
+      store.set("bot:"+id,{at:new Date().toISOString(),text:st.text.trim(),sources:src,bot:true});
     }
-    if(!Array.isArray(paras)||!paras.length) throw {message:"เขียนบทวิเคราะห์ไม่สำเร็จ ลองอีกครั้ง"};
-    store.set("ana:"+m.id,{at:new Date().toISOString(),paras:paras.slice(0,8).map(t=>String(t).slice(0,900))});
-  }catch(e){ S.anaErr=e?.code==="not_granted"?"ยังไม่ได้อนุญาตให้หน้านี้ถาม Claude":e?.message&&!/fetch|abort|\d{3}/i.test(e.message)?e.message:"ยังเรียก Claude ไม่ได้ ตรวจว่าใส่ ANTHROPIC_API_KEY ใน Vercel แล้ว"; }
-  S.anaBusy=false; paintSheet();
+    delete S.bot[id];
+  }catch(e){ S.bot[id]={err:e?.code==="not_granted"?"ยังไม่ได้อนุญาตให้หน้านี้ถาม Claude":e?.message||"บอททำงานไม่สำเร็จ ลองใหม่อีกครั้ง"}; }
+  if(S.open?.id===id) paintSheet();
 }
+
 /* news-based adjustments returned by the daily brief */
 function applyBriefAdj(date){
   const b=store.get("brief:"+date,null), day=S.days[date]; if(!day?.matches?.length) return;
@@ -795,7 +847,7 @@ function toggleFav(id){
 
 /* ---------- events ---------- */
 document.addEventListener("click",e=>{
-  const t=e.target.closest("#btnFilter,[data-drawer],[data-fav],[data-open],[data-date],[data-set],[data-goto],[data-act],[data-unfav],[data-tab],#btnBrief,#btnAna,#btnBack,#btnSearch,#btnRefresh");
+  const t=e.target.closest("#btnFilter,[data-drawer],[data-fav],[data-open],[data-date],[data-set],[data-goto],[data-act],[data-unfav],[data-tab],#btnBrief,#btnBot,#btnBack,#btnSearch,#btnRefresh");
   if(!t) return;
   const d=t.dataset;
   if(t.id==="btnFilter"){ S.filterOpen=!S.filterOpen; return render(); }
@@ -817,7 +869,7 @@ document.addEventListener("click",e=>{
   if(d.act==="refresh"){ S.liveOk=null; return refresh(S.date,true); }
   if(d.act==="clear"){ try{ Object.keys(localStorage).filter(k=>k.startsWith("gc:day:")||k.startsWith("gc:brief:")).forEach(k=>localStorage.removeItem(k)); }catch{} toast("ล้างข้อมูลที่เก็บไว้แล้ว ทีมโปรดยังอยู่"); S.liveOk=null; return refresh(S.date,false); }
   if(t.id==="btnBrief") return runBrief();
-  if(t.id==="btnAna") return runAnalysis();
+  if(t.id==="btnBot") return runBot();
   if(t.id==="btnSearch"){ const r=$("#searchRow"); r.hidden=!r.hidden; if(!r.hidden) $("#q").focus(); else { S.q=""; $("#q").value=""; render(); } return; }
   if(t.id==="btnRefresh"){ S.liveOk=null; return refresh(S.date,true); }
 });

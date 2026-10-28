@@ -37,6 +37,9 @@ try {
   check("model factors applied", ["h2h", "pace", "venue", "rest", "lineup"].every((k) => factors.includes(k)), factors.join(","));
   for (const t of ["market", "stats", "luck", "overview"]) { await A.click(`[data-set="sheetTab:${t}"]`); await A.waitForTimeout(150); }
   check("sheet tabs switch without errors", errors.length === 0);
+  await A.click('[data-set="sheetTab:overview"]'); await A.click("#btnBot"); await A.waitForTimeout(1200);
+  const botText = await A.evaluate(() => document.querySelector("#botBody")?.innerText || "");
+  check("bot streams an analysis with sources", botText.includes("ทัศนะบอล ทดสอบ") && botText.includes("แหล่งข้อมูล"), botText.slice(0, 60).replace(/\s+/g, " "));
   await A.goBack(); await A.waitForTimeout(300);
   check("back button closes the sheet", !(await A.isVisible("#sheet")));
 

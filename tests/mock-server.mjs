@@ -75,7 +75,13 @@ http.createServer(async (req, res) => {
   if (u.pathname === "/reset") { step = 0; db.clear(); return res.end("ok"); }
   if (u.pathname === "/api/espn") { const j = espn(u); if (!j) res.statusCode = 404; return json(j || {}); }
   if (u.pathname === "/api/brief") return json({ at: new Date().toISOString(), summary: "สรุปทดสอบ", notes: [{ match: "Arsenal - Chelsea", text: "ทดสอบ" }], players: [], headlines: [{ source: "BBC Sport", title: "Test headline", url: "https://www.bbc.co.uk/sport" }], adjust: [] });
-  if (u.pathname === "/api/analysis") return json(req.method === "GET" ? {} : { at: new Date().toISOString(), paras: ["ย่อหน้าทดสอบ 1", "ย่อหน้าทดสอบ 2"] });
+  if (u.pathname === "/api/analysis") {
+    if (req.method === "GET") return json({});
+    res.setHeader("content-type", "application/x-ndjson");
+    const lines = [{ t: "status", d: "กำลังค้น: test query" }, { t: "text", d: "## ทัศนะบอล ทดสอบ\nย่อหน้าแรก\n" }, { t: "text", d: "## ทัศนะ\n- ทายสกอร์: 2-1\n" }, { t: "src", d: [{ url: "https://example.com", title: "แหล่งทดสอบ" }] }, { t: "done" }];
+    for (const l of lines) { res.write(JSON.stringify(l) + "\n"); await new Promise((r) => setTimeout(r, 60)); }
+    return res.end();
+  }
   if (u.pathname === "/api/store") {
     let b = ""; req.on("data", (d) => (b += d)); await new Promise((r) => req.on("end", r));
     const r2 = { status(c) { res.statusCode = c; return r2; }, setHeader: (k, v) => res.setHeader(k, v), json };

@@ -26,7 +26,7 @@ public/            ไฟล์ที่ขึ้นเว็บ: index.html (�
 api/espn.js        ตัวกลางดึง ESPN ฝั่งเซิร์ฟเวอร์ (allowlist path, แคช CDN)
 api/store.js       ข้อมูลร่วมทุกเครื่อง (Upstash Redis): ฟันธง, คำทำนาย, ผลจริง, ผลงานย้อนหลัง, calibration, ข่าว
 api/brief.js       บทวิเคราะห์ประจำวัน: อ่าน RSS BBC/Guardian + ESPN news แล้วเรียก Claude
-api/analysis.js    บทวิเคราะห์ยาวรายคู่ด้วย Claude (แคชใน Redis)
+api/analysis.js    บอท Goal Club: ค้นเว็บ (web_search) + ข้อมูล ESPN + ตัวเลขทั้งหมดของแอป แล้วเขียนทัศนะบอล สตรีมเป็น NDJSON (แคช ana2:<id>)
 lib/kv.js          Upstash REST client (หา env ได้ทุก prefix)
 tests/             mock-server.mjs (ฟีด ESPN + Redis ปลอม) และ smoke.mjs (ทดสอบ end-to-end)
 ```
@@ -76,7 +76,7 @@ npm test           # build + ทดสอบ end-to-end (ครั้งแร�
 | `pickhist` | list (เก็บ 1000) | ผลฟันธงที่ตัดสินแล้ว `{d, id, label, type, prob, match, res}` |
 | `newsteam` | hash teamId → JSON | ข่าวที่พาไปนัดถัดไป `{e, reason, d}` |
 | `brief:YYYY-MM-DD` | string JSON | บทวิเคราะห์ประจำวัน |
-| `ana:<matchId>` | string JSON | บทวิเคราะห์ยาวของ Claude |
+| `ana2:<matchId>` | string JSON, หมดอายุ 5 วัน | ทัศนะบอลจากบอท `{at, text, sources, bot}` |
 ถ้าไม่ได้ต่อ Redis แอปยังทำงานได้ โดยเก็บข้อมูลเหล่านี้ใน localStorage ของแต่ละเครื่อง (prefix `gc:`)
 
 ## Environment Variables (ตั้งใน Vercel)
