@@ -1,4 +1,6 @@
 {
+  "buildCommand": "node scripts/build.mjs",
+  "installCommand": "echo skip install",
   "outputDirectory": "public",
   "headers": [
     {
