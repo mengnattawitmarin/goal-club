@@ -17,209 +17,297 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Taviraj:wght@500;600&family=Sarabun:wght@400;500;600;700&display=swap">
 <style>
-/* Layout: one phone-width column (max 640px), sticky gold-ruled header, fixed 5-tab bar, match sheet slides over the board */
+/* Layout: one phone-width column (max 680px). Sticky header = brand row + date strip + status.
+   Five tabs, each with one job: หน้าหลัก (today at a glance), โปรแกรม (full list), วิเคราะห์ (picks & prices),
+   ทีมโปรด, เพิ่มเติม (settings & guides). Match detail is a full-screen sheet with three tabs. */
 :root{
-  --bg:#0c0b09; --surface:#16140f; --surface-2:#221e17; --line:#3c3428;
-  --fg:#f7f1e6; --muted:#b5aa9a; --faint:#7d7365;
+  --bg:#0c0b09; --surface:#15130f; --surface-2:#201c16; --surface-3:#2a251d; --line:#342d23; --line-soft:#26211a;
+  --fg:#f7f1e6; --muted:#b5aa9a; --faint:#7f7567;
   --gold:#f0cc86; --gold-deep:#c9a35b; --gold-ink:#1c1408;
   --win:#8fc79a; --draw:#d9c48a; --loss:#e08b7a;
   --font-display:"Taviraj","Sarabun",Georgia,serif;
   --font-body:"Sarabun",system-ui,-apple-system,"Segoe UI",sans-serif;
-  --r-lg:18px; --r-md:12px; --r-sm:8px;
+  --r-lg:16px; --r-md:12px; --r-sm:8px;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px;
   color-scheme:dark;
 }
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 html,body{background:var(--bg);color:var(--fg)}
-body{font-family:var(--font-body);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;overflow-x:clip}
+body{font-family:var(--font-body);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;overflow-x:clip;-webkit-tap-highlight-color:transparent}
 body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:40;background:var(--bg)}
 button,input,select{font:inherit;color:inherit}
-button{cursor:pointer;background:none;border:0;padding:0}
+button{cursor:pointer;background:none;border:0;padding:0;text-align:inherit}
+a{color:inherit}
 :focus-visible{outline:2px solid var(--gold);outline-offset:2px;border-radius:6px}
 ::selection{background:var(--gold);color:var(--gold-ink)}
 .num{font-variant-numeric:tabular-nums}
-.serif{font-family:var(--font-display);font-weight:500;letter-spacing:.01em}
-.muted{color:var(--muted)} .faint{color:var(--faint)}
-.wrap{max-width:640px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.muted{color:var(--muted)} .faint{color:var(--faint)} .gold{color:var(--gold)} .green{color:var(--win)}
+.wrap{max-width:680px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.stack{display:flex;flex-direction:column;gap:var(--s3)}
+.row{display:flex;gap:var(--s2);align-items:center;flex-wrap:wrap}
+.spacer{flex:1}
 
-/* header */
-.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:30;background:color-mix(in srgb,var(--bg) 94%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid color-mix(in srgb,var(--gold) 22%,transparent)}
-.top .wrap{display:flex;align-items:center;gap:10px;padding-block:10px}
+/* ---------- header ---------- */
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:30;background:color-mix(in srgb,var(--bg) 95%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line-soft)}
+.brandrow{display:flex;align-items:center;gap:var(--s2);padding-block:10px 6px}
 .brand{display:flex;align-items:center;gap:8px;flex:1;min-width:0}
-.brand svg{flex:none}
-.brand b{font-family:var(--font-display);font-weight:600;font-size:22px;color:var(--gold);line-height:1}
-.iconbtn{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;color:var(--gold);border:1px solid color-mix(in srgb,var(--gold) 30%,transparent)}
+.brand b{font-family:var(--font-display);font-weight:600;font-size:21px;color:var(--gold);line-height:1}
+.iconbtn{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;color:var(--gold);border:1px solid color-mix(in srgb,var(--gold) 26%,transparent);flex:none}
 .iconbtn:hover{background:var(--surface-2)}
 .iconbtn.spin svg{animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
-.search{padding-bottom:10px}
-.search input{width:100%;height:42px;border-radius:var(--r-md);border:1px solid var(--line);background:var(--surface);padding:0 14px}
-.status{font-size:12px;color:var(--faint);padding-bottom:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.dot{width:6px;height:6px;border-radius:50%;background:var(--gold-deep);display:inline-block}
-.dot.live{background:var(--win)}
+.searchrow{padding-bottom:8px}
+.searchrow input{width:100%;height:42px;border-radius:var(--r-md);border:1px solid var(--line);background:var(--surface);padding:0 14px;font-size:15px}
+.datestrip{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-block:4px 8px;scroll-snap-type:x proximity}
+.datestrip::-webkit-scrollbar{display:none}
+.dchip{flex:none;min-width:64px;padding:6px 10px;border-radius:12px;border:1px solid var(--line);background:var(--surface);display:flex;flex-direction:column;align-items:center;line-height:1.2;scroll-snap-align:start}
+.dchip .d1{font-size:12.5px;font-weight:600;color:var(--fg)}
+.dchip .d2{font-size:11px;color:var(--faint)}
+.dchip.on{background:var(--gold);border-color:var(--gold)}
+.dchip.on .d1,.dchip.on .d2{color:var(--gold-ink)}
+.dchip.has-live{border-color:color-mix(in srgb,var(--win) 60%,transparent)}
+.status{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--faint);padding-bottom:8px;min-height:22px}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--gold-deep);display:inline-block;flex:none}
+.dot.live{background:var(--win)} .dot.bad{background:var(--loss)}
+.dot.pulse{animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.35}}
 
-/* chips */
-.chips{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding-block:4px 12px}
-.chips::-webkit-scrollbar{display:none}
-.chip{flex:none;height:34px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--muted);font-size:13px;font-weight:500;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
-.chip.on{background:var(--gold);color:var(--gold-ink);border-color:var(--gold)}
-.chip .n{font-size:11px;opacity:.75}
-select.chip{appearance:none;padding-right:28px;background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);background-position:calc(100% - 16px) 15px,calc(100% - 11px) 15px;background-size:5px 5px;background-repeat:no-repeat}
+main{padding-top:var(--s3);padding-bottom:calc(88px + env(safe-area-inset-bottom,0px))}
 
-main{padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))}
-.stack{display:flex;flex-direction:column;gap:12px}
-h2.sec{font-family:var(--font-display);font-weight:500;font-size:20px;color:var(--gold);margin:22px 0 10px;text-wrap:balance}
-h2.sec small{font-family:var(--font-body);font-size:12px;color:var(--faint);font-weight:400;margin-left:6px}
-.rule{height:1px;width:72px;background:var(--gold);margin-top:10px}
+/* ---------- section heads ---------- */
+.sec{display:flex;align-items:baseline;gap:var(--s2);margin:var(--s5) 0 var(--s3)}
+.sec:first-child{margin-top:var(--s2)}
+.sec h2{font-family:var(--font-display);font-weight:500;font-size:19px;color:var(--gold);margin:0;text-wrap:balance}
+.sec .sub{font-size:12px;color:var(--faint)}
+.sec .act{margin-left:auto;font-size:13px;color:var(--gold);font-weight:500;white-space:nowrap}
+.pagetitle{font-family:var(--font-display);font-weight:500;font-size:24px;color:var(--gold);margin:var(--s2) 0 var(--s1)}
+.pagelead{margin:0 0 var(--s4);color:var(--muted);font-size:13.5px}
 
-/* hero */
-.hero{position:relative;border-radius:var(--r-lg);padding:20px 20px 18px;background:linear-gradient(160deg,#2a2218 0%,#14110d 70%);box-shadow:0 0 0 1px color-mix(in srgb,var(--gold) 34%,transparent);overflow:hidden;margin-top:6px}
-.hero .eyebrow{font-size:11px;letter-spacing:.14em;color:var(--gold-deep);font-weight:600}
-.hero h1{font-family:var(--font-display);font-weight:600;font-size:34px;line-height:1.05;margin:6px 0 2px;color:var(--gold)}
-.hero p{margin:0;color:var(--muted);max-width:30ch;position:relative}
-.hero .tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:14px;position:relative;z-index:1}
-.hero .tags span{font-size:12px;padding:3px 10px;border-radius:999px;border:1px solid color-mix(in srgb,var(--gold) 35%,transparent);color:var(--fg)}
-.ball{position:absolute;right:-34px;top:-30px;width:124px;height:124px;border-radius:50%;
-  background:radial-gradient(circle at 35% 30%,#fff3cf 0%,#f0cc86 26%,#b98a3c 62%,#5b3f17 100%);opacity:.92}
-.ball::after{content:"";position:absolute;inset:0;border-radius:50%;
-  background:conic-gradient(from 18deg,transparent 0 52deg,rgba(28,20,8,.28) 52deg 72deg,transparent 72deg 124deg,rgba(28,20,8,.28) 124deg 144deg,transparent 144deg 196deg,rgba(28,20,8,.28) 196deg 216deg,transparent 216deg 268deg,rgba(28,20,8,.28) 268deg 288deg,transparent 288deg 340deg,rgba(28,20,8,.28) 340deg 360deg);
-  -webkit-mask:radial-gradient(circle,transparent 30%,#000 31%);mask:radial-gradient(circle,transparent 30%,#000 31%)}
+/* ---------- controls ---------- */
+.seg{display:flex;padding:3px;border-radius:12px;background:var(--surface);border:1px solid var(--line);gap:2px;overflow-x:auto;scrollbar-width:none}
+.seg::-webkit-scrollbar{display:none}
+.seg button{flex:1;min-width:max-content;height:34px;padding:0 12px;border-radius:9px;font-size:13.5px;font-weight:500;color:var(--muted);text-align:center;white-space:nowrap}
+.seg button.on{background:var(--surface-3);color:var(--gold);box-shadow:0 0 0 1px color-mix(in srgb,var(--gold) 30%,transparent)}
+.seg button .n{font-size:11px;opacity:.7;margin-left:4px}
+.toolbar{display:flex;gap:var(--s2);align-items:center;margin-bottom:var(--s3);flex-wrap:wrap}
+.toolbar .seg{flex:1 1 260px}
+.select{appearance:none;height:40px;border-radius:12px;border:1px solid var(--line);background:var(--surface);padding:0 34px 0 12px;font-size:13.5px;color:var(--fg);max-width:100%;
+  background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 18px) 17px,calc(100% - 13px) 17px;background-size:5px 5px;background-repeat:no-repeat}
+.select.on{border-color:var(--gold);color:var(--gold)}
+.btn{height:42px;padding:0 16px;border-radius:var(--r-md);background:var(--gold);color:var(--gold-ink);font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;white-space:nowrap}
+.btn.ghost{background:transparent;color:var(--gold);border:1px solid color-mix(in srgb,var(--gold) 40%,transparent)}
+.btn.small{height:34px;padding:0 12px;font-size:13px}
+.btn:disabled{opacity:.55;cursor:default}
+.tag{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:6px;font-size:11.5px;font-weight:600;background:var(--surface-2);color:var(--muted);white-space:nowrap}
+.tag.value{background:color-mix(in srgb,var(--win) 18%,transparent);color:var(--win)}
+.tag.live{background:color-mix(in srgb,var(--win) 18%,transparent);color:var(--win)}
+.tag.gold{background:color-mix(in srgb,var(--gold) 16%,transparent);color:var(--gold)}
+.tag.warn{background:color-mix(in srgb,var(--loss) 16%,transparent);color:var(--loss)}
 
-/* cards */
-.card{border-radius:var(--r-lg);background:var(--surface);border:1px solid var(--line);padding:14px}
-.card.gold{background:linear-gradient(180deg,#221c14 0%,#14110d 100%);border-color:color-mix(in srgb,var(--gold) 32%,transparent)}
-.match{display:block;width:100%;text-align:left}
-.match:hover{border-color:color-mix(in srgb,var(--gold) 45%,transparent)}
+/* ---------- surfaces ---------- */
+.card{border-radius:var(--r-lg);background:var(--surface);border:1px solid var(--line);padding:var(--s4)}
+.card.gold{background:linear-gradient(180deg,#211b13 0%,#14110d 100%);border-color:color-mix(in srgb,var(--gold) 30%,transparent)}
+.card.flat{padding:0;overflow:hidden}
+.note{font-size:12.5px;color:var(--faint);margin:var(--s2) 0 0}
+.empty{text-align:center;padding:var(--s6) var(--s4)}
+.empty h3{font-family:var(--font-display);font-weight:500;font-size:19px;color:var(--gold);margin:0 0 6px}
+.empty p{margin:0 0 var(--s4);color:var(--muted)}
+
+/* welcome */
+.welcome{position:relative;overflow:hidden;border-radius:var(--r-lg);padding:var(--s4) var(--s4) var(--s4);background:linear-gradient(160deg,#2a2218 0%,#14110d 72%);box-shadow:0 0 0 1px color-mix(in srgb,var(--gold) 32%,transparent)}
+.welcome .eyebrow{font-size:11px;letter-spacing:.14em;color:var(--gold-deep);font-weight:600}
+.welcome h1{font-family:var(--font-display);font-weight:600;font-size:28px;line-height:1.05;margin:4px 0 4px;color:var(--gold)}
+.welcome p{margin:0;color:var(--muted);font-size:13.5px;max-width:30ch;position:relative}
+.welcome .tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:var(--s3);position:relative}
+.welcome .tags span{font-size:11.5px;padding:2px 9px;border-radius:999px;border:1px solid color-mix(in srgb,var(--gold) 32%,transparent)}
+.welcome .x{position:absolute;right:10px;bottom:10px;font-size:12px;color:var(--faint);padding:4px 6px;z-index:1}
+.ball{position:absolute;right:-30px;top:-34px;width:118px;height:118px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff3cf 0%,#f0cc86 26%,#b98a3c 62%,#5b3f17 100%);opacity:.9}
+.ball::after{content:"";position:absolute;inset:0;border-radius:50%;background:conic-gradient(from 18deg,transparent 0 52deg,rgba(28,20,8,.28) 52deg 72deg,transparent 72deg 124deg,rgba(28,20,8,.28) 124deg 144deg,transparent 144deg 196deg,rgba(28,20,8,.28) 196deg 216deg,transparent 216deg 268deg,rgba(28,20,8,.28) 268deg 288deg,transparent 288deg 340deg,rgba(28,20,8,.28) 340deg 360deg);-webkit-mask:radial-gradient(circle,transparent 30%,#000 31%);mask:radial-gradient(circle,transparent 30%,#000 31%)}
+
+/* summary tiles */
+.tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s2)}
+.tile{border-radius:var(--r-md);background:var(--surface);border:1px solid var(--line);padding:10px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.tile:hover{border-color:color-mix(in srgb,var(--gold) 40%,transparent)}
+.tile .k{font-size:11.5px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile .v{font-family:var(--font-display);font-size:26px;line-height:1.1;color:var(--fg)}
+.tile.live .v{color:var(--win)} .tile.value .v{color:var(--gold)}
+
+/* team badge + logo */
+.badge{position:relative;width:28px;height:28px;flex:none;border-radius:50%;display:grid;place-items:center;font-size:10.5px;font-weight:700;letter-spacing:.02em;color:#1a140c;overflow:hidden}
+.badge.sm{width:22px;height:22px;font-size:9px}
+.badge.lg{width:60px;height:60px;font-size:17px}
+.badge .logo{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;padding:2px;background:var(--surface-2);border-radius:50%}
+.badge.lg .logo{padding:6px}
+.pills{display:flex;gap:3px;flex:none}
+.pill{width:16px;height:16px;border-radius:4px;font-size:9.5px;font-weight:700;display:grid;place-items:center;color:#14100a}
+.pill.W{background:var(--win)} .pill.D{background:var(--draw)} .pill.L{background:var(--loss)}
+
+/* big match card (home) */
+.mcard{display:block;width:100%;border-radius:var(--r-lg);background:var(--surface);border:1px solid var(--line);padding:14px}
+.mcard:hover{border-color:color-mix(in srgb,var(--gold) 40%,transparent)}
 .mhead{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
 .mhead .lg{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.star{width:30px;height:30px;display:grid;place-items:center;border-radius:50%;color:var(--faint)}
-.star.on{color:var(--gold)}
-.star.on svg{fill:var(--gold)}
+.star{width:30px;height:30px;display:grid;place-items:center;border-radius:50%;color:var(--faint);flex:none}
+.star.on{color:var(--gold)} .star.on svg{fill:var(--gold)}
 .teams{display:grid;grid-template-columns:1fr auto;gap:8px 10px;margin-top:8px;align-items:center}
 .team{display:flex;align-items:center;gap:10px;min-width:0}
 .team .nm{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .team .rk{font-size:11px;color:var(--faint);flex:none}
-.badge{position:relative;width:30px;height:30px;flex:none;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700;letter-spacing:.02em;color:#1a140c;overflow:hidden}
-.badge .logo{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;padding:2px;background:var(--surface-2);border-radius:50%}
-.face .badge .logo{padding:5px}
-.card.match.is-live{border-color:color-mix(in srgb,var(--win) 60%,transparent);background:linear-gradient(180deg,color-mix(in srgb,var(--win) 14%,var(--surface)) 0%,var(--surface) 75%)}
-.card.match.is-live .score{color:var(--win);font-weight:600}
-.card.match.is-live .probbar .h{background:var(--win)}
-.li.is-live{background:color-mix(in srgb,var(--win) 11%,var(--surface));box-shadow:inset 3px 0 0 var(--win)}
-.li.is-live .t{color:var(--win);font-weight:600}
-.li.is-live .r b{color:var(--win)}
-.card.goal{box-shadow:0 0 0 2px var(--win);animation:goalflash 1.2s ease-out 2}
-@keyframes goalflash{50%{box-shadow:0 0 0 6px color-mix(in srgb,var(--win) 35%,transparent)}}
-.score{font-family:var(--font-display);font-size:22px;color:var(--fg);text-align:right;min-width:24px}
-.pills{display:flex;gap:3px;flex:none}
-.pill{width:16px;height:16px;border-radius:4px;font-size:9.5px;font-weight:700;display:grid;place-items:center;color:#14100a}
-.pill.W{background:var(--win)} .pill.D{background:var(--draw)} .pill.L{background:var(--loss)}
-.probbar{display:flex;height:8px;border-radius:999px;overflow:hidden;margin-top:12px;background:var(--surface-2)}
+.score{font-family:var(--font-display);font-size:22px;text-align:right;min-width:24px;line-height:1}
+.probbar{display:flex;height:6px;border-radius:999px;overflow:hidden;margin-top:12px;background:var(--surface-2);gap:2px}
 .probbar i{display:block;height:100%}
 .probbar .h{background:var(--gold)} .probbar .d{background:#6e6250} .probbar .a{background:#e8e0d2}
 .problabels{display:flex;justify-content:space-between;font-size:12px;margin-top:6px;color:var(--muted)}
 .problabels b{color:var(--fg);font-weight:600}
 .mfoot{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);font-size:12.5px;color:var(--muted)}
 .mfoot b{color:var(--gold);font-weight:600}
-.tag{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:6px;font-size:11.5px;font-weight:600;background:var(--surface-2);color:var(--muted)}
-.tag.value{background:color-mix(in srgb,var(--win) 20%,transparent);color:var(--win)}
-.tag.live{background:color-mix(in srgb,var(--win) 18%,transparent);color:var(--win)}
-.tag.gold{background:color-mix(in srgb,var(--gold) 18%,transparent);color:var(--gold)}
 
-.btn{height:42px;padding:0 16px;border-radius:var(--r-md);background:var(--gold);color:var(--gold-ink);font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:8px}
-.btn.ghost{background:transparent;color:var(--gold);border:1px solid color-mix(in srgb,var(--gold) 40%,transparent)}
-.btn:disabled{opacity:.55;cursor:default}
-.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.empty{text-align:center;padding:28px 16px}
+/* compact match row (lists) */
+.list{border-radius:var(--r-lg);border:1px solid var(--line);background:var(--surface);overflow:hidden}
+.lhead{display:flex;align-items:center;gap:8px;padding:9px 14px;font-size:12px;letter-spacing:.04em;color:var(--gold-deep);background:var(--surface-2);font-weight:600}
+.lhead .n{margin-left:auto;color:var(--faint);font-weight:500}
+.mrow{display:grid;grid-template-columns:50px minmax(0,1fr) auto;gap:4px 10px;align-items:center;padding:10px 14px;border-top:1px solid var(--line-soft);width:100%}
+.lhead + .mrow,.mrow:first-child{border-top:0}
+.mrow:hover{background:var(--surface-2)}
+.mrow .t{font-size:12.5px;color:var(--muted);text-align:left;grid-row:span 2}
+.mrow .tm{display:flex;align-items:center;gap:8px;min-width:0}
+.mrow .tm span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px}
+.mrow .r{text-align:right;font-size:13px;min-width:36px}
+.mrow .r b{font-size:15px}
+.mrow .meta{grid-column:2 / 4;display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11.5px;color:var(--faint);margin-top:2px}
+.mrow .meta b{color:var(--gold);font-weight:600}
+.lrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:11px 14px;border-top:1px solid var(--line-soft);width:100%}
+.lrow:first-child{border-top:0}
+.lrow:hover{background:var(--surface-2)}
+.lrow .main{min-width:0}
+.lrow .main div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lrow .sub{font-size:12px;color:var(--faint)}
+.lrow .r{text-align:right;font-size:13px}
+
+/* live state (green) */
+.is-live.mcard{border-color:color-mix(in srgb,var(--win) 60%,transparent);background:linear-gradient(180deg,color-mix(in srgb,var(--win) 13%,var(--surface)) 0%,var(--surface) 75%)}
+.is-live.mcard .score{color:var(--win);font-weight:600}
+.is-live.mcard .probbar .h{background:var(--win)}
+.is-live.mrow,.is-live.lrow{background:color-mix(in srgb,var(--win) 10%,var(--surface));box-shadow:inset 3px 0 0 var(--win)}
+.is-live.mrow .t,.is-live.mrow .r b{color:var(--win);font-weight:600}
+.goal{box-shadow:0 0 0 2px var(--win)!important;animation:goalflash 1.2s ease-out 2}
+@keyframes goalflash{50%{box-shadow:0 0 0 6px color-mix(in srgb,var(--win) 35%,transparent)!important}}
+
+/* skeleton */
 .skel{display:flex;flex-direction:column;gap:10px}
 .sk{height:12px;border-radius:6px;background:linear-gradient(90deg,var(--surface-2),#2c261d,var(--surface-2));background-size:200% 100%;animation:shimmer 1.2s linear infinite}
-.sk.w40{width:40%}.sk.w70{width:70%}.sk.w60{width:60%}.sk.bar{height:8px;width:100%}
+.sk.w40{width:40%}.sk.w70{width:70%}.sk.w60{width:60%}.sk.bar{height:6px;width:100%}
 @keyframes shimmer{to{background-position:-200% 0}}
-.empty .serif{font-size:20px;color:var(--gold)}
 
-/* list rows */
-.list{border-radius:var(--r-lg);border:1px solid var(--line);background:var(--surface);overflow:hidden}
-.li{display:grid;grid-template-columns:48px 1fr auto;gap:10px;align-items:center;padding:11px 14px;border-top:1px solid var(--line);width:100%;text-align:left}
-.li:first-child{border-top:0}
-.li:hover{background:var(--surface-2)}
-.li .t{font-size:13px;color:var(--muted)}
-.li .mid{min-width:0}
-.li .mid div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.li .r{text-align:right;font-size:13px}
-.grouphead{padding:9px 14px;font-size:12px;letter-spacing:.06em;color:var(--gold-deep);background:var(--surface-2);font-weight:600;display:flex;justify-content:space-between}
-
-/* tables */
-.tbl{width:100%;border-collapse:collapse;font-size:13px}
-.tbl th{font-weight:500;color:var(--faint);text-align:right;padding:6px 4px;font-size:11.5px}
-.tbl th:first-child,.tbl td:first-child{text-align:left}
-.tbl td{padding:8px 4px;border-top:1px solid var(--line);text-align:right}
-.scroll-x{overflow-x:auto}
-
-/* sheet */
-.sheet{position:fixed;inset:0;z-index:50;background:var(--bg);overflow-y:auto;overscroll-behavior:contain;padding-top:env(safe-area-inset-top,0px)}
-.sheet .bar{position:sticky;top:0;z-index:2;background:color-mix(in srgb,var(--bg) 94%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
-.sheet .bar .wrap{display:flex;align-items:center;gap:10px;padding-block:10px}
-.sheet .bar .lg{flex:1;min-width:0;font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.sheet .body{padding-bottom:calc(32px + env(safe-area-inset-bottom,0px))}
-.face{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;text-align:center;margin-top:18px}
-.face .badge{width:56px;height:56px;font-size:16px;margin:0 auto 8px}
-.face .nm{font-weight:600;line-height:1.25;text-wrap:balance}
-.face .mid{font-family:var(--font-display);font-size:30px;color:var(--gold);line-height:1}
-.face .mid small{display:block;font-family:var(--font-body);font-size:12px;color:var(--muted);margin-top:6px}
-.kv{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.kv > div{background:var(--surface-2);border-radius:var(--r-md);padding:10px 12px;min-width:0}
-.kv .k{font-size:11.5px;color:var(--faint)}
-.kv .v{font-size:18px;font-weight:600;color:var(--fg)}
-.kv .v.gold{color:var(--gold)}
-.grid6{display:grid;grid-template-columns:28px repeat(6,1fr);gap:3px;font-size:11.5px}
-.grid6 span{display:grid;place-items:center;height:30px;border-radius:5px}
-.grid6 .hd{color:var(--faint)}
-.statgrid{display:grid;grid-template-columns:1fr auto auto;gap:0;font-size:13px}
-.statgrid > *{padding:8px 0;border-top:1px solid var(--line)}
-.statgrid > .h{border-top:0;color:var(--faint);font-size:11.5px}
-.statgrid > :nth-child(3n+2),.statgrid > :nth-child(3n){text-align:right;padding-left:14px}
-.form-lines{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
-.form-lines span{font-size:12px;padding:2px 7px;border-radius:5px;background:var(--surface-2)}
-.note{font-size:12.5px;color:var(--faint);margin-top:8px}
-.omen{border:1px dashed color-mix(in srgb,var(--gold) 40%,transparent);border-radius:var(--r-lg);padding:14px;background:transparent}
-.swatch{width:18px;height:18px;border-radius:50%;display:inline-block;vertical-align:-4px;margin-right:6px;border:1px solid var(--line)}
-label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--faint);min-width:0;flex:1}
-label.f input,label.f select{height:40px;border-radius:var(--r-sm);border:1px solid var(--line);background:var(--surface-2);padding:0 10px;font-size:15px;width:100%}
-.calc{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-.out{margin-top:10px;font-size:13.5px}
-.brief p{margin:6px 0 0}
+/* brief */
+.brief h3{font-family:var(--font-display);font-weight:500;font-size:18px;color:var(--gold);margin:0}
+.brief p{margin:8px 0 0}
 .brief ul{margin:8px 0 0;padding-left:18px}
 .brief li{margin:4px 0}
+.brief details summary{cursor:pointer;font-size:13px;color:var(--muted);margin-top:10px}
+
+/* picks */
+.pick{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:4px 12px;align-items:center;padding:12px 14px;border-top:1px solid var(--line-soft);width:100%}
+.pick:first-child{border-top:0}
+.pick:hover{background:var(--surface-2)}
+.pick .rank{font-family:var(--font-display);font-size:22px;color:var(--gold-deep);width:22px;text-align:center;grid-row:span 2}
+.pick .ph{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pick .sub{grid-column:2 / 4;font-size:12px;color:var(--faint)}
+.meter{width:64px;height:6px;border-radius:99px;background:var(--surface-3);overflow:hidden;margin-top:4px}
+.meter i{display:block;height:100%;background:var(--gold)}
+
+/* settings / guides */
+.group{border-radius:var(--r-lg);border:1px solid var(--line);background:var(--surface);overflow:hidden}
+.gitem{padding:14px;border-top:1px solid var(--line-soft)}
+.gitem:first-child{border-top:0}
+.gitem .lbl{font-weight:600;margin-bottom:6px}
+.gitem .desc{font-size:13px;color:var(--muted)}
+details.acc{border-top:1px solid var(--line-soft)}
+details.acc:first-child{border-top:0}
+details.acc summary{list-style:none;display:flex;align-items:center;gap:10px;padding:14px;font-weight:600;cursor:pointer}
+details.acc summary::-webkit-details-marker{display:none}
+details.acc summary::after{content:"";margin-left:auto;width:8px;height:8px;border-right:2px solid var(--faint);border-bottom:2px solid var(--faint);transform:rotate(45deg);transition:transform .15s}
+details.acc[open] summary::after{transform:rotate(-135deg)}
+details.acc .body{padding:0 14px 14px;font-size:14px;color:var(--fg)}
 ol.steps{margin:0;padding-left:20px}
 ol.steps li{margin:0 0 10px}
 ol.steps b{color:var(--gold)}
 
-/* nav */
-nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:30;background:color-mix(in srgb,var(--bg) 96%,transparent);backdrop-filter:blur(8px);border-top:1px solid color-mix(in srgb,var(--gold) 25%,transparent);padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
-nav.tabs .in{max-width:640px;margin:0 auto;display:flex}
-nav.tabs a{flex:1;height:62px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:11px;color:var(--muted);text-decoration:none}
+/* ---------- sheet ---------- */
+.sheet{position:fixed;inset:0;z-index:50;background:var(--bg);overflow-y:auto;overscroll-behavior:contain;padding-top:env(safe-area-inset-top,0px)}
+.sheet .bar{position:sticky;top:0;z-index:2;background:color-mix(in srgb,var(--bg) 95%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line-soft)}
+.sheet .bar .wrap{display:flex;align-items:center;gap:10px;padding-block:10px}
+.sheet .bar .lg{flex:1;min-width:0;font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sheet .body{padding-bottom:calc(32px + env(safe-area-inset-bottom,0px))}
+.face{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:start;text-align:center;margin-top:var(--s4)}
+.face .badge{margin:0 auto 8px}
+.face .nm{font-weight:600;line-height:1.25;text-wrap:balance}
+.face .meta{font-size:12px;color:var(--faint);margin-top:2px}
+.face .mid{font-family:var(--font-display);font-size:32px;color:var(--gold);line-height:1;padding-top:14px;min-width:92px}
+.face .mid small{display:block;font-family:var(--font-body);font-size:12px;color:var(--muted);margin-top:6px}
+.face .mid.live{color:var(--win)}
+.sheet .seg{margin-top:var(--s4);position:sticky;top:59px;z-index:1;background:var(--surface)}
+.kv{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s2)}
+.kv > div{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);padding:10px 12px;min-width:0}
+.kv .k{font-size:11.5px;color:var(--faint)}
+.kv .v{font-size:17px;font-weight:600;color:var(--fg)}
+.kv .v.gold{color:var(--gold)}
+.kv .v small{font-size:12px;color:var(--faint);font-weight:400}
+.grid6{display:grid;grid-template-columns:24px repeat(6,minmax(0,1fr));gap:3px;font-size:11.5px}
+.grid6 span{display:grid;place-items:center;height:30px;border-radius:5px}
+.grid6 .hd{color:var(--faint)}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{font-weight:500;color:var(--faint);text-align:right;padding:6px 4px;font-size:11.5px;white-space:nowrap}
+.tbl th:first-child,.tbl td:first-child{text-align:left}
+.tbl td{padding:9px 4px;border-top:1px solid var(--line-soft);text-align:right}
+.scroll-x{overflow-x:auto}
+.statgrid{display:grid;grid-template-columns:minmax(0,1fr) auto auto;font-size:13px}
+.statgrid > *{padding:8px 0;border-top:1px solid var(--line-soft)}
+.statgrid > .h{border-top:0;color:var(--faint);font-size:11.5px}
+.statgrid > :nth-child(3n+2),.statgrid > :nth-child(3n){text-align:right;padding-left:16px}
+.form-lines{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
+.form-lines span{font-size:12px;padding:2px 7px;border-radius:5px;background:var(--surface-2)}
+.omen{border:1px dashed color-mix(in srgb,var(--gold) 38%,transparent);border-radius:var(--r-lg);padding:14px}
+.swatch{width:16px;height:16px;border-radius:50%;display:inline-block;vertical-align:-3px;margin-right:6px;border:1px solid var(--line)}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--faint);min-width:0}
+label.f input,label.f select{height:42px;border-radius:var(--r-sm);border:1px solid var(--line);background:var(--surface-2);padding:0 10px;font-size:15px;width:100%;color:var(--fg)}
+.calc{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s2)}
+.out{margin-top:10px;font-size:13.5px;line-height:1.6}
+
+/* ---------- bottom tabs ---------- */
+nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:30;background:color-mix(in srgb,var(--bg) 96%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid var(--line-soft);padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
+nav.tabs .in{max-width:680px;margin:0 auto;display:flex}
+nav.tabs a{flex:1;height:60px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:11px;color:var(--faint);text-decoration:none;position:relative}
 nav.tabs a.on{color:var(--gold)}
+nav.tabs a.on::before{content:"";position:absolute;top:0;left:30%;right:30%;height:2px;border-radius:2px;background:var(--gold)}
 nav.tabs svg{width:21px;height:21px}
+nav.tabs .badge-n{position:absolute;top:8px;left:calc(50% + 6px);min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--win);color:#0d1a10;font-size:10px;font-weight:700;display:grid;place-items:center}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(76px + env(safe-area-inset-bottom,0px));z-index:60;background:var(--surface-3);color:var(--fg);border:1px solid var(--line);padding:10px 14px;border-radius:12px;font-size:13px;max-width:min(92vw,520px);text-align:center;box-shadow:0 12px 30px -12px #000}
+@media (min-width:560px){ .tiles .tile .v{font-size:30px} }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 
 <header class="top">
   <div class="wrap">
-    <div class="brand">
-      <svg width="26" height="22" viewBox="0 0 26 22" aria-hidden="true"><path d="M2 18 L4 6 L9 11 L13 3 L17 11 L22 6 L24 18 Z" fill="none" stroke="#f0cc86" stroke-width="1.8" stroke-linejoin="round"/><path d="M3 20.5 H23" stroke="#f0cc86" stroke-width="1.8" stroke-linecap="round"/></svg>
-      <b>Goal Club</b>
+    <div class="brandrow">
+      <div class="brand">
+        <svg width="24" height="20" viewBox="0 0 26 22" aria-hidden="true"><path d="M2 18 L4 6 L9 11 L13 3 L17 11 L22 6 L24 18 Z" fill="none" stroke="#f0cc86" stroke-width="1.8" stroke-linejoin="round"/><path d="M3 20.5 H23" stroke="#f0cc86" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <b>Goal Club</b>
+      </div>
+      <button class="iconbtn" id="btnSearch" aria-label="ค้นหาทีม"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
+      <button class="iconbtn" id="btnRefresh" aria-label="ดึงข้อมูลใหม่"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 4v5h-5"/></svg></button>
     </div>
-    <button class="iconbtn" id="btnSearch" aria-label="ค้นหาทีม"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
-    <button class="iconbtn" id="btnRefresh" aria-label="ดึงข้อมูลใหม่"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 4v5h-5"/></svg></button>
+    <div class="searchrow" id="searchRow" hidden><input id="q" type="search" placeholder="ค้นหาทีม เช่น Arsenal" autocomplete="off" aria-label="ค้นหาทีม"></div>
+    <div class="datestrip" id="dates" role="tablist" aria-label="เลือกวันแข่ง"></div>
+    <div class="status" id="status" aria-live="polite"></div>
   </div>
-  <div class="wrap search" id="searchRow" hidden><input id="q" type="search" placeholder="พิมพ์ชื่อทีม เช่น Arsenal" autocomplete="off"></div>
-  <div class="wrap status" id="status"></div>
 </header>
 
 <main class="wrap" id="view"></main>
-<div class="sheet" id="sheet" hidden></div>
-
+<div class="sheet" id="sheet" hidden role="dialog" aria-modal="true" aria-label="รายละเอียดคู่"></div>
 <nav class="tabs" aria-label="เมนูหลัก"><div class="in" id="tabs"></div></nav>
+<div class="toast" id="toast" role="status" hidden></div>
 
 <script>
 /* ---------- embedded snapshot (ESPN feed, saved by the original app) ---------- */
@@ -512,11 +600,11 @@ const S = {
   goals: {},               // matchId -> time a goal was seen
   briefErr: ""
 };
-const TABS=[["home","หน้าหลัก",'<path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/>'],["schedule","โปรแกรม",'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>'],["analyze","วิเคราะห์",'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'],["saved","ทีมโปรด",'<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>'],["more","เพิ่มเติม",'<path d="M4 6h16M4 12h16M4 18h16"/>']];
 
 function snapshotDay(date){
   const d=SNAPSHOT?.[date]; if(!d) return null;
-  return {fetchedAt:d.fetchedAt, matches:d.matches, source:"snapshot"};
+  const old = Date.now()-Date.parse(d.fetchedAt) > 3*3600e3;
+  return {fetchedAt:d.fetchedAt, matches: old ? d.matches.map(m=>m.st==="in"?{...m,st:"unk"}:m) : d.matches, source:"snapshot"};
 }
 function prepare(day){
   const seen=new Set();
@@ -605,55 +693,79 @@ document.addEventListener("visibilitychange",()=>{
 function updateSheetScore(nm){
   if(!S.open||S.open.id!==nm.id) return;
   const keepDs=S.open.ds; const merged=keepDs&&!nm.ds?refine({...nm.raw, ds:keepDs}):nm;
-  S.open=merged; const mid=$("#sheet .face .mid"); if(mid) mid.innerHTML=midHtml(merged);
+  S.open=merged; const mid=$("#sheet .face .mid"); if(mid){ mid.innerHTML=midHtml(merged); mid.classList.toggle("live",merged.st==="in"); }
 }
+
+/* =====================================================================
+   UI — helpers, components, views, match sheet, events, boot
+   ===================================================================== */
+Object.assign(S, {
+  status: "all",          // โปรแกรม filter: all | in | pre | post
+  mode: "picks",          // วิเคราะห์ mode: picks | edge | goals
+  edgeKind: "all",        // all | ah | ou | 1x2
+  sheetTab: "overview",   // overview | market | stats
+  calc: {},
+  welcomeHidden: store.get("welcomeHidden", false)
+});
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
 const esc = s => String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const lg = m => LEAGUE_NAME[m.lg] || m.lg;
+const isFav = m => S.favs[m.h.id] || S.favs[m.a.id];
+const isGoal = m => S.goals[m.id] && Date.now()-S.goals[m.id] < 120e3;
+const liveCls = m => (m.st==="in" ? " is-live" : "") + (isGoal(m) ? " goal" : "");
 function hue(str){ let h=0; for(const c of String(str)) h=(h*31+c.charCodeAt(0))>>>0; return h%360; }
 function logoUrl(u, px){
   if(!u) return null;
   const m=String(u).match(/^https:\/\/a\.espncdn\.com(\/i\/teamlogos\/[^?]+)/);
   return m ? `https://a.espncdn.com/combiner/i?img=${m[1]}&w=${px}&h=${px}` : u;
 }
-function badge(t, px=60){ const h=hue(t.name); const ini=(t.short||t.name).replace(/[^A-Za-zก-๙0-9 ]/g,"").split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join("").toUpperCase()||"?";
+function badge(t, size=""){
+  const px = size==="lg" ? 120 : 56;
+  const ini=(t.short||t.name).replace(/[^A-Za-zก-๙0-9 ]/g,"").split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join("").toUpperCase()||"?";
   const src=S.logos?logoUrl(t.logo,px):null;
-  return `<span class="badge" style="background:hsl(${h} 42% 68%)" aria-hidden="true">${esc(ini)}${src?`<img class="logo" src="${esc(src)}" alt="" loading="lazy" decoding="async">`:""}</span>`; }
+  return `<span class="badge ${size}" style="background:hsl(${hue(t.name)} 42% 68%)" aria-hidden="true">${esc(ini)}${src?`<img class="logo" src="${esc(src)}" alt="" loading="lazy" decoding="async">`:""}</span>`;
+}
 /* a logo that cannot load (offline, blocked) removes itself and the initials show through */
 document.addEventListener("error",e=>{ const t=e.target; if(t?.classList?.contains("logo")){ t.remove(); S.logoFails=(S.logoFails||0)+1; if(S.logoFails>6) S.logos=false; } },true);
-const formPills = f => f ? `<span class="pills">${f.toUpperCase().replace(/[^WDL]/g,"").slice(-5).split("").map(c=>`<span class="pill ${c}">${c}</span>`).join("")}</span>` : `<span class="faint" style="font-size:12px">ยังไม่มีฟอร์ม</span>`;
-const isFav = m => S.favs[m.h.id]||S.favs[m.a.id];
+const formPills = f => f ? `<span class="pills" aria-label="ฟอร์ม ${esc(f)}">${f.toUpperCase().replace(/[^WDL]/g,"").slice(-5).split("").map(c=>`<span class="pill ${c}">${c}</span>`).join("")}</span>` : `<span class="faint" style="font-size:12px">ยังไม่มีฟอร์ม</span>`;
 const starSvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>';
+const starBtn = m => `<button class="star ${isFav(m)?"on":""}" data-fav="${m.id}" aria-label="${isFav(m)?"เอาออกจากทีมโปรด":"เพิ่มทีมโปรด"}">${starSvg}</button>`;
 function stateTag(m){
-  if(m.st==="in") return `<span class="tag live"><span class="dot live" style="margin-right:5px"></span>สด ${esc(m.clock||"")}</span>`;
+  if(m.st==="in") return `<span class="tag live"><span class="dot live pulse"></span>สด ${esc(m.clock||"")}</span>`;
   if(m.st==="post") return `<span class="tag">จบแล้ว</span>`;
-  if(m.st==="pp") return `<span class="tag">เลื่อน</span>`;
+  if(m.st==="pp") return `<span class="tag warn">เลื่อน/ยกเลิก</span>`;
+  if(m.st==="unk") return `<span class="tag">สกอร์ ณ เวลาบันทึก</span>`;
   return `<span class="num" style="color:var(--fg);font-weight:600">${kickTime(m.ko)}</span>`;
 }
-function h2hLine(m){
-  if(!m.ds) return `<span>สถิติพบกัน: ยังไม่ได้ดึง</span>`;
-  if(!m.meets.length) return `<span>สถิติพบกัน: ยังไม่เจอกัน</span>`;
+const timeCell = m => m.st==="in" ? esc(m.clock||"สด") : m.st==="post" ? "จบ" : m.st==="pp" ? "เลื่อน" : m.st==="unk" ? "ค้าง" : kickTime(m.ko);
+function hdpText(m){
+  if(m.mk?.spread) return `<span>แฮนดิแคป <b>${esc(ahPhrase(m.h.short,m.a.short,m.mk.spread.line))}</b></span>`;
+  const t=m.sum.top[0]; return `<span>ยังไม่มีราคา · โมเดลทาย <b class="num">${t.h}-${t.a}</b></span>`;
+}
+function h2hText(m){
+  if(!m.ds) return "";
+  if(!m.meets.length) return `<span>ยังไม่เคยเจอกัน</span>`;
   const avg=m.meets.reduce((s,x)=>s+x.f+x.a,0)/m.meets.length;
   const w=m.meets.filter(x=>x.f>x.a).length, d=m.meets.filter(x=>x.f===x.a).length, l=m.meets.length-w-d;
   return `<span>พบกัน ${m.meets.length} นัด <b class="num">${w}-${d}-${l}</b> · เฉลี่ย <b class="num">${avg.toFixed(1)}</b> ประตู</span>`;
 }
-function hdpLine(m){
-  if(m.mk?.spread) return `<span>แฮนดิแคป <b>${esc(ahPhrase(m.h.short,m.a.short,m.mk.spread.line))}</b></span>`;
-  const t=m.sum.top[0]; return `<span>ยังไม่มีราคา · โมเดลทาย <b class="num">${t.h}-${t.a}</b></span>`;
+const valueRow = m => { if(m.st!=="pre") return null; const b=bestEdge(m); return b && b.edge>=VALUE_EDGE ? b : null; };
+function toast(msg){ const el=$("#toast"); el.textContent=msg; el.hidden=false; clearTimeout(toast.t); toast.t=setTimeout(()=>el.hidden=true,3200); }
+function filtered(day){
+  let ms=day.matches;
+  if(S.q){ const q=S.q.toLowerCase(); ms=ms.filter(m=>(m.h.name+" "+m.a.name+" "+m.h.short+" "+m.a.short).toLowerCase().includes(q)); }
+  if(S.league) ms=ms.filter(m=>m.lg===S.league);
+  return ms;
 }
-let toastT;
-function toast(msg){ let el=$("#toast"); if(!el){ el=document.createElement("div"); el.id="toast"; el.setAttribute("role","status");
-  el.style.cssText="position:fixed;left:50%;transform:translateX(-50%);bottom:calc(78px + env(safe-area-inset-bottom,0px));z-index:60;background:var(--surface-2);color:var(--fg);border:1px solid var(--line);padding:10px 14px;border-radius:12px;font-size:13px;max-width:min(92vw,520px);text-align:center";
-  document.body.appendChild(el);} el.textContent=msg; el.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>el.hidden=true,3200); }
+function sec(title, sub, act){ return `<div class="sec"><h2>${title}</h2>${sub?`<span class="sub">${sub}</span>`:""}${act||""}</div>`; }
 
-/* ---------- views ---------- */
+/* ---------- components ---------- */
 function matchCard(m){
-  const best=bestEdge(m);
-  const goal = S.goals[m.id] && Date.now()-S.goals[m.id] < 120e3;
-  return `<div class="card match${m.st==="in"?" is-live":""}${goal?" goal":""}" role="button" tabindex="0" data-open="${m.id}">
-    <div class="mhead"><span class="lg">${esc(LEAGUE_NAME[m.lg]||m.lg)}</span>${goal?`<span class="tag value">ประตู!</span>`:""}${stateTag(m)}
-      <button class="star ${isFav(m)?"on":""}" data-fav="${m.id}" aria-label="ดาวโปรด">${starSvg}</button></div>
+  const v=valueRow(m);
+  return `<div class="mcard${liveCls(m)}" role="button" tabindex="0" data-open="${m.id}">
+    <div class="mhead"><span class="lg">${esc(lg(m))}</span>${isGoal(m)?`<span class="tag value">ประตู!</span>`:""}${stateTag(m)}${starBtn(m)}</div>
     <div class="teams">
       <div class="team">${badge(m.h)}<span class="nm">${esc(m.h.short)}</span>${m.h.rank?`<span class="rk">#${m.h.rank}</span>`:""}</div>
       ${m.st==="pre"?formPills(m.h.form):`<span class="score num">${m.h.score??"–"}</span>`}
@@ -662,283 +774,312 @@ function matchCard(m){
     </div>
     <div class="probbar" aria-hidden="true"><i class="h" style="width:${m.sum.home*100}%"></i><i class="d" style="width:${m.sum.draw*100}%"></i><i class="a" style="width:${m.sum.away*100}%"></i></div>
     <div class="problabels num"><span>เจ้าบ้าน <b>${pct(m.sum.home)}</b></span><span>เสมอ <b>${pct(m.sum.draw)}</b></span><span>เยือน <b>${pct(m.sum.away)}</b></span></div>
-    <div class="mfoot">${hdpLine(m)}${h2hLine(m)}<span>สูง 2.5 <b class="num">${pct(m.sum.over25)}</b></span>${best&&best.edge>=VALUE_EDGE?`<span class="tag value">มีค่า ${esc(best.label)} ${pts(best.edge)}</span>`:""}</div>
+    <div class="mfoot">${hdpText(m)}<span>สูง 2.5 <b class="num">${pct(m.sum.over25)}</b></span>${h2hText(m)}${v?`<span class="tag value">มีค่า ${esc(v.label)} ${pts(v.edge)}</span>`:""}</div>
   </div>`;
 }
-function dateChips(){
-  const t=bkkToday(); const set=new Set([t,shiftDate(t,1),S.date]);
-  Object.keys(SNAPSHOT||{}).filter(d=>d>=shiftDate(t,-1)).forEach(d=>set.add(d));
-  return `<div class="chips" role="tablist" aria-label="เลือกวัน">${[...set].sort().map(d=>{
-    const n=getDay(d).matches.length; return `<button class="chip ${d===S.date?"on":""}" data-date="${d}">${relLabel(d)}${n?`<span class="n num">${n}</span>`:""}</button>`;}).join("")}</div>`;
+function matchRow(m, lead){
+  const right = m.st==="pre"
+    ? `<div class="num muted">${pct(m.sum.home)}</div><div class="num muted">${pct(m.sum.away)}</div>`
+    : `<div class="num"><b>${m.h.score??"–"}</b></div><div class="num"><b>${m.a.score??"–"}</b></div>`;
+  const v=valueRow(m);
+  return `<button class="mrow${liveCls(m)}" data-open="${m.id}"${lead?` data-day="${lead.date}"`:""}>
+    <span class="t num">${lead?`${esc(lead.label)}<br>`:""}${timeCell(m)}</span>
+    <span class="tm">${badge(m.h,"sm")}<span>${esc(m.h.short)}</span></span>
+    <span class="r" style="grid-row:span 2">${right}</span>
+    <span class="tm">${badge(m.a,"sm")}<span>${esc(m.a.short)}</span></span>
+    <span class="meta">${m.mk?.spread?`<span><b>${esc(ahPhrase(m.h.short,m.a.short,m.mk.spread.line))}</b></span>`:`<span>ทาย ${m.sum.top[0].h}-${m.sum.top[0].a}</span>`}<span>สูง 2.5 ${pct(m.sum.over25)}</span>${v?`<span class="tag value">มีค่า ${pts(v.edge)}</span>`:""}${isGoal(m)?`<span class="tag value">ประตู!</span>`:""}</span>
+  </button>`;
 }
-function loadingDay(){
-  return `<div class="stack" aria-busy="true">${[0,1,2].map(()=>`<div class="card skel"><div class="sk w40"></div><div class="sk w70"></div><div class="sk w60"></div><div class="sk bar"></div></div>`).join("")}<p class="muted" style="text-align:center;font-size:13px">กำลังโหลดโปรแกรมของ${relLabel(S.date)}…</p></div>`;
+function skeleton(n=3){
+  return `<div class="stack" aria-busy="true">${Array.from({length:n},()=>`<div class="card skel"><div class="sk w40"></div><div class="sk w70"></div><div class="sk w60"></div><div class="sk bar"></div></div>`).join("")}<p class="faint" style="text-align:center;font-size:13px;margin:0">กำลังโหลดโปรแกรมของ${relLabel(S.date)}…</p></div>`;
 }
 function emptyDay(){
-  if(S.loading===S.date || (S.liveOk===null && getDay(S.date).source==="none")) return loadingDay();
-  const ds=Object.keys(SNAPSHOT||{}).sort(); const next=ds.find(d=>d>S.date); const sat=nextSaturday(S.date);
-  return `<div class="card empty"><div class="serif">${relLabel(S.date)} ไม่มีคู่ในลีกที่ติดตาม</div>
-    <p class="muted" style="margin:6px 0 14px">${getDay(S.date).source==="none"?"ข้อมูลชุดที่บันทึกไว้ไม่มีโปรแกรมของวันนี้":"ฟีดยังไม่มีโปรแกรมของวันนี้"}</p>
-    <div class="row" style="justify-content:center">${next?`<button class="btn" data-date="${next}">ไปวันถัดไป · ${dayLabel(next)}</button>`:""}<button class="btn ghost" data-date="${sat}">เสาร์นี้ · ${dayLabel(sat)}</button></div></div>`;
-}
-function filtered(day){
-  let ms=day.matches;
-  if(S.q){ const q=S.q.toLowerCase(); ms=ms.filter(m=>(m.h.name+" "+m.a.name+" "+m.h.short+" "+m.a.short).toLowerCase().includes(q)); }
-  if(S.league) ms=ms.filter(m=>m.lg===S.league);
-  return ms;
+  if(S.loading===S.date || (S.liveOk===null && getDay(S.date).source==="none")) return skeleton();
+  const ds=[...new Set([...Object.keys(SNAPSHOT||{}),...Object.keys(S.days).filter(d=>S.days[d].matches.length)])].sort();
+  const next=ds.find(d=>d>S.date), sat=nextSaturday(S.date);
+  return `<div class="card empty"><h3>${relLabel(S.date)}ไม่มีคู่ในลีกที่ติดตาม</h3>
+    <p>${getDay(S.date).source==="none"&&!S.liveOk?"ข้อมูลชุดที่บันทึกไว้ไม่มีโปรแกรมของวันนี้":"ฟีดยังไม่มีโปรแกรมของวันนี้"}</p>
+    <div class="row" style="justify-content:center">${next?`<button class="btn" data-date="${next}">ไปวันถัดไป · ${dayLabel(next)}</button>`:""}${sat!==next?`<button class="btn ghost" data-date="${sat}">เสาร์นี้ · ${dayLabel(sat)}</button>`:""}</div></div>`;
 }
 function leagueSelect(day){
   const counts={}; day.matches.forEach(m=>counts[m.lg]=(counts[m.lg]||0)+1);
-  const opts=LEAGUES.filter(([s])=>counts[s]);
-  return `<select class="chip ${S.league?"on":""}" id="leagueSel" aria-label="ตัวกรองลีก"><option value="">ทุกลีก</option>${opts.map(([s,n])=>`<option value="${s}" ${S.league===s?"selected":""}>${n} (${counts[s]})</option>`).join("")}</select>`;
+  return `<select class="select ${S.league?"on":""}" id="leagueSel" aria-label="เลือกลีก"><option value="">ทุกลีก</option>${LEAGUES.filter(([s])=>counts[s]).map(([s,n])=>`<option value="${s}" ${S.league===s?"selected":""}>${n} (${counts[s]})</option>`).join("")}</select>`;
+}
+function seg(key, opts, cur){
+  return `<div class="seg" role="tablist">${opts.map(([v,l,n])=>`<button role="tab" aria-selected="${cur===v}" class="${cur===v?"on":""}" data-set="${key}:${v}">${l}${n!=null?`<span class="n num">${n}</span>`:""}</button>`).join("")}</div>`;
+}
+function pickRows(picks){
+  return picks.map((p,i)=>`<button class="pick" data-open="${p.m.id}">
+    <span class="rank num">${i+1}</span>
+    <span class="ph">${esc(p.phrase)}</span>
+    <span class="num" style="text-align:right"><b class="gold">${pct(p.cv)}</b><div class="meter"><i style="width:${Math.round(p.cv*100)}%"></i></div></span>
+    <span class="sub">${esc(lg(p.m))} · ${timeCell(p.m)} · เอียง <b style="color:var(--fg)">${esc(p.take)}</b> · ทาย <span class="num">${p.score}</span></span>
+  </button>`).join("");
 }
 function briefCard(day){
   const b=store.get("brief:"+S.date,null);
+  const hosted=!window.claude;
   return `<div class="card gold brief">
-    <div class="row" style="justify-content:space-between"><div class="serif" style="font-size:19px;color:var(--gold)">บทวิเคราะห์วันนี้</div>${b?`<span class="faint" style="font-size:12px">เขียนเมื่อ ${stampTime(b.at)}</span>`:""}</div>
+    <div class="row"><h3>บทวิเคราะห์วันนี้</h3><span class="spacer"></span>${b?`<span class="faint" style="font-size:12px">เขียนเมื่อ ${stampTime(b.at)}</span>`:""}</div>
     ${b?`<p>${esc(b.summary)}</p>${b.notes?.length?`<ul>${b.notes.map(n=>`<li><b>${esc(n.match)}</b> — ${esc(n.text)}</li>`).join("")}</ul>`:""}`
-       :`<p class="muted">กดปุ่มให้ Claude อ่านตัวเลขโมเดลกับราคาตลาดของ ${day.matches.length} คู่${window.claude?"":" พร้อมข่าวของวันนี้"} แล้วสรุปเป็นภาษาไทย ระบบจำผลไว้ใช้ทั้งวัน</p>`}
-    ${b?.players?.length?`<div style="margin-top:10px"><b style="font-size:13px;color:var(--gold)">นักเตะในข่าว</b><ul>${b.players.map(p=>`<li><b>${esc(p.name)}</b>${p.club?` (${esc(p.club)})`:""} — ${esc(p.detail)}</li>`).join("")}</ul></div>`:""}
-    ${b?.headlines?.length?`<details style="margin-top:8px"><summary class="muted" style="font-size:13px">ข่าวที่ใช้ ${b.headlines.length} ชิ้น</summary><ul style="font-size:13px">${b.headlines.map(h=>`<li><span class="faint">${esc(h.source)}</span> ${h.url?`<a href="${esc(h.url)}" target="_blank" rel="noopener" style="color:var(--fg)">${esc(h.title)}</a>`:esc(h.title)}</li>`).join("")}</ul></details>`:""}
+       :`<p class="muted">ให้ Claude อ่านตัวเลขโมเดลกับราคาของ ${day.matches.length} คู่${hosted?" พร้อมหัวข่าวของวันนี้":""} แล้วสรุปเป็นภาษาไทย ผลจะจำไว้ใช้ทั้งวัน</p>`}
+    ${b?.players?.length?`<div style="margin-top:10px"><b style="font-size:13px" class="gold">นักเตะในข่าว</b><ul>${b.players.map(p=>`<li><b>${esc(p.name)}</b>${p.club?` (${esc(p.club)})`:""} — ${esc(p.detail)}</li>`).join("")}</ul></div>`:""}
+    ${b?.headlines?.length?`<details><summary>ข่าวที่ใช้ ${b.headlines.length} ชิ้น</summary><ul style="font-size:13px">${b.headlines.map(h=>`<li><span class="faint">${esc(h.source)}</span> ${h.url?`<a href="${esc(h.url)}" target="_blank" rel="noopener">${esc(h.title)}</a>`:esc(h.title)}</li>`).join("")}</ul></details>`:""}
     ${S.briefErr?`<p style="color:var(--loss);font-size:13px">${esc(S.briefErr)}</p>`:""}
-    <div class="row" style="margin-top:12px"><button class="btn" id="btnBrief" ${S.briefBusy||!day.matches.length?"disabled":""}>${S.briefBusy?"กำลังวิเคราะห์…":b?"วิเคราะห์อีกรอบ":"วิเคราะห์วันนี้"}</button><a class="btn ghost" href="#more" data-goto="picks">ไปหน้าฟันธง</a></div>
-    <p class="note">${b?.headlines?.length?"สรุปจากสถิติ ราคา และหัวข่าวจริงที่ลิงก์ไว้ ไม่ใช่คำแนะนำให้เดิมพัน":(window.claude?"สรุปจากสถิติและราคาในหน้านี้ ยังไม่ได้อ่านข่าว":"กดแล้วจะอ่านหัวข่าว BBC Sport, The Guardian และ ESPN ก่อนสรุป ไม่ใช่คำแนะนำให้เดิมพัน")}</p>
+    <div class="row" style="margin-top:14px"><button class="btn" id="btnBrief" ${S.briefBusy||!day.matches.length?"disabled":""}>${S.briefBusy?"กำลังวิเคราะห์…":b?"วิเคราะห์อีกรอบ":"วิเคราะห์วันนี้"}</button></div>
+    <p class="note">${hosted?"อ่านหัวข่าว BBC Sport, The Guardian และ ESPN ก่อนสรุป":"สรุปจากสถิติและราคาในหน้านี้ ยังไม่ได้อ่านข่าว"} · ไม่ใช่คำแนะนำให้เดิมพัน</p>
   </div>`;
 }
+
+/* ---------- views ---------- */
 function viewHome(){
   const day=getDay(S.date);
-  let ms=filtered(day);
-  if(S.filter==="hot") ms=ms.filter(m=>{ const b=bestEdge(m); return b&&b.edge>=VALUE_EDGE; });
-  return `
-  <section class="hero">
+  const welcome = S.welcomeHidden ? "" : `<section class="welcome">
     <div class="ball" aria-hidden="true"></div>
-    <div class="eyebrow">ใช้ได้ทุกวัน</div>
-    <h1>Goal Club</h1>
+    <div class="eyebrow">ใช้ได้ทุกวัน</div><h1>Goal Club</h1>
     <p>ความน่าจะเป็นคู่ฟุตบอล จากตารางคะแนน ฟอร์ม และผลที่เคยเจอกัน</p>
     <div class="tags"><span>วิเคราะห์ด้วยสถิติ</span><span>อัปเดตทุกวัน</span><span>ใช้งานง่าย</span></div>
-  </section>
-  <div style="height:14px"></div>
-  ${dateChips()}
-  ${day.matches.length?`<div class="chips" style="padding-top:0">
-     <button class="chip ${S.filter==="all"?"on":""}" data-filter="all">ทั้งหมด<span class="n num">${day.matches.length}</span></button>
-     <button class="chip ${S.filter==="hot"?"on":""}" data-filter="hot">ที่เด็ดวันนี้</button>
-     ${leagueSelect(day)}</div>
-   ${briefCard(day)}
-   ${(()=>{ const live=ms.filter(m=>m.st==="in"); const rest=ms.filter(m=>m.st!=="in");
-     return (live.length?`<h2 class="sec"><span class="dot live" style="vertical-align:4px;margin-right:8px"></span>กำลังแข่ง<small>${live.length} คู่ · อัปเดตทุกนาที</small></h2><div class="stack">${live.map(matchCard).join("")}</div>`:"")
-       + `<h2 class="sec">คู่แข่ง<small>${relLabel(S.date)} · เวลาไทย</small></h2><div class="stack">${rest.length?rest.map(matchCard).join(""):`<div class="card empty muted">${live.length?"คู่ที่เหลือแข่งอยู่ด้านบน":"ไม่มีคู่ที่ตรงกับตัวกรองนี้"}</div>`}</div>`; })()}`
-  : emptyDay()}`;
+    <button class="x" data-act="hideWelcome">ซ่อน</button></section>`;
+  if(!day.matches.length) return welcome + `<div style="height:12px"></div>` + emptyDay();
+  const ms=filtered(day);
+  const live=ms.filter(m=>m.st==="in"), upcoming=ms.filter(m=>m.st==="pre"), done=ms.filter(m=>m.st==="post");
+  const values=ms.filter(valueRow).length, picks=lockPicks(day.matches);
+  const favs=ms.filter(isFav);
+  return `${welcome}
+  <div class="tiles" style="margin-top:${welcome?"12px":"0"}">
+    <button class="tile" data-goto="schedule:all"><span class="k">คู่ทั้งหมด</span><span class="v num">${ms.length}</span></button>
+    <button class="tile live" data-goto="schedule:in"><span class="k">กำลังแข่ง</span><span class="v num">${live.length}</span></button>
+    <button class="tile value" data-goto="analyze:edge"><span class="k">มีค่าตามโมเดล</span><span class="v num">${values}</span></button>
+  </div>
+  ${live.length?sec(`<span class="dot live pulse" style="vertical-align:4px;margin-right:8px"></span>กำลังแข่ง`,`อัปเดตทุกนาที`)+`<div class="stack">${live.map(matchCard).join("")}</div>`:""}
+  ${sec("บทวิเคราะห์")}${briefCard(day)}
+  ${picks.length?sec("ฟันธง",`${picks.length} คู่ที่โมเดลมั่นใจสุด`,`<button class="act" data-goto="analyze:picks">ดูทั้งหมด</button>`)+`<div class="list">${pickRows(picks.slice(0,3))}</div>`:""}
+  ${favs.length?sec("ทีมโปรดวันนี้")+`<div class="list">${favs.map(m=>matchRow(m)).join("")}</div>`:""}
+  ${upcoming.length?sec("ถัดไป",`เวลาไทย`,`<button class="act" data-goto="schedule:pre">ดูโปรแกรมทั้งหมด</button>`)+`<div class="stack">${upcoming.slice(0,4).map(matchCard).join("")}</div>`:""}
+  ${done.length?sec("ผลล่าสุด",`จบแล้ว ${done.length} คู่`,`<button class="act" data-goto="schedule:post">ดูผลทั้งหมด</button>`)+`<div class="list">${done.slice(-5).reverse().map(m=>matchRow(m)).join("")}</div>`:""}`;
 }
 function viewSchedule(){
-  const day=getDay(S.date); const ms=filtered(day);
+  const day=getDay(S.date);
+  if(!day.matches.length) return emptyDay();
+  const base=filtered(day);
+  const cnt=k=>base.filter(m=>k==="all"||m.st===k).length;
+  const ms=base.filter(m=>S.status==="all"||m.st===S.status);
   const groups={}; ms.forEach(m=>(groups[m.lg]=groups[m.lg]||[]).push(m));
   const keys=Object.keys(groups).sort((a,b)=>(LEAGUE_ORDER[a]??99)-(LEAGUE_ORDER[b]??99));
-  return `<h2 class="sec">โปรแกรมแข่ง<small>เวลาไทย · ตัดรอบวันราว 11:00 น.</small></h2>${dateChips()}
-  ${day.matches.length?`<div class="chips" style="padding-top:0">${leagueSelect(day)}</div><div class="stack">${keys.map(k=>`<div class="list"><div class="grouphead"><span>${esc(LEAGUE_NAME[k]||k)}</span><span class="num">${groups[k].length} คู่</span></div>
-    ${groups[k].map(m=>`<button class="li${m.st==="in"?" is-live":""}" data-open="${m.id}"><span class="t num">${m.st==="pre"?kickTime(m.ko):m.st==="in"?esc(m.clock||"สด"):"จบ"}</span>
-      <span class="mid"><div>${esc(m.h.short)}</div><div class="muted">${esc(m.a.short)}</div></span>
-      <span class="r num">${m.st==="pre"?`<span class="muted">${pct(m.sum.home)} · ${pct(m.sum.away)}</span>`:`<b>${m.h.score??"–"}</b><br><b>${m.a.score??"–"}</b>`}</span></button>`).join("")}</div>`).join("")}</div>`:emptyDay()}`;
+  return `<div class="toolbar">${seg("status",[["all","ทั้งหมด",cnt("all")],["in","สด",cnt("in")],["pre","ยังไม่เตะ",cnt("pre")],["post","จบแล้ว",cnt("post")]],S.status)}${leagueSelect(day)}</div>
+  ${keys.length?`<div class="stack">${keys.map(k=>`<div class="list"><div class="lhead"><span>${esc(LEAGUE_NAME[k]||k)}</span><span class="n num">${groups[k].length} คู่</span></div>${groups[k].map(m=>matchRow(m)).join("")}</div>`).join("")}</div>`
+    :`<div class="card empty"><p>ไม่มีคู่ในหมวดนี้</p></div>`}
+  <p class="note">เวลาไทย · วันแข่งตัดรอบราว 11:00 น. ตามฟีด ESPN · ตัวเลขด้านขวาคือโอกาสชนะของเจ้าบ้านและทีมเยือน</p>`;
 }
 function viewAnalyze(){
-  const day=getDay(S.date); const ms=filtered(day);
-  const f=S.analyze;
-  const tabs=[["all","ทั้งหมด"],["ah","แฮนดิแคป"],["ou","สูงต่ำ"],["goals","สกอร์รวม"]];
+  const day=getDay(S.date);
+  if(!day.matches.length) return emptyDay();
+  const ms=filtered(day);
   let body="";
-  if(f==="goals"){
-    body=`<div class="list">${ms.map(m=>`<button class="li${m.st==="in"?" is-live":""}" data-open="${m.id}"><span class="t num">${m.st==="in"?esc(m.clock||"สด"):kickTime(m.ko)}</span><span class="mid"><div>${esc(m.h.short)} – ${esc(m.a.short)}${m.st!=="pre"?` <b class="num">${m.h.score??0}–${m.a.score??0}</b>`:""}</div><div class="muted num" style="font-size:12px">λ ${m.lh.toFixed(2)} / ${m.la.toFixed(2)} · รวม ${(m.lh+m.la).toFixed(2)}</div></span>
-      <span class="r num">${m.sum.top.slice(0,3).map(c=>`${c.h}-${c.a} <span class="faint">${pct(c.p)}</span>`).join("<br>")}</span></button>`).join("")}</div>`;
-  } else {
-    const rows=[]; ms.forEach(m=>edgeRows(m).forEach(r=>{ if((f==="all"||r.kind===f)&&r.edge!=null) rows.push({m,r}); }));
+  if(S.mode==="picks"){
+    const picks=lockPicks(ms);
+    body = `<p class="pagelead">เส้นแฮนดิแคปของตลาดที่โมเดลครอบเส้นได้สูงสุด ไม่เกิน 5 คู่ต่อวัน เฉพาะคู่ที่ยังไม่เตะ</p>`
+      + (picks.length?`<div class="list">${pickRows(picks)}</div>`:`<div class="card empty"><p>วันนี้ไม่มีคู่ที่โมเดลครอบเส้นตลาดเกิน 56%</p></div>`)
+      + `<p class="note">ตัวเลขคือโอกาสครอบเส้นเมื่อไม่นับกรณีคืนทุน ใช้อ่านประกอบการดูบอล ไม่ใช่คำแนะนำให้เดิมพัน</p>`;
+  } else if(S.mode==="edge"){
+    const rows=[]; ms.filter(m=>m.st==="pre").forEach(m=>edgeRows(m).forEach(r=>{ if((S.edgeKind==="all"||r.kind===S.edgeKind)&&r.edge!=null) rows.push({m,r}); }));
     rows.sort((a,b)=>b.r.edge-a.r.edge);
-    body = rows.length ? `<div class="list">${rows.slice(0,60).map(({m,r})=>`<button class="li${m.st==="in"?" is-live":""}" data-open="${m.id}"><span class="t num">${m.st==="in"?esc(m.clock||"สด"):kickTime(m.ko)}</span>
-      <span class="mid"><div>${esc(r.label)}</div><div class="muted" style="font-size:12px">${esc(m.h.short)} – ${esc(m.a.short)} · ราคา ${fmtPrice(r.dec,S.style)}</div></span>
-      <span class="r num"><div>โมเดล <b>${pct(r.model)}</b> · ตลาด ${pct(r.fair)}</div><span class="tag ${r.edge>=VALUE_EDGE?"value":""}">${pts(r.edge)} จุด</span></span></button>`).join("")}</div>`
-      : `<div class="card empty muted">ยังไม่มีราคาตลาดของคู่ในวันนี้</div>`;
+    body = `<div style="margin-bottom:12px">${seg("edgeKind",[["all","ทุกตลาด"],["ah","แฮนดิแคป"],["ou","สูงต่ำ"],["1x2","ผลการแข่งขัน"]],S.edgeKind)}</div>`
+      + (rows.length?`<div class="list">${rows.slice(0,60).map(({m,r})=>`<button class="lrow${liveCls(m)}" data-open="${m.id}">
+          <span class="main"><div>${esc(r.label)}</div><div class="sub">${timeCell(m)} · ${esc(m.h.short)} – ${esc(m.a.short)}${m.st!=="pre"?` · ${m.h.score??0}–${m.a.score??0}`:""} · ราคา ${fmtPrice(r.dec,S.style)}</div></span>
+          <span class="r num"><div>โมเดล <b>${pct(r.model)}</b> · ตลาด ${pct(r.fair)}</div><span class="tag ${r.edge>=VALUE_EDGE?"value":""}">${pts(r.edge)} จุด</span></span></button>`).join("")}</div>`
+        :`<div class="card empty"><p>ยังไม่มีราคาของคู่ที่ยังไม่เตะในหมวดนี้</p></div>`)
+      + `<p class="note">เฉพาะคู่ที่ยังไม่เตะ · ตลาดหักน้ำแบบสัดส่วนแล้ว · "มีค่า" คือโมเดลสูงกว่าตลาดอย่างน้อย 4 จุด ไม่ใช่คำแนะนำให้เดิมพัน</p>`;
+  } else {
+    const list=[...ms].sort((a,b)=>(b.lh+b.la)-(a.lh+a.la));
+    body = `<p class="pagelead">เรียงจากคู่ที่โมเดลคาดว่าจะมีประตูมากไปน้อย พร้อมสกอร์ที่มีโอกาสสูงสุด 3 อันดับ</p>
+      <div class="list">${list.map(m=>`<button class="lrow${liveCls(m)}" data-open="${m.id}">
+        <span class="main"><div>${esc(m.h.short)} – ${esc(m.a.short)}${m.st!=="pre"?` <b class="num">${m.h.score??0}–${m.a.score??0}</b>`:""}</div><div class="sub num">${timeCell(m)} · คาด ${(m.lh+m.la).toFixed(2)} ประตู · สูง 2.5 ${pct(m.sum.over25)}</div></span>
+        <span class="r num">${m.sum.top.slice(0,3).map(c=>`${c.h}-${c.a} <span class="faint">${pct(c.p)}</span>`).join("<br>")}</span></button>`).join("")}</div>`;
   }
-  return `<h2 class="sec">วิเคราะห์<small>เรียงจากส่วนต่างโมเดลกับตลาด</small></h2>${dateChips()}
-    ${day.matches.length?`<div class="chips" style="padding-top:0">${tabs.map(([k,l])=>`<button class="chip ${f===k?"on":""}" data-analyze="${k}">${l}</button>`).join("")}</div>${body}
-    <p class="note">ตลาดหักน้ำแบบสัดส่วนแล้ว · "มีค่า" คือโมเดลสูงกว่าตลาดอย่างน้อย 4 จุด ใช้อ่านตัวเลข ไม่ใช่คำแนะนำให้เดิมพัน</p>`:emptyDay()}`;
+  return `<div style="margin-bottom:12px">${seg("mode",[["picks","ฟันธง"],["edge","เทียบราคา"],["goals","สกอร์และประตู"]],S.mode)}</div>${body}`;
 }
 function viewSaved(){
   const ids=Object.keys(S.favs);
-  if(!ids.length) return `<h2 class="sec">ทีมโปรด</h2><div class="card empty"><div class="serif">ยังไม่มีทีมโปรด</div><p class="muted" style="margin:6px 0 0">แตะรูปดาวบนการ์ดคู่แข่ง ทีมทั้งสองฝั่งจะถูกเก็บไว้ในเครื่องนี้</p></div>`;
-  const all=Object.keys(SNAPSHOT||{}).concat(Object.keys(S.days)).filter((d,i,a)=>a.indexOf(d)===i).sort();
-  const upcoming=[]; all.forEach(d=>getDay(d).matches.forEach(m=>{ if(S.favs[m.h.id]||S.favs[m.a.id]) upcoming.push({d,m}); }));
-  return `<h2 class="sec">ทีมโปรด<small>เก็บในเครื่องนี้</small></h2>
-   <div class="chips">${ids.map(id=>`<button class="chip on" data-unfav="${id}" aria-label="เอาออก">${esc(S.favs[id])} ✕</button>`).join("")}</div>
-   ${upcoming.length?`<div class="list">${upcoming.map(({d,m})=>`<button class="li${m.st==="in"?" is-live":""}" data-open="${m.id}" data-day="${d}"><span class="t">${relLabel(d)}<br><span class="num">${kickTime(m.ko)}</span></span><span class="mid"><div>${esc(m.h.short)}</div><div class="muted">${esc(m.a.short)}</div></span><span class="r num">${m.st==="pre"?`${pct(m.sum.home)} · ${pct(m.sum.away)}`:`${m.h.score}–${m.a.score}`}</span></button>`).join("")}</div>`:`<div class="card muted">ยังไม่มีโปรแกรมของทีมโปรดในข้อมูลที่โหลดไว้</div>`}`;
+  if(!ids.length) return `<h1 class="pagetitle">ทีมโปรด</h1><div class="card empty"><h3>ยังไม่มีทีมโปรด</h3><p>แตะรูปดาวบนการ์ดคู่แข่ง ทีมทั้งสองฝั่งจะถูกเก็บไว้ในเครื่องนี้</p><button class="btn ghost" data-goto="schedule:all">ไปที่โปรแกรม</button></div>`;
+  const dates=[...new Set([...Object.keys(SNAPSHOT||{}),...Object.keys(S.days)])].sort();
+  const all=[]; dates.forEach(d=>getDay(d).matches.forEach(m=>{ if(isFav(m)) all.push({d,m}); }));
+  const live=all.filter(x=>x.m.st==="in"), next=all.filter(x=>x.m.st==="pre"), past=all.filter(x=>x.m.st==="post").reverse().slice(0,8);
+  const rows=list=>`<div class="list">${list.map(({d,m})=>matchRow(m,{date:d,label:relLabel(d)})).join("")}</div>`;
+  return `<h1 class="pagetitle">ทีมโปรด</h1><p class="pagelead">เก็บไว้ในเครื่องนี้ แตะชื่อทีมเพื่อเอาออก</p>
+    <div class="row" style="margin-bottom:8px">${ids.map(id=>`<button class="tag gold" style="height:30px;font-size:13px" data-unfav="${id}">${esc(S.favs[id])} ✕</button>`).join("")}</div>
+    ${live.length?sec("กำลังแข่ง")+rows(live):""}
+    ${sec("โปรแกรมถัดไป")}${next.length?rows(next):`<div class="card muted">ยังไม่มีโปรแกรมของทีมโปรดในข้อมูลที่โหลดไว้</div>`}
+    ${past.length?sec("ผลล่าสุด")+rows(past):""}`;
 }
 function viewMore(){
-  const day=getDay(S.date); const picks=lockPicks(day.matches);
+  const day=getDay(S.date);
   const ex=day.matches.find(m=>m.mk?.spread&&m.steps.length>1)||day.matches[0];
-  return `<h2 class="sec" id="picks">ฟันธง<small>${relLabel(S.date)} · ไม่เกิน 5 คู่</small></h2>
-  ${picks.length?`<div class="stack">${picks.map((p,i)=>`<button class="card match" data-open="${p.m.id}">
-    <div class="mhead"><span class="lg">${esc(LEAGUE_NAME[p.m.lg])} · ${kickTime(p.m.ko)}</span><span class="tag gold num">ครอบเส้น ${pct(p.cv)}</span></div>
-    <div class="serif" style="font-size:19px;margin-top:6px">${esc(p.phrase)}</div>
-    <div class="muted" style="font-size:13px;margin-top:2px">${esc(p.m.h.short)} – ${esc(p.m.a.short)} · ฝั่งที่โมเดลเอียง <b style="color:var(--fg)">${esc(p.take)}</b> · ทายสกอร์ <b class="num" style="color:var(--fg)">${p.score}</b></div>
-  </button>`).join("")}</div><p class="note">เลือกจากเส้นแฮนดิแคปของตลาดที่โมเดลครอบเส้นได้สูงสุด (ไม่นับกรณีคืนทุน) คู่ที่ยังไม่เตะเท่านั้น ไม่ใช่คำแนะนำให้เดิมพัน</p>`
-  :`<div class="card muted">${day.matches.length?"วันนี้ไม่มีคู่ที่โมเดลครอบเส้นตลาดเกิน 56%":"วันนี้ยังไม่มีคู่"}</div>`}
-
-  <h2 class="sec">รูปแบบราคา</h2>
-  <div class="chips">${Object.entries(PRICE_STYLES).map(([k,l])=>`<button class="chip ${S.style===k?"on":""}" data-style="${k}">${l}</button>`).join("")}</div>
-  <p class="note" style="margin-top:0">ตัวอย่าง ราคา 1.85 แสดงเป็น ทศนิยม ${fmtPrice(1.85,"decimal")} · มาเลย์ ${fmtPrice(1.85,"malay")} · ฮ่องกง ${fmtPrice(1.85,"hongkong")}</p>
-
-  <h2 class="sec">วิธีอ่านความน่าจะเป็น</h2>
-  <div class="card stack" style="gap:8px;font-size:14px">
-    <div><b style="color:var(--gold)">ชนะ เสมอ แพ้</b> รวมกันได้ 100% เช่น เจ้าบ้าน 55% หมายถึงถ้าเล่นแบบนี้ 100 ครั้ง โมเดลคาดว่าชนะราว 55 ครั้ง</div>
-    <div><b style="color:var(--gold)">ครอบเส้น</b> คือโอกาสได้ผลเมื่อไม่นับกรณีคืนทุน เส้นครึ่งลูก เช่น 0/0.5 แบ่งเงินเป็นสองเส้น</div>
-    <div><b style="color:var(--gold)">ตลาด</b> คือราคาที่หักน้ำแล้ว เทียบได้ตรงกับโมเดล ส่วนต่างบวกคือโมเดลมองสูงกว่าตลาด</div>
-    <div class="faint" style="font-size:13px">ไม่มีโมเดลไหนแม่นทุกนัด ตัวเลขเป็นค่าประมาณจากสถิติที่มี</div>
+  return `<h1 class="pagetitle">เพิ่มเติม</h1><p class="pagelead">ตั้งค่า ข้อมูล และคู่มือการอ่านตัวเลข</p>
+  ${sec("การแสดงผล")}
+  <div class="group"><div class="gitem"><div class="lbl">รูปแบบราคา</div>${seg("style",Object.entries(PRICE_STYLES),S.style)}
+    <p class="note">ราคา 1.85 แสดงเป็น ทศนิยม ${fmtPrice(1.85,"decimal")} · มาเลย์ ${fmtPrice(1.85,"malay")} · ฮ่องกง ${fmtPrice(1.85,"hongkong")}</p></div></div>
+  ${sec("ข้อมูล")}
+  <div class="group">
+    <div class="gitem"><div class="lbl">สถานะ</div><div class="desc row" style="gap:6px">${statusText()}</div>
+      <p class="note">${S.liveOk?"ใช้ฟีดสด อัปเดตเองทุกนาทีระหว่างแข่ง และทุก 10 นาทีเมื่อไม่มีคู่เตะ":"หน้านี้ต่อฟีดสดไม่ได้ จึงใช้ชุดที่บันทึกไว้ เปิดที่ goal-club.vercel.app เพื่อดูสด"}</p></div>
+    <div class="gitem row"><button class="btn ghost small" data-act="refresh">ดึงข้อมูลใหม่</button><button class="btn ghost small" data-act="clear">ล้างข้อมูลในเครื่อง</button></div>
+    <div class="gitem"><div class="lbl">แหล่งข้อมูล</div><div class="desc">โปรแกรม สกอร์ ตารางคะแนน และราคา DraftKings จาก ESPN · หัวข่าวจาก BBC Sport, The Guardian และ ESPN · ราคาเป็นของตลาดต่างประเทศ ไม่ใช่ราคาเว็บไทย</div></div>
   </div>
-
-  ${ex?`<h2 class="sec">โมเดลทำงานอย่างไร<small>ตัวอย่างจริง ${esc(ex.h.short)} – ${esc(ex.a.short)}</small></h2>
-  <div class="card"><ol class="steps">
-    ${ex.steps.map(s=>`<li>${esc(s.text)} → λ เจ้าบ้าน <b class="num">${s.lh.toFixed(2)}</b> เยือน <b class="num">${s.la.toFixed(2)}</b></li>`).join("")}
-    <li>เอา λ ทั้งสองไปทำตารางสกอร์ปัวซง 0–10 ประตู แล้วปรับสกอร์ต่ำด้วยดิกสัน-โคลส์ (rho −0.08) → ชนะ <b class="num">${pct(ex.sum.home)}</b> เสมอ <b class="num">${pct(ex.sum.draw)}</b> แพ้ <b class="num">${pct(ex.sum.away)}</b></li>
-    <li>สกอร์ที่ช่องสูงสุดคือ <b class="num">${ex.sum.top[0].h}-${ex.sum.top[0].a}</b> (${pct(ex.sum.top[0].p)}) และสูง 2.5 <b class="num">${pct(ex.sum.over25)}</b></li>
-    ${ex.mk?.spread?`<li>เส้นตลาด ${esc(ahPhrase(ex.h.short,ex.a.short,ex.mk.spread.line))} โมเดลให้ ${esc(ex.h.short)} ครอบ <b class="num">${pct(cover(hdpSplit(ex.g,ex.mk.spread.line)))}</b></li>`:""}
-  </ol></div>`:""}
-
-  <h2 class="sec">ข้อมูลและการอัปเดต</h2>
-  <div class="card stack" style="gap:10px;font-size:14px">
-    <div>${statusText()}</div>
-    <div class="muted" style="font-size:13px">${S.liveOk?"กำลังใช้ฟีดสด สกอร์อัปเดตเองทุกนาทีระหว่างแข่ง และทุก 10 นาทีเมื่อไม่มีคู่เตะ":"หน้านี้ต่อฟีดสดไม่ได้ จึงใช้ชุดที่บันทึกไว้ เวอร์ชันที่ติดตั้งบนเว็บ (Vercel) จะดึงสดเองทุกวัน"}</div>
-    <div><button class="btn ghost" id="btnRefresh2">ดึงข้อมูลใหม่</button></div>
+  ${sec("คู่มือ")}
+  <div class="group">
+    <details class="acc"><summary>วิธีอ่านความน่าจะเป็น</summary><div class="body stack" style="gap:8px">
+      <div><b class="gold">ชนะ เสมอ แพ้</b> รวมกันได้ 100% เช่น เจ้าบ้าน 55% หมายถึงถ้าเล่นแบบนี้ 100 ครั้ง โมเดลคาดว่าชนะราว 55 ครั้ง</div>
+      <div><b class="gold">ครอบเส้น</b> คือโอกาสได้ผลเมื่อไม่นับกรณีคืนทุน เส้นครึ่งลูก เช่น 0/0.5 แบ่งเงินเป็นสองเส้น</div>
+      <div><b class="gold">ตลาด</b> คือราคาที่หักน้ำแล้ว เทียบตรงกับโมเดลได้ ส่วนต่างบวกคือโมเดลมองสูงกว่าตลาด</div>
+      <div class="faint" style="font-size:13px">ไม่มีโมเดลไหนแม่นทุกนัด ตัวเลขเป็นค่าประมาณจากสถิติที่มี</div></div></details>
+    ${ex?`<details class="acc"><summary>โมเดลทำงานอย่างไร</summary><div class="body"><p class="muted" style="margin:0 0 10px;font-size:13px">ตัวอย่างจริง ${esc(ex.h.short)} – ${esc(ex.a.short)}</p><ol class="steps">
+      ${ex.steps.map(s=>`<li>${esc(s.text)} → λ เจ้าบ้าน <b class="num">${s.lh.toFixed(2)}</b> เยือน <b class="num">${s.la.toFixed(2)}</b></li>`).join("")}
+      <li>ทำตารางสกอร์ปัวซง 0–10 ประตู ปรับสกอร์ต่ำด้วยดิกสัน-โคลส์ (rho −0.08) → ชนะ <b class="num">${pct(ex.sum.home)}</b> เสมอ <b class="num">${pct(ex.sum.draw)}</b> แพ้ <b class="num">${pct(ex.sum.away)}</b></li>
+      <li>ช่องที่สูงสุดคือ <b class="num">${ex.sum.top[0].h}-${ex.sum.top[0].a}</b> (${pct(ex.sum.top[0].p)}) · สูง 2.5 <b class="num">${pct(ex.sum.over25)}</b></li>
+      ${ex.mk?.spread?`<li>เส้นตลาด ${esc(ahPhrase(ex.h.short,ex.a.short,ex.mk.spread.line))} โมเดลให้ ${esc(ex.h.short)} ครอบ <b class="num">${pct(cover(hdpSplit(ex.g,ex.mk.spread.line)))}</b></li>`:""}
+    </ol></div></details>`:""}
+    <details class="acc"><summary>รูปแบบราคาต่างกันอย่างไร</summary><div class="body stack" style="gap:6px">
+      <div><b class="gold">ทศนิยม</b> ราคารวมทุน เช่น 1.90 แทง 100 ได้คืน 190</div>
+      <div><b class="gold">ฮ่องกง</b> ราคาไม่รวมทุน เช่น 0.90 แทง 100 ได้กำไร 90</div>
+      <div><b class="gold">มาเลย์</b> ค่าบวกเหมือนฮ่องกง ค่าลบหมายถึงต้องวางเท่านั้นเพื่อได้ 1 หน่วย เช่น -0.80</div></div></details>
+    <details class="acc"><summary>ติดตั้งเป็นแอปบนมือถือ</summary><div class="body stack" style="gap:6px">
+      <div><b class="gold">iPhone</b> เปิดใน Safari → ปุ่มแชร์ → เพิ่มไปยังหน้าจอโฮม</div>
+      <div><b class="gold">Android</b> เปิดใน Chrome → เมนู ⋮ → เพิ่มลงในหน้าจอหลัก</div></div></details>
   </div>
-
-  <h2 class="sec">ติดตั้งเป็นแอป</h2>
-  <div class="card stack" style="gap:10px;font-size:14px">
-    <div><b style="color:var(--gold)">iPhone</b> เปิดลิงก์ใน Safari → ปุ่มแชร์ → เพิ่มไปยังหน้าจอโฮม</div>
-    <div><b style="color:var(--gold)">Android</b> เปิดใน Chrome → เมนู ⋮ → เพิ่มลงในหน้าจอหลัก</div>
-  </div>
-  <p class="note" style="text-align:center;margin:22px 0 0">Goal Club ไม่ใช่เว็บพนัน ตัวเลขทั้งหมดใช้ประกอบการดูบอลเท่านั้น</p>`;
+  <p class="note" style="text-align:center;margin:28px 0 0">Goal Club ไม่ใช่เว็บพนัน ตัวเลขทั้งหมดใช้ประกอบการดูบอลเท่านั้น</p>`;
 }
 
 /* ---------- match sheet ---------- */
+function midHtml(m){ return `${m.st==="pre"?kickTime(m.ko):`${m.h.score??"–"}–${m.a.score??"–"}`}<small>${m.st==="pre"?"เวลาไทย":m.st==="in"?`สด ${esc(m.clock||"")}`:m.st==="pp"?"เลื่อน/ยกเลิก":"จบแล้ว"}</small>`; }
+function sheetOverview(m){
+  const max=Math.max(...m.g.slice(0,6).flatMap(r=>r.slice(0,6)));
+  const cell=(h,a)=>{ const p=m.g[h][a], k=p/max; return `<span class="num" style="background:color-mix(in srgb,var(--gold) ${Math.round(k*70)}%,var(--surface-2));color:${k>.55?"var(--gold-ink)":"var(--fg)"}">${Math.round(p*100)}</span>`; };
+  return `<div class="kv" style="margin-top:16px">
+      <div><div class="k">แฮนดิแคป</div><div class="v gold" style="font-size:15px">${m.mk?.spread?esc(ahPhrase(m.h.short,m.a.short,m.mk.spread.line)):"ยังไม่มีราคา"}</div></div>
+      <div><div class="k">ทายสกอร์</div><div class="v num">${m.sum.top[0].h}-${m.sum.top[0].a} <small>${pct(m.sum.top[0].p)}</small></div></div>
+      <div><div class="k">สูง 2.5 / ต่ำ 2.5</div><div class="v num">${pct(m.sum.over25)} / ${pct(m.sum.under25)}</div></div>
+      <div><div class="k">ทั้งยิงทั้งเสีย</div><div class="v num">${pct(m.sum.btts)}</div></div>
+    </div>
+    ${sec("สกอร์ที่เป็นไปได้","% ต่อช่อง")}
+    <div class="card"><div class="grid6"><span class="hd"></span>${[0,1,2,3,4,5].map(a=>`<span class="hd">${a}</span>`).join("")}
+      ${[0,1,2,3,4,5].map(h=>`<span class="hd">${h}</span>${[0,1,2,3,4,5].map(a=>cell(h,a)).join("")}`).join("")}</div>
+      <p class="note">แถวคือประตู ${esc(m.h.short)} · คอลัมน์คือประตู ${esc(m.a.short)}</p></div>
+    ${sec("ที่มาของตัวเลข")}
+    <div class="card"><ol class="steps">${m.steps.map(s=>`<li>${esc(s.text)} → <b class="num">${s.lh.toFixed(2)} / ${s.la.toFixed(2)}</b></li>`).join("")}</ol>
+      <p class="note" style="margin:0">λ คือจำนวนประตูที่คาด เจ้าบ้าน / ทีมเยือน</p></div>
+    <div style="height:12px"></div>${omen(m)}`;
+}
+function sheetMarket(m){
+  const rows=edgeRows(m);
+  return `${sec("เทียบตลาด", m.mk?esc(m.mk.book)+" · ไม่ใช่ราคาเว็บไทย":"")}
+    ${rows.length?`<div class="card scroll-x"><table class="tbl num"><thead><tr><th>ตลาด</th><th>ราคา</th><th>โมเดล</th><th>ตลาด*</th><th>ต่าง</th></tr></thead><tbody>
+      ${rows.map(r=>`<tr><td>${esc(r.label)}</td><td>${fmtPrice(r.dec,S.style)}</td><td>${pct(r.model)}</td><td>${r.fair!=null?pct(r.fair):"–"}</td><td>${r.edge!=null?`<span class="tag ${r.edge>=VALUE_EDGE?"value":""}">${pts(r.edge)}</span>`:"–"}</td></tr>`).join("")}
+    </tbody></table><p class="note">*หักน้ำแบบสัดส่วน · แฮนดิแคปและสูงต่ำคิดแบบครอบเส้น (ไม่นับคืนทุน)${m.st!=="pre"?" · เป็นตัวเลขก่อนเตะ ไม่รวมสกอร์ระหว่างเกม":""}</p></div>`
+    :`<div class="card muted">ฟีดยังไม่มีราคาของคู่นี้ ใส่ราคาเองด้านล่างได้</div>`}
+    ${sec("ใส่ราคาเอง", PRICE_STYLES[S.style])}${calcBlock(m)}`;
+}
+function sheetStats(m){
+  const ds=m.ds;
+  const loading = !ds ? `<div class="card muted" id="dsLoading">${S.liveOk?"กำลังดึงสถิติเชิงลึก…":"ข้อมูลชุดนี้ยังไม่มีสถิติเชิงลึกของคู่นี้"}</div>` : "";
+  return `${sec("ฟอร์ม 5 นัดหลัง")}
+    <div class="card">
+      <div class="row"><span style="font-weight:600">${esc(m.h.short)}</span><span class="spacer"></span>${formPills(m.h.form)}</div>
+      ${ds?.hf?.lines?.length?`<div class="form-lines num">${ds.hf.lines.map(l=>`<span>${l}</span>`).join("")}</div>`:""}
+      <div class="row" style="margin-top:12px"><span style="font-weight:600">${esc(m.a.short)}</span><span class="spacer"></span>${formPills(m.a.form)}</div>
+      ${ds?.af?.lines?.length?`<div class="form-lines num">${ds.af.lines.map(l=>`<span>${l}</span>`).join("")}</div>`:""}
+      ${ds&&(m.hs||m.as)?`<div style="margin-top:14px">${statRows(m)}</div>`:""}
+    </div>
+    ${loading}
+    ${ds?`${sec("เคยเจอกัน",esc(ds.h2h||""))}
+    <div class="card">${m.meets.length?`<div class="stack" style="gap:6px">${ds.meet.map(x=>`<div class="row num" style="font-size:13.5px;flex-wrap:nowrap"><span class="faint">${x[0]}</span><span class="spacer"></span><span style="text-align:right;min-width:0">${esc(x[5])} <b>${x[3]}–${x[4]}</b> ${esc(x[6])}</span></div>`).join("")}</div>
+      <p class="note">เฉลี่ย ${(m.meets.reduce((s,x)=>s+x.f+x.a,0)/m.meets.length).toFixed(1)} ประตูต่อนัด · ${m.meets.length>=3?"ผสมเข้าโมเดล 18%":"น้อยกว่า 3 นัด ยังไม่ผสมเข้าโมเดล"}</p>`:`<span class="muted">ยังไม่เคยเจอกันในบันทึกของฟีด</span>`}</div>
+    ${sec("สนามและทีมงาน")}
+    <div class="card stack" style="gap:6px;font-size:14px">
+      <div><span class="faint">สนาม</span> ${ds.venue?esc(ds.venue)+(ds.city?` · ${esc(ds.city)}`:""):"ยังไม่มีข้อมูล"}</div>
+      <div><span class="faint">ผู้จัดการ ${esc(m.h.short)}</span> ${ds.hc?esc(ds.hc):"ยังไม่มีข้อมูล"}</div>
+      <div><span class="faint">ผู้จัดการ ${esc(m.a.short)}</span> ${ds.ac?esc(ds.ac):"ยังไม่มีข้อมูล"}</div></div>
+    ${ds.players?.length?sec("นักเตะเด่น","ตามที่ฟีดมี")+`<div class="list">${ds.players.map(p=>`<div class="lrow"><span class="main"><div>${esc(p.name)}</div><div class="sub">${esc(p.team)}</div></span><span class="r num">${p.goals!=null?`ยิง ${p.goals}`:""}${p.assists!=null?` · แอส ${p.assists}`:""}${p.apps!=null?`<div class="faint">${p.apps} นัด</div>`:""}</span></div>`).join("")}</div>`:""}
+    ${ds.marks?.length?`<div class="card" style="margin-top:12px"><ul style="margin:0;padding-left:18px;font-size:13.5px">${ds.marks.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>`:""}`:""}`;
+}
 function statRows(m){
   const r=(label,f)=>`<span>${label}</span><span class="num">${f(m.hs)}</span><span class="num">${f(m.as)}</span>`;
   const fr=(s,k)=>s?`${s[k]}/${s.n}`:"–";
   const meet=m.meets; const mm=meet.length?{n:meet.length,btts:meet.filter(x=>x.f>0&&x.a>0).length,over:meet.filter(x=>x.f+x.a>=3).length}:null;
   return `<div class="statgrid"><span class="h">5 นัดหลัง</span><span class="h">${esc(m.h.short)}</span><span class="h">${esc(m.a.short)}</span>
-    ${r("ทั้งยิงทั้งเสีย",s=>fr(s,"btts"))}${r("สูง 2.5",s=>fr(s,"over"))}${r("คลีนชีต",s=>fr(s,"clean"))}${r("ยิงไม่ได้",s=>fr(s,"blank"))}
-    ${r("ยิง / เสีย",s=>s?`${s.gf} / ${s.ga}`:"–")}</div>
+    ${r("ทั้งยิงทั้งเสีย",s=>fr(s,"btts"))}${r("สูง 2.5",s=>fr(s,"over"))}${r("คลีนชีต",s=>fr(s,"clean"))}${r("ยิงไม่ได้",s=>fr(s,"blank"))}${r("ยิง / เสีย",s=>s?`${s.gf} / ${s.ga}`:"–")}</div>
     ${mm?`<p class="note">นัดที่เคยเจอ ${mm.n} นัด: ทั้งยิงทั้งเสีย ${mm.btts} นัด · สูง 2.5 ${mm.over} นัด</p>`:""}`;
 }
 function omen(m){
-  const d=bkkDateOf(m.ko); const wd=weekday(d);
+  const d=bkkDateOf(m.ko), wd=weekday(d);
   const COL=[["แดง","#c8463a"],["เหลือง","#e3c24b"],["ชมพู","#e59ab4"],["เขียว","#4f9a5f"],["ส้ม","#e08a3c"],["ฟ้า","#5d9bd6"],["ม่วง","#8a64b8"]];
-  const DAY=["อาทิตย์","จันทร์","อังคาร","พุธ","พฤหัสบดี","ศุกร์","เสาร์"];
-  const ELEM=["ไฟ","ดิน","ไฟ","น้ำ","ดิน","น้ำ","ดิน"];
-  const digits=d.replaceAll("-","").split("").map(Number); let n=digits.reduce((a,b)=>a+b,0); while(n>9) n=String(n).split("").map(Number).reduce((a,b)=>a+b,0);
-  return `<div class="omen"><div class="row" style="justify-content:space-between"><b class="serif" style="font-size:17px;color:var(--gold)">ดวงและฮวงจุ้ยของวันแข่ง</b><span class="tag">ความเชื่อ ไม่เข้าโมเดล</span></div>
+  const DAY=["อาทิตย์","จันทร์","อังคาร","พุธ","พฤหัสบดี","ศุกร์","เสาร์"], ELEM=["ไฟ","ดิน","ไฟ","น้ำ","ดิน","น้ำ","ดิน"];
+  let n=d.replaceAll("-","").split("").map(Number).reduce((a,b)=>a+b,0); while(n>9) n=String(n).split("").map(Number).reduce((a,b)=>a+b,0);
+  return `<div class="omen"><div class="row"><b style="font-family:var(--font-display);font-weight:500;font-size:16px" class="gold">ดวงและฮวงจุ้ยของวันแข่ง</b><span class="spacer"></span><span class="tag">ความเชื่อ ไม่เข้าโมเดล</span></div>
     <p style="margin:8px 0 0;font-size:14px">วัน${DAY[wd]}ตามเวลาไทย · ธาตุ${ELEM[wd]} · <span class="swatch" style="background:${COL[wd][1]}"></span>สีประจำวัน${COL[wd][0]} · เลขมงคล <b class="num">${n}</b></p>
-    <p class="note">คำนวณจากวันที่แข่งตามตำราสีประจำวันแบบไทย ใช้อ่านเล่นเท่านั้น</p></div>`;
+    <p class="note">คำนวณจากวันแข่งตามตำราสีประจำวันแบบไทย ใช้อ่านเล่นเท่านั้น</p></div>`;
 }
 function calcBlock(m){
   const lines=[]; for(let x=-2.5;x<=2.5001;x+=0.25) lines.push(Math.round(x*100)/100);
-  const def=m.mk?.spread?.line??0;
-  const tl=[1.5,1.75,2,2.25,2.5,2.75,3,3.25,3.5]; const tdef=m.mk?.total?.line??2.5;
-  return `<div class="card"><b class="serif" style="font-size:17px;color:var(--gold)">ใส่ราคาเอง</b>
-    <p class="note" style="margin-top:2px">ใส่ราคาจากที่คุณดูอยู่ (${PRICE_STYLES[S.style]}) โมเดลจะคิดโอกาสครอบเส้นและส่วนต่างให้</p>
-    <div class="calc" style="margin-top:10px">
+  const c=S.calc[m.id]||{}; const def=c.line??m.mk?.spread?.line??0; const tdef=c.tline??m.mk?.total?.line??2.5;
+  const tl=[1.5,1.75,2,2.25,2.5,2.75,3,3.25,3.5];
+  const ph=S.style==="decimal"?["1.90","1.95"]:S.style==="hongkong"?["0.90","0.95"]:["0.90","-0.95"];
+  return `<div class="card"><p class="note" style="margin:0 0 10px">ใส่ราคาจากที่คุณดูอยู่ โมเดลจะคิดโอกาสครอบเส้นและส่วนต่างให้</p>
+    <div class="calc">
       <label class="f">เส้นเจ้าบ้าน<select id="cLine">${lines.map(l=>`<option value="${l}" ${Math.abs(l-def)<.01?"selected":""}>${signed(l)}</option>`).join("")}</select></label>
-      <label class="f">ราคาเจ้าบ้าน<input id="cHome" inputmode="decimal" placeholder="${S.style==="decimal"?"1.90":"0.90"}"></label>
-      <label class="f">ราคาเยือน<input id="cAway" inputmode="decimal" placeholder="${S.style==="decimal"?"1.95":"-0.95"}"></label>
+      <label class="f">ราคาเจ้าบ้าน<input id="cHome" inputmode="decimal" placeholder="${ph[0]}" value="${esc(c.home||"")}"></label>
+      <label class="f">ราคาเยือน<input id="cAway" inputmode="decimal" placeholder="${ph[1]}" value="${esc(c.away||"")}"></label>
     </div><div class="out" id="cOut"></div>
-    <div class="calc" style="margin-top:12px">
+    <div class="calc" style="margin-top:14px">
       <label class="f">เส้นสูงต่ำ<select id="tLine">${tl.map(l=>`<option value="${l}" ${Math.abs(l-tdef)<.01?"selected":""}>${ballLabel(l)}</option>`).join("")}</select></label>
-      <label class="f">ราคาสูง<input id="tOver" inputmode="decimal"></label>
-      <label class="f">ราคาต่ำ<input id="tUnder" inputmode="decimal"></label>
+      <label class="f">ราคาสูง<input id="tOver" inputmode="decimal" placeholder="${ph[0]}" value="${esc(c.over||"")}"></label>
+      <label class="f">ราคาต่ำ<input id="tUnder" inputmode="decimal" placeholder="${ph[1]}" value="${esc(c.under||"")}"></label>
     </div><div class="out" id="tOut"></div></div>`;
 }
 function runCalc(){
-  const m=S.open; if(!m) return;
+  const m=S.open; if(!m||!$("#cLine")) return;
+  S.calc[m.id]={line:parseFloat($("#cLine").value),home:$("#cHome").value,away:$("#cAway").value,tline:parseFloat($("#tLine").value),over:$("#tOver").value,under:$("#tUnder").value};
   const num=id=>{ const v=parseFloat(($("#"+id)?.value||"").replace(",",".")); return Number.isFinite(v)?toDecimal(v,S.style):null; };
   const line=parseFloat($("#cLine").value), hs=hdpSplit(m.g,line), as={win:hs.lose,lose:hs.win,push:hs.push};
   const hd=num("cHome"), ad=num("cAway");
   let out=`โมเดล: ${esc(m.h.short)} ${signed(line)} ครอบ <b class="num">${pct(cover(hs))}</b> · ${esc(m.a.short)} ${signed(-line)} ครอบ <b class="num">${pct(cover(as))}</b>${hs.push>0.005?` · คืนทุน ${pct(hs.push)}`:""}`;
   if(hd&&ad){ const f=devig([hd,ad]); out+=`<br>ตลาดหักน้ำ ${pct(f[0])} / ${pct(f[1])} · ส่วนต่าง <b class="num">${pts(cover(hs)-f[0])}</b> / <b class="num">${pts(cover(as)-f[1])}</b> จุด`; }
-  else if($("#cHome").value||$("#cAway").value) out+=`<br><span style="color:var(--loss)">ราคาไม่ถูกรูปแบบ ${PRICE_STYLES[S.style]} ลองดูตัวอย่างในช่อง</span>`;
+  else if($("#cHome").value||$("#cAway").value) out+=`<br><span style="color:var(--loss)">ราคาไม่ถูกรูปแบบ${PRICE_STYLES[S.style]} ดูตัวอย่างในช่อง หรือเปลี่ยนรูปแบบในเพิ่มเติม</span>`;
   $("#cOut").innerHTML=out;
   const tl=parseFloat($("#tLine").value), ts=totSplit(m.g,tl), od=num("tOver"), ud=num("tUnder");
   let t=`โมเดล: สูง ${ballLabel(tl)} <b class="num">${pct(cover(ts.over))}</b> · ต่ำ <b class="num">${pct(cover(ts.under))}</b>`;
   if(od&&ud){ const f=devig([od,ud]); t+=`<br>ตลาดหักน้ำ ${pct(f[0])} / ${pct(f[1])} · ส่วนต่าง <b class="num">${pts(cover(ts.over)-f[0])}</b> / <b class="num">${pts(cover(ts.under)-f[1])}</b> จุด`; }
   $("#tOut").innerHTML=t;
 }
-function midHtml(m){ return `${m.st==="pre"?kickTime(m.ko):`${m.h.score??"–"}–${m.a.score??"–"}`}<small>${m.st==="pre"?"เวลาไทย":m.st==="in"?`สด ${esc(m.clock||"")}`:"จบแล้ว"}</small>`; }
 function sheetHtml(m){
-  const rows=edgeRows(m); const ds=m.ds;
-  const max=Math.max(...m.g.slice(0,6).flatMap(r=>r.slice(0,6)));
-  const cell=(h,a)=>{ const p=m.g[h][a], k=p/max; return `<span class="num" style="background:color-mix(in srgb,var(--gold) ${Math.round(k*70)}%,var(--surface-2));color:${k>.55?"var(--gold-ink)":"var(--fg)"}">${Math.round(p*100)}</span>`; };
+  const tab=S.sheetTab;
+  const body = tab==="market" ? sheetMarket(m) : tab==="stats" ? sheetStats(m) : sheetOverview(m);
   return `<div class="bar"><div class="wrap"><button class="iconbtn" id="btnBack" aria-label="กลับ"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg></button>
-    <span class="lg">${esc(LEAGUE_NAME[m.lg]||m.lg)} · ${relLabel(bkkDateOf(m.ko))}</span>
-    <button class="star ${isFav(m)?"on":""}" data-fav="${m.id}" aria-label="ดาวโปรด">${starSvg}</button></div></div>
+    <span class="lg">${esc(lg(m))}</span>${starBtn(m)}</div></div>
   <div class="wrap body">
     <div class="face">
-      <div>${badge(m.h,120)}<div class="nm">${esc(m.h.name)}</div><div class="faint" style="font-size:12px">${m.h.rank?`อันดับ ${m.h.rank} · `:""}${m.h.points!=null?`${m.h.points} แต้ม`:""}</div></div>
-      <div class="mid num"${m.st==="in"?' style="color:var(--win)"':""}>${midHtml(m)}</div>
-      <div>${badge(m.a,120)}<div class="nm">${esc(m.a.name)}</div><div class="faint" style="font-size:12px">${m.a.rank?`อันดับ ${m.a.rank} · `:""}${m.a.points!=null?`${m.a.points} แต้ม`:""}</div></div>
+      <div>${badge(m.h,"lg")}<div class="nm">${esc(m.h.name)}</div><div class="meta">${m.h.rank?`อันดับ ${m.h.rank}`:""}${m.h.rank&&m.h.points!=null?" · ":""}${m.h.points!=null?`${m.h.points} แต้ม`:""}</div></div>
+      <div class="mid num${m.st==="in"?" live":""}">${midHtml(m)}</div>
+      <div>${badge(m.a,"lg")}<div class="nm">${esc(m.a.name)}</div><div class="meta">${m.a.rank?`อันดับ ${m.a.rank}`:""}${m.a.rank&&m.a.points!=null?" · ":""}${m.a.points!=null?`${m.a.points} แต้ม`:""}</div></div>
     </div>
-    <div class="probbar" style="height:10px;margin-top:20px"><i class="h" style="width:${m.sum.home*100}%"></i><i class="d" style="width:${m.sum.draw*100}%"></i><i class="a" style="width:${m.sum.away*100}%"></i></div>
+    <div class="probbar" style="height:8px;margin-top:18px"><i class="h" style="width:${m.sum.home*100}%"></i><i class="d" style="width:${m.sum.draw*100}%"></i><i class="a" style="width:${m.sum.away*100}%"></i></div>
     <div class="problabels num"><span>เจ้าบ้าน <b>${pct(m.sum.home)}</b></span><span>เสมอ <b>${pct(m.sum.draw)}</b></span><span>เยือน <b>${pct(m.sum.away)}</b></span></div>
-
-    <div class="kv" style="margin-top:16px">
-      <div><div class="k">แฮนดิแคป</div><div class="v gold" style="font-size:16px">${m.mk?.spread?esc(ahPhrase(m.h.short,m.a.short,m.mk.spread.line)):"ยังไม่มีราคา"}</div></div>
-      <div><div class="k">ทายสกอร์</div><div class="v num">${m.sum.top[0].h}-${m.sum.top[0].a} <span class="faint" style="font-size:13px;font-weight:400">${pct(m.sum.top[0].p)}</span></div></div>
-      <div><div class="k">สูง 2.5 / ต่ำ 2.5</div><div class="v num">${pct(m.sum.over25)} / ${pct(m.sum.under25)}</div></div>
-      <div><div class="k">λ เจ้าบ้าน / เยือน</div><div class="v num">${m.lh.toFixed(2)} / ${m.la.toFixed(2)}</div></div>
-    </div>
-
-    <h2 class="sec">เทียบตลาด<small>${m.mk?esc(m.mk.book)+" · ไม่ใช่ราคาเว็บไทย":""}</small></h2>
-    ${rows.length?`<div class="card scroll-x"><table class="tbl num"><thead><tr><th>ตลาด</th><th>ราคา</th><th>โมเดล</th><th>ตลาด*</th><th>ต่าง</th></tr></thead><tbody>
-      ${rows.map(r=>`<tr><td>${esc(r.label)}</td><td>${fmtPrice(r.dec,S.style)}</td><td>${pct(r.model)}</td><td>${r.fair!=null?pct(r.fair):"–"}</td><td>${r.edge!=null?`<span class="tag ${r.edge>=VALUE_EDGE?"value":""}">${pts(r.edge)}</span>`:"–"}</td></tr>`).join("")}
-    </tbody></table><p class="note">*หักน้ำแบบสัดส่วน · แฮนดิแคปและสูงต่ำคิดแบบครอบเส้น (ไม่นับคืนทุน)</p></div>`
-    :`<div class="card muted">ฟีดยังไม่มีราคาของคู่นี้ ใส่ราคาเองด้านล่างได้</div>`}
-
-    <div style="height:12px"></div>${calcBlock(m)}
-
-    <h2 class="sec">สกอร์ที่เป็นไปได้<small>% ต่อช่อง</small></h2>
-    <div class="card"><div class="grid6"><span class="hd"></span>${[0,1,2,3,4,5].map(a=>`<span class="hd">${a}</span>`).join("")}
-      ${[0,1,2,3,4,5].map(h=>`<span class="hd">${h}</span>${[0,1,2,3,4,5].map(a=>cell(h,a)).join("")}`).join("")}</div>
-      <p class="note">แถวคือประตู ${esc(m.h.short)} คอลัมน์คือประตู ${esc(m.a.short)} · ทั้งยิงทั้งเสีย ${pct(m.sum.btts)}</p></div>
-
-    <h2 class="sec">สถิติที่น่าสนใจ</h2>
-    <div class="card">
-      <div class="row" style="justify-content:space-between"><span>${esc(m.h.short)}</span>${formPills(m.h.form)}</div>
-      ${ds?.hf?.lines?.length?`<div class="form-lines num">${ds.hf.lines.map(l=>`<span>${l}</span>`).join("")}</div>`:""}
-      <div class="row" style="justify-content:space-between;margin-top:12px"><span>${esc(m.a.short)}</span>${formPills(m.a.form)}</div>
-      ${ds?.af?.lines?.length?`<div class="form-lines num">${ds.af.lines.map(l=>`<span>${l}</span>`).join("")}</div>`:""}
-      <div style="margin-top:14px">${ds?(m.hs||m.as?statRows(m):`<p class="muted">ฟีดยังไม่มีผล 5 นัดหลัง</p>`):`<p class="muted" id="dsLoading">${S.liveOk?"กำลังดึงสถิติเชิงลึก…":"ข้อมูลชุดนี้ยังไม่มีสถิติเชิงลึกของคู่นี้"}</p>`}</div>
-    </div>
-
-    <h2 class="sec">เคยเจอกัน<small>${esc(ds?.h2h||"")}</small></h2>
-    <div class="card">${!ds?`<span class="muted">ยังไม่ได้ดึง</span>`:m.meets.length?`<div class="stack" style="gap:6px">${ds.meet.map(x=>`<div class="row num" style="justify-content:space-between;font-size:13.5px"><span class="faint">${x[0]}</span><span style="flex:1;min-width:0;text-align:right">${esc(x[5])} <b>${x[3]}–${x[4]}</b> ${esc(x[6])}</span></div>`).join("")}</div>
-      <p class="note">เฉลี่ย ${(m.meets.reduce((s,x)=>s+x.f+x.a,0)/m.meets.length).toFixed(1)} ประตูต่อนัด${m.meets.length>=3?" · ผสมเข้าโมเดล 18%":" · น้อยกว่า 3 นัด ยังไม่ผสมเข้าโมเดล"}</p>`:`<span class="muted">ยังไม่เคยเจอกันในบันทึกของฟีด</span>`}</div>
-
-    ${ds?`<h2 class="sec">สนามและทีมงาน</h2><div class="card stack" style="gap:6px;font-size:14px">
-      <div><span class="faint">สนาม</span> ${ds.venue?esc(ds.venue)+(ds.city?` · ${esc(ds.city)}`:""):"ยังไม่มีข้อมูล"}</div>
-      <div><span class="faint">ผู้จัดการ ${esc(m.h.short)}</span> ${ds.hc?esc(ds.hc):"ยังไม่มีข้อมูล"}</div>
-      <div><span class="faint">ผู้จัดการ ${esc(m.a.short)}</span> ${ds.ac?esc(ds.ac):"ยังไม่มีข้อมูล"}</div></div>`:""}
-
-    ${ds?.players?.length?`<h2 class="sec">นักเตะเด่น<small>ตามที่ฟีดมี</small></h2><div class="list">${ds.players.map(p=>`<div class="li" style="grid-template-columns:36px 1fr auto">${badge({name:p.team,short:p.name,logo:null})}<span class="mid"><div>${esc(p.name)}</div><div class="muted" style="font-size:12px">${esc(p.team)}</div></span><span class="r num">${p.goals!=null?`ยิง ${p.goals}`:""}${p.assists!=null?` · แอส ${p.assists}`:""}${p.apps!=null?`<br><span class="faint">${p.apps} นัด</span>`:""}</span></div>`).join("")}</div>`:""}
-    ${ds?.marks?.length?`<div class="card" style="margin-top:12px"><ul style="margin:0;padding-left:18px;font-size:13.5px">${ds.marks.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>`:""}
-
-    <h2 class="sec">ที่มาของตัวเลข</h2>
-    <div class="card"><ol class="steps">${m.steps.map(s=>`<li>${esc(s.text)} → <b class="num">${s.lh.toFixed(2)} / ${s.la.toFixed(2)}</b></li>`).join("")}</ol></div>
-
-    <div style="height:12px"></div>${omen(m)}
+    ${seg("sheetTab",[["overview","ภาพรวม"],["market","ราคา"],["stats","สถิติ"]],tab)}
+    <div id="sheetBody">${body}</div>
   </div>`;
 }
+function paintSheet(){ const m=S.open; if(!m) return; const sh=$("#sheet"); const y=sh.scrollTop; sh.innerHTML=sheetHtml(m); sh.scrollTop=y; runCalc(); }
 async function openMatch(id, date){
-  if(date && date!==S.date){ S.date=date; }
+  if(date && date!==S.date) S.date=date;
   const day=getDay(S.date); let m=day.matches.find(x=>x.id===id);
   if(!m){ for(const d of Object.keys(S.days)){ m=S.days[d].matches.find(x=>x.id===id); if(m) break; } }
   if(!m) return;
-  S.open=m; const sh=$("#sheet"); sh.innerHTML=sheetHtml(m); sh.hidden=false; sh.scrollTop=0; document.body.style.overflow="hidden"; runCalc();
+  S.open=m; S.sheetTab="overview";
+  const sh=$("#sheet"); sh.innerHTML=sheetHtml(m); sh.hidden=false; sh.scrollTop=0; document.body.style.overflow="hidden"; runCalc();
   try{ if(location.hash==="#match-"+id || S.pushed) history.replaceState({sheet:1},"","#match-"+id); else { history.pushState({sheet:1},"","#match-"+id); S.pushed=true; } }catch{}
   if(!m.ds && S.liveOk){
     const ds=await loadLiveDossier(m);
-    if(ds && S.open?.id===id){ const idx=day.matches.indexOf(m); const nm=refine({...m.raw, ds}); if(idx>=0) day.matches[idx]=nm; S.open=nm; sh.innerHTML=sheetHtml(nm); runCalc(); }
+    if(ds && S.open?.id===id){ const idx=day.matches.indexOf(m); const nm=refine({...m.raw, ds}); if(idx>=0) day.matches[idx]=nm; S.open=nm; paintSheet(); }
     else if(!ds){ const el=$("#dsLoading"); if(el) el.textContent="ดึงสถิติเชิงลึกไม่สำเร็จ"; }
   }
 }
@@ -949,26 +1090,26 @@ function closeSheet(){
 }
 window.addEventListener("popstate",()=>{ if(S.open && !location.hash.startsWith("#match-")){ S.pushed=false; hideSheet(); } });
 
-/* ---------- AI brief via Claude (sample capability) ---------- */
+/* ---------- AI brief ---------- */
 async function runBrief(){
   const day=getDay(S.date); if(!day.matches.length) return;
   S.briefBusy=true; S.briefErr=""; render();
   try{
     const sample = window.claude ? await window.claude.use("sample") : null;
-    const data=day.matches.slice(0,30).map(m=>({match:`${m.h.short} - ${m.a.short}`,league:LEAGUE_NAME[m.lg],kickoffThai:kickTime(m.ko),state:m.st,
+    const data=day.matches.slice(0,30).map(m=>({match:`${m.h.short} - ${m.a.short}`,league:lg(m),kickoffThai:kickTime(m.ko),state:m.st,
       model:{home:+m.sum.home.toFixed(3),draw:+m.sum.draw.toFixed(3),away:+m.sum.away.toFixed(3),over25:+m.sum.over25.toFixed(3),likely:`${m.sum.top[0].h}-${m.sum.top[0].a}`,lambda:[+m.lh.toFixed(2),+m.la.toFixed(2)]},
       handicap:m.mk?.spread?ahPhrase(m.h.short,m.a.short,m.mk.spread.line):null, bestEdge:(b=>b?{label:b.label,points:+(b.edge*100).toFixed(1)}:null)(bestEdge(m)),
       form:[m.h.form,m.a.form], h2hMeetings:m.meets.length}));
     if(!sample){
       let out;
       try{ out=await getJson("/api/brief",60000,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({date:S.date,matches:data})}); }
-      catch{ S.briefErr="ยังเรียกบทวิเคราะห์ไม่ได้ ถ้าเปิดจากเว็บที่ติดตั้งเอง ให้ใส่ ANTHROPIC_API_KEY ในตั้งค่า Vercel"; return; }
+      catch{ S.briefErr="ยังเรียกบทวิเคราะห์ไม่ได้ ตรวจว่าใส่ ANTHROPIC_API_KEY ใน Vercel แล้ว"; return; }
       if(out?.error){ S.briefErr=out.error; return; }
       store.set("brief:"+S.date,{at:new Date().toISOString(),summary:String(out.summary||"").slice(0,600),notes:(out.notes||[]).slice(0,5),players:(out.players||[]).slice(0,7),headlines:(out.headlines||[]).slice(0,12)});
       return;
     }
     const prompt=`คุณคือนักวิเคราะห์สถิติฟุตบอลของแอป Goal Club เขียนภาษาไทยทั้งหมด
-ข้อมูลด้านล่างคือผลโมเดลปัวซง/ดิกสัน-โคลส์และราคาตลาดของวันที่ ${S.date} (เวลาไทย) ใช้เฉพาะตัวเลขในข้อมูลนี้ ห้ามแต่งข่าว ชื่อนักเตะ อาการบาดเจ็บ หรือตัวเลขที่ไม่มีในข้อมูล ห้ามชวนเดิมพัน ห้ามอ้างว่าแม่นหรือชัวร์
+ข้อมูลด้านล่างคือผลโมเดลปัวซง/ดิกสัน-โคลส์และราคาตลาดของวันที่ ${S.date} ใช้เฉพาะตัวเลขในข้อมูลนี้ ห้ามแต่งข่าว ชื่อนักเตะ อาการบาดเจ็บ หรือตัวเลขที่ไม่มีในข้อมูล ห้ามชวนเดิมพัน ห้ามอ้างว่าแม่นหรือชัวร์
 ตอบเป็น JSON เท่านั้น รูปแบบ {"summary": "ภาพรวมของวัน 2-3 ประโยค", "notes": [{"match": "ทีม - ทีม", "text": "หนึ่งประโยคว่าตัวเลขบอกอะไร"}]} ใส่ notes 3-5 คู่ที่น่าสนใจที่สุด
 ข้อมูล: ${JSON.stringify(data)}`;
     const out=await sample.json(prompt,{modelTier:"default"});
@@ -979,53 +1120,81 @@ async function runBrief(){
   }finally{ S.briefBusy=false; render(); }
 }
 
-/* ---------- render + events ---------- */
-function paintStatus(){ const el=$("#status"); if(el) el.innerHTML=statusText(); }
+/* ---------- chrome: status, dates, tabs ---------- */
+const TABS=[["home","หน้าหลัก",'<path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/>'],["schedule","โปรแกรม",'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>'],["analyze","วิเคราะห์",'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'],["saved","ทีมโปรด",'<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>'],["more","เพิ่มเติม",'<path d="M4 6h16M4 12h16M4 18h16"/>']];
+const DATED_TABS=new Set(["home","schedule","analyze"]);
 function statusText(){
   const day=getDay(S.date);
-  if(S.loading===S.date) return `<span class="dot live"></span> กำลังอัปเดตข้อมูลสด…`;
-  if(S.err && day.source!=="snapshot") return `<span class="dot" style="background:var(--loss)"></span> เชื่อมต่อไม่ได้ · แสดงข้อมูลเมื่อ ${kickTime(day.fetchedAt||S.err)} · จะลองใหม่อัตโนมัติ`;
-  if(day.source==="live") return `<span class="dot live"></span> สดจาก ESPN · อัปเดต ${kickTime(day.fetchedAt)}${S.nextMs?` · อัปเดตเองทุก ${S.nextMs>=600e3?"10 นาที":"1 นาที"}`:""}`;
-  if(day.source==="cache") return `<span class="dot"></span> ข้อมูลที่ดึงไว้ล่าสุด · ${stampTime(day.fetchedAt)}${S.liveOk===null?" · กำลังเชื่อมฟีดสด…":""}`;
-  if(day.source==="snapshot") return `<span class="dot"></span> ข้อมูลจาก ESPN ชุดที่บันทึกไว้ · ณ ${stampTime(day.fetchedAt)}`;
-  return `<span class="dot"></span> ยังไม่มีข้อมูลของ${relLabel(S.date)}`;
+  if(S.loading===S.date) return `<span class="dot live pulse"></span><span>กำลังอัปเดตข้อมูลสด…</span>`;
+  if(S.err && day.source!=="snapshot") return `<span class="dot bad"></span><span>เชื่อมต่อไม่ได้ · ข้อมูลเมื่อ ${kickTime(day.fetchedAt||S.err)} · จะลองใหม่เอง</span>`;
+  if(day.source==="live") return `<span class="dot live"></span><span>สดจาก ESPN · อัปเดต ${kickTime(day.fetchedAt)}${S.nextMs?` · ทุก ${S.nextMs>=600e3?"10 นาที":"1 นาที"}`:""}</span>`;
+  if(day.source==="cache") return `<span class="dot"></span><span>ข้อมูลที่ดึงไว้ · ${stampTime(day.fetchedAt)}${S.liveOk===null?" · กำลังเชื่อมฟีดสด…":""}</span>`;
+  if(day.source==="snapshot") return `<span class="dot"></span><span>ข้อมูลชุดที่บันทึกไว้ · ${stampTime(day.fetchedAt)}</span>`;
+  return `<span class="dot"></span><span>ยังไม่มีข้อมูลของ${relLabel(S.date)}</span>`;
+}
+function paintStatus(){ const el=$("#status"); if(el) el.innerHTML=statusText(); }
+function paintDates(){
+  const el=$("#dates"); const show=DATED_TABS.has(S.tab);
+  el.hidden=!show; $("#status").hidden=!show;
+  if(!show) return;
+  const t=bkkToday(); const set=new Set([shiftDate(t,-1),t,shiftDate(t,1),shiftDate(t,2),S.date]);
+  Object.keys(SNAPSHOT||{}).filter(d=>d>=shiftDate(t,-1)).forEach(d=>set.add(d));
+  const html=[...set].sort().map(d=>{
+    const day=S.days[d]||((SNAPSHOT||{})[d]?getDay(d):null); const n=day?.matches?.length||0; const live=day?.matches?.some(m=>m.st==="in");
+    const rel=relLabel(d), lbl=dayLabel(d);
+    return `<button class="dchip ${d===S.date?"on":""}${live?" has-live":""}" role="tab" aria-selected="${d===S.date}" data-date="${d}"><span class="d1">${rel===lbl?lbl.split(" ")[0]:rel}</span><span class="d2 num">${rel===lbl?lbl.split(" ").slice(1).join(" "):lbl.split(" ").slice(1).join(" ")}${n?` · ${n}`:""}</span></button>`;
+  }).join("");
+  if(el.dataset.html!==html){ el.innerHTML=html; el.dataset.html=html; el.querySelector(".on")?.scrollIntoView({inline:"center",block:"nearest"}); }
+}
+function paintTabs(){
+  const liveN=(S.days[S.date]?.matches||[]).filter(m=>m.st==="in").length;
+  $("#tabs").innerHTML=TABS.map(([k,l,ic])=>`<a href="#${k}" class="${S.tab===k?"on":""}" data-tab="${k}" ${S.tab===k?'aria-current="page"':""}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">${ic}</svg>${l}${k==="schedule"&&liveN?`<span class="badge-n num">${liveN}</span>`:""}</a>`).join("");
 }
 function render(){
-  paintStatus();
+  paintStatus(); paintDates(); paintTabs();
   if(S.open) return; // board refreshes after the sheet closes
-  $("#tabs").innerHTML=TABS.map(([k,l,ic])=>`<a href="#${k}" class="${S.tab===k?"on":""}" data-tab="${k}" ${S.tab===k?'aria-current="page"':""}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">${ic}</svg>${l}</a>`).join("");
   const v={home:viewHome,schedule:viewSchedule,analyze:viewAnalyze,saved:viewSaved,more:viewMore}[S.tab]||viewHome;
   $("#view").innerHTML=v();
 }
+function goTab(tab){ S.tab=tab; try{ history.replaceState(null,"","#"+tab); }catch{} render(); window.scrollTo({top:0}); }
 function setDate(d){ S.date=d; S.league=""; render(); window.scrollTo({top:0}); const day=S.days[d]; if(S.liveOk && (day?.source!=="live" || Date.now()-Date.parse(day.fetchedAt)>60e3)) refresh(d,false); else if(S.liveOk) scheduleNext(); }
 function toggleFav(id){
   const m=(S.open&&S.open.id===id)?S.open:Object.values(S.days).flatMap(d=>d.matches).find(x=>x.id===id); if(!m) return;
   if(isFav(m)){ delete S.favs[m.h.id]; delete S.favs[m.a.id]; toast("เอาออกจากทีมโปรดแล้ว"); }
   else { S.favs[m.h.id]=m.h.short; S.favs[m.a.id]=m.a.short; toast(`เพิ่ม ${m.h.short} และ ${m.a.short} ในทีมโปรดแล้ว`); }
   store.set("favs",S.favs);
-  if(S.open){ const st=$("#sheet .star"); if(st) st.classList.toggle("on",!!isFav(m)); }
+  if(S.open) paintSheet();
   render();
 }
+
+/* ---------- events ---------- */
 document.addEventListener("click",e=>{
-  const t=e.target.closest("[data-fav],[data-open],[data-date],[data-filter],[data-analyze],[data-style],[data-unfav],[data-tab],[data-goto],#btnBrief,#btnBack,#btnSearch,#btnRefresh,#btnRefresh2");
+  const t=e.target.closest("[data-fav],[data-open],[data-date],[data-set],[data-goto],[data-act],[data-unfav],[data-tab],#btnBrief,#btnBack,#btnSearch,#btnRefresh");
   if(!t) return;
-  if(t.dataset.fav){ e.stopPropagation(); e.preventDefault(); toggleFav(t.dataset.fav); return; }
+  const d=t.dataset;
+  if(d.fav){ e.stopPropagation(); e.preventDefault(); return toggleFav(d.fav); }
   if(t.id==="btnBack") return closeSheet();
-  if(t.dataset.open) return openMatch(t.dataset.open, t.dataset.day);
-  if(t.dataset.date) return setDate(t.dataset.date);
-  if(t.dataset.filter){ S.filter=t.dataset.filter; return render(); }
-  if(t.dataset.analyze){ S.analyze=t.dataset.analyze; return render(); }
-  if(t.dataset.style){ S.style=t.dataset.style; store.set("style",S.style); return render(); }
-  if(t.dataset.unfav){ delete S.favs[t.dataset.unfav]; store.set("favs",S.favs); return render(); }
-  if(t.dataset.tab){ e.preventDefault(); S.tab=t.dataset.tab; try{ history.replaceState(null,"","#"+S.tab); }catch{} render(); window.scrollTo(0,0); return; }
-  if(t.dataset.goto){ e.preventDefault(); S.tab="more"; render(); document.getElementById(t.dataset.goto)?.scrollIntoView(); return; }
+  if(d.open) return openMatch(d.open, d.day);
+  if(d.date) return setDate(d.date);
+  if(d.set){
+    const [k,v]=d.set.split(":"); S[k]=v;
+    if(k==="style") store.set("style",v);
+    if(k==="sheetTab"||(S.open&&k==="style")) return paintSheet();
+    return render();
+  }
+  if(d.goto){ const [tab,sub]=d.goto.split(":"); if(tab==="schedule"&&sub) S.status=sub; if(tab==="analyze"&&sub) S.mode=sub; return goTab(tab); }
+  if(d.unfav){ delete S.favs[d.unfav]; store.set("favs",S.favs); return render(); }
+  if(d.tab){ e.preventDefault(); return goTab(d.tab); }
+  if(d.act==="hideWelcome"){ S.welcomeHidden=true; store.set("welcomeHidden",true); return render(); }
+  if(d.act==="refresh"){ S.liveOk=null; return refresh(S.date,true); }
+  if(d.act==="clear"){ try{ Object.keys(localStorage).filter(k=>k.startsWith("gc:day:")||k.startsWith("gc:brief:")).forEach(k=>localStorage.removeItem(k)); }catch{} toast("ล้างข้อมูลที่เก็บไว้แล้ว ทีมโปรดยังอยู่"); S.liveOk=null; return refresh(S.date,false); }
   if(t.id==="btnBrief") return runBrief();
   if(t.id==="btnSearch"){ const r=$("#searchRow"); r.hidden=!r.hidden; if(!r.hidden) $("#q").focus(); else { S.q=""; $("#q").value=""; render(); } return; }
-  if(t.id==="btnRefresh"||t.id==="btnRefresh2"){ S.liveOk=null; return refresh(S.date,true); }
+  if(t.id==="btnRefresh"){ S.liveOk=null; return refresh(S.date,true); }
 });
 document.addEventListener("keydown",e=>{
   if(e.key==="Escape" && S.open) return closeSheet();
-  if((e.key==="Enter"||e.key===" ") && e.target.matches?.(".match[role=button]")){ e.preventDefault(); openMatch(e.target.dataset.open); }
+  if((e.key==="Enter"||e.key===" ") && e.target.matches?.(".mcard[role=button]")){ e.preventDefault(); openMatch(e.target.dataset.open); }
 });
 document.addEventListener("input",e=>{
   if(e.target.id==="q"){ clearTimeout(S.qT); S.qT=setTimeout(()=>{ S.q=e.target.value.trim(); render(); },160); }
@@ -1038,17 +1207,17 @@ document.addEventListener("change",e=>{
 function fromHash(){
   const h=(location.hash||"").slice(1);
   if(TABS.some(([k])=>k===h)) S.tab=h;
-  if(h.startsWith("match-")){ const id=h.slice(6); const d=Object.keys(SNAPSHOT||{}).find(d=>SNAPSHOT[d].matches.some(m=>m.id===id)); if(d){ render(); openMatch(id,d); return true; } }
+  if(h.startsWith("match-")){ const id=h.slice(6); const d=[...Object.keys(S.days),...Object.keys(SNAPSHOT||{})].find(d=>getDay(d).matches.some(m=>m.id===id)); if(d){ render(); openMatch(id,d); return true; } }
   return false;
 }
-window.addEventListener("hashchange",()=>{ if(location.hash.startsWith("#match-") && S.open) return; if(S.open && !location.hash.startsWith("#match-")) return; if(!fromHash()) render(); });
+window.addEventListener("hashchange",()=>{ if(S.open) return; if(!fromHash()) render(); });
 
-/* start on today; if today has nothing saved, jump to the nearest saved day so the board isn't empty */
+/* ---------- boot ---------- */
 (function start(){
   const t=bkkToday(); S.today=t;
-  if(!getDay(t).matches.length && !store.get("day:"+t,null)){ const ds=Object.keys(SNAPSHOT||{}).sort(); const near=ds.find(d=>d>=t); if(near) S.date=near; }
+  if(!getDay(t).matches.length && !store.get("day:"+t,null)){ const ds=Object.keys(SNAPSHOT||{}).sort(); const near=ds.find(d=>d>=t)||ds[ds.length-1]; if(near) S.date=near; }
   if(!fromHash()) render();
-  probeLive().then(ok=>{ if(ok && !getDay(t).matches.length) S.date=t; refresh(S.date,false); });
+  probeLive().then(ok=>{ if(ok && S.date!==t && !getDay(t).matches.length) S.date=t; refresh(S.date,false); });
   if("serviceWorker" in navigator && location.protocol==="https:" && !window.claude){ try{ navigator.serviceWorker.register("/sw.js").catch(()=>{}); }catch{} }
 })();
 </script>
