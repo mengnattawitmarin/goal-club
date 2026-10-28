@@ -1,6 +1,6 @@
 // Daily brief: reads real headlines (BBC Sport, The Guardian, ESPN) and the app's model numbers,
 // then asks Claude for a Thai summary. Needs ANTHROPIC_API_KEY in the Vercel project settings.
-import { kv, kvPipe, kvEnabled } from "../lib/kv.js";
+import { kv, kvPipe, kvEnabled, anthropicKey } from "../lib/kv.js";
 
 const FEEDS = [
   { source: "BBC Sport", url: "https://feeds.bbci.co.uk/sport/football/rss.xml" },
@@ -33,7 +33,7 @@ async function espnNews() {
 
 export default async function handler(req, res) {
   if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
-  if (!process.env.ANTHROPIC_API_KEY) { res.status(200).json({ error: "ยังไม่ได้ตั้ง ANTHROPIC_API_KEY ใน Vercel จึงยังเขียนบทวิเคราะห์ไม่ได้" }); return; }
+  if (!anthropicKey()) { res.status(200).json({ error: "ยังไม่ได้ตั้ง ANTHROPIC_API_KEY ใน Vercel จึงยังเขียนบทวิเคราะห์ไม่ได้" }); return; }
   const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
   const matches = Array.isArray(body.matches) ? body.matches.slice(0, 30) : [];
   const headlines = (await Promise.all([...FEEDS.map(rss), espnNews()])).flat().slice(0, 20);
@@ -51,7 +51,7 @@ adjust ใส่เฉพาะเมื่อหัวข่าวยืนย�
   try {
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
-      headers: { "content-type": "application/json", "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
+      headers: { "content-type": "application/json", "x-api-key": anthropicKey(), "anthropic-version": "2023-06-01" },
       body: JSON.stringify({ model: MODEL, max_tokens: 2500, messages: [{ role: "user", content: prompt }] }),
       signal: AbortSignal.timeout(50000),
     });

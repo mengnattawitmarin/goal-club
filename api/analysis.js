@@ -4,7 +4,7 @@
 // - ค้นข่าวล่าสุดจากเว็บด้วยเครื่องมือ web_search ของ Claude API แล้วอ้างแหล่ง
 // ส่งผลแบบสตรีมเป็นบรรทัด JSON (NDJSON) เพื่อให้หน้าแอปแสดงระหว่างเขียน
 // ต้องตั้ง ANTHROPIC_API_KEY ใน Vercel (ตัวเลือก ANTHROPIC_MODEL)
-import { kv, kvEnabled, parse, readBody } from "../lib/kv.js";
+import { kv, kvEnabled, parse, readBody, anthropicKey } from "../lib/kv.js";
 
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5-5";
 const ID = /^\d{1,12}$/;
@@ -81,7 +81,7 @@ export default async function handler(req, res) {
   res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
   res.setHeader("Cache-Control", "no-store");
   const send = (o) => res.write(JSON.stringify(o) + "\n");
-  if (!process.env.ANTHROPIC_API_KEY) { send({ t: "error", d: "ยังไม่ได้ตั้ง ANTHROPIC_API_KEY ใน Vercel" }); res.end(); return; }
+  if (!anthropicKey()) { send({ t: "error", d: "ยังไม่ได้ตั้ง ANTHROPIC_API_KEY ใน Vercel" }); res.end(); return; }
 
   const data = readBody(req);
   send({ t: "status", d: "กำลังอ่านข้อมูลเชิงลึกจาก ESPN" });
@@ -99,7 +99,7 @@ ${JSON.stringify(deep || "ไม่มี").slice(0, 5000)}`;
   try {
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
-      headers: { "content-type": "application/json", "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
+      headers: { "content-type": "application/json", "x-api-key": anthropicKey(), "anthropic-version": "2023-06-01" },
       body: JSON.stringify({
         model: MODEL, max_tokens: 3000, stream: true, system: SKILLS,
         tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 4, user_location: { type: "approximate", country: "TH", timezone: "Asia/Bangkok" } }],
@@ -109,7 +109,8 @@ ${JSON.stringify(deep || "ไม่มี").slice(0, 5000)}`;
     });
     if (!r.ok) {
       const j = await r.json().catch(() => ({}));
-      send({ t: "error", d: `Claude API ตอบว่า: ${j?.error?.message || r.status}` }); res.end(); return;
+      const msg = j?.error?.message || String(r.status);
+      send({ t: "error", d: /x-api-key|authentication/i.test(msg) ? "คีย์ Claude API ใน Vercel ไม่ถูกต้อง (invalid x-api-key) สร้างคีย์ใหม่ที่ console.anthropic.com แล้วใส่ใน ANTHROPIC_API_KEY จากนั้น Redeploy" : /credit|balance/i.test(msg) ? "เครดิต Claude API หมด เติมได้ที่ console.anthropic.com → Billing" : `Claude API ตอบว่า: ${msg}` }); res.end(); return;
     }
     send({ t: "status", d: "บอทเริ่มค้นข่าวและเขียนบท" });
     const reader = r.body.getReader(); const dec = new TextDecoder(); let buf = "";

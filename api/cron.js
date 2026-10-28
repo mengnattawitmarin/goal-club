@@ -5,7 +5,7 @@
 // 4. records scorers and assisters per player from ESPN match summaries
 // 5. scores the model against the market for the day (log loss, Brier, hit rate)
 // 6. weekly: re-tunes the market blend weight on everything learned so far
-import { kv, kvPipe, kvEnabled, parse } from "../lib/kv.js";
+import { kv, kvPipe, kvEnabled, parse, anthropicKey } from "../lib/kv.js";
 import { updateRatings, probs, logLoss, brier, outcome, blend, tune, totalLoss, predictRow, PICK_VALUE } from "../lib/learn.js";
 
 const LEAGUES = ["tha.1","eng.1","esp.1","ger.1","ita.1","fra.1","uefa.champions","uefa.europa","uefa.europa.conf","eng.2","eng.league_cup","ned.1","por.1","bel.1","sco.1","tur.1","usa.1","mex.1","bra.1","arg.1","ksa.1","jpn.1","chn.1","aus.1"];
@@ -165,7 +165,7 @@ export default async function handler(req, res) {
   }
 
   /* 7. player news: who is out or doubtful, from today's headlines (needs ANTHROPIC_API_KEY) */
-  if (process.env.ANTHROPIC_API_KEY && Date.now() - t0 < 32000) {
+  if (anthropicKey() && Date.now() - t0 < 32000) {
     try { report.newsPlayers = await scanPlayerNews(today); } catch { report.newsPlayers = "failed"; }
   }
   report.ms = Date.now() - t0;
@@ -184,7 +184,7 @@ async function scanPlayerNews(today) {
 หัวข่าว: ${JSON.stringify(lines)}`;
   const r = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST", signal: AbortSignal.timeout(22000),
-    headers: { "content-type": "application/json", "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
+    headers: { "content-type": "application/json", "x-api-key": anthropicKey(), "anthropic-version": "2023-06-01" },
     body: JSON.stringify({ model: process.env.ANTHROPIC_MODEL || "claude-sonnet-5-5", max_tokens: 1500, messages: [{ role: "user", content: prompt }] }),
   });
   const j = await r.json(); const text = (j.content || []).map((c) => c.text || "").join("");
