@@ -513,6 +513,7 @@ nav.tabs .badge-n{position:absolute;top:8px;left:calc(50% + 6px);min-width:16px;
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(76px + env(safe-area-inset-bottom,0px));z-index:60;background:var(--surface-3);color:var(--fg);border:1px solid var(--line);padding:10px 14px;border-radius:12px;font-size:13px;max-width:min(92vw,520px);text-align:center;box-shadow:0 12px 30px -12px #000}
 @media (min-width:560px){ .tiles .tile .v{font-size:30px} }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+.linkbtn{background:none;border:0;padding:4px 0;color:var(--muted);font:inherit;font-size:12.5px;text-decoration:underline;cursor:pointer;width:100%;text-align:center}.linkbtn:disabled{opacity:.6}
 </style>
 
 <div class="wrap brandbar">
@@ -1592,23 +1593,19 @@ const PITCH_ART=`<svg class="brief-art" viewBox="0 0 120 80" aria-hidden="true">
   <g stroke="#7a2412" stroke-width="1.3" fill="none" opacity=".75"><path d="M28 50 C40 30 52 52 70 30"/><path d="m66 28 5 1-2 5"/></g><g fill="#7a2412" opacity=".8"><circle cx="28" cy="50" r="1.8"/><circle cx="46" cy="40" r="1.8"/><circle cx="62" cy="36" r="1.8"/></g></g>
   <circle cx="100" cy="58" r="13" fill="url(#pa)"/><path d="M100 58 V45 A13 13 0 0 1 112 53 Z" fill="#f6dfa6"/></svg>`;
 function homeBrief(day){
-  const b=store.get("brief:"+S.date,null);
-  const first=b?.summary?String(b.summary).split(/(?<=[.!?])\s|\s{2,}/)[0].slice(0,90):"";
-  return drawer("brief","บทวิเคราะห์วันนี้", b?esc(first)+(b.summary.length>first.length?"…":""):S.briefBusy?"กำลังเขียน…":"ยังไม่ได้วิเคราะห์ · แตะเพื่อเปิด", b?`<span class="faint num">${kickTime(b.at)}</span>`:"",
-    `${b?"":PITCH_ART}${briefCard(day,true)}`, ICON_TREND);
+  const c=writeDaily(day);
+  const first=c?c.summary.split(" · ").slice(0,2).join(" · "):"";
+  return drawer("brief","บทวิเคราะห์วันนี้", c?esc(first.slice(0,110))+(c.summary.length>first.length?"…":""):"ยังไม่มีคู่ของวันนี้", `<span class="faint">ระบบปิด</span>`,
+    briefCard(day,true), ICON_TREND);
 }
 function briefCard(day, inner){
-  const b=store.get("brief:"+S.date,null);
-  const hosted=!window.claude;
+  const b=store.get("brief:"+S.date,null), c=writeDaily(day);
   return `<div class="${inner?"":"card gold "}brief">
-    ${inner?"":`<div class="row"><h3>บทวิเคราะห์วันนี้</h3><span class="spacer"></span>${b?`<span class="faint" style="font-size:12px">เขียนเมื่อ ${stampTime(b.at)}</span>`:""}</div>`}
-    ${b?`<p>${esc(b.summary)}</p>${b.notes?.length?`<ul>${b.notes.map(n=>`<li><b>${esc(n.match)}</b> — ${esc(n.text)}</li>`).join("")}</ul>`:""}`
-       :`<p class="muted">ให้ Claude อ่านตัวเลขโมเดลกับราคาของ ${day.matches.length} คู่${hosted?" พร้อมหัวข่าวของวันนี้":""} แล้วสรุปเป็นภาษาไทย ผลจะจำไว้ใช้ทั้งวัน</p>`}
+    ${inner?"":`<div class="row"><h3>บทวิเคราะห์วันนี้</h3></div>`}
+    ${c?`<p>${esc(c.summary)}</p>${c.notes.length?`<ul>${c.notes.map(n=>`<li><b>${esc(n.match)}</b> — ${esc(n.text)}</li>`).join("")}</ul>`:""}`:`<p class="muted">ยังไม่มีคู่ของวันนี้</p>`}
     ${b?.players?.length?`<div style="margin-top:10px"><b style="font-size:13px" class="gold">นักเตะในข่าว</b><ul>${b.players.map(p=>`<li><b>${esc(p.name)}</b>${p.club?` (${esc(p.club)})`:""} — ${esc(p.detail)}</li>`).join("")}</ul></div>`:""}
     ${b?.headlines?.length?`<details><summary>ข่าวที่ใช้ ${b.headlines.length} ชิ้น</summary><ul style="font-size:13px">${b.headlines.map(h=>`<li><span class="faint">${esc(h.source)}</span> ${h.url?`<a href="${esc(h.url)}" target="_blank" rel="noopener">${esc(h.title)}</a>`:esc(h.title)}</li>`).join("")}</ul></details>`:""}
-    ${S.briefErr?`<p style="color:var(--loss);font-size:13px">${esc(S.briefErr)}</p>`:""}
-    <div class="row" style="margin-top:14px"><button class="btn" id="btnBrief" ${S.briefBusy||!day.matches.length?"disabled":""}>${S.briefBusy?"กำลังวิเคราะห์…":b?"วิเคราะห์อีกรอบ":"วิเคราะห์วันนี้"}</button></div>
-    <p class="note">${hosted?"อ่านหัวข่าว BBC Sport, The Guardian และ ESPN ก่อนสรุป":"สรุปจากสถิติและราคาในหน้านี้ ยังไม่ได้อ่านข่าว"} · ไม่ใช่คำแนะนำให้เดิมพัน</p>
+    <p class="note">บอทระบบปิดสรุปจากสถิติและราคาของทุกคู่ในวันนี้ อัปเดตเองเมื่อข้อมูลเปลี่ยน · ไม่ใช่คำแนะนำให้เดิมพัน</p>
   </div>`;
 }
 
@@ -1845,41 +1842,6 @@ function leanOf(m){
   if(m.sum.draw>=.28) return {title:"สูสี ลุ้นเสมอสูง",tone:"even",fav:null};
   return {title:`สูสี ${fav} เหนือกว่าเล็กน้อย`,tone:"even",fav};
 }
-function analysisParas(m){
-  const P=[], L=leanOf(m), hp=pct(m.sum.home), ap=pct(m.sum.away), dp=pct(m.sum.draw);
-  const when = m.st==="pre" ? `เตะ ${kickTime(m.ko)} น.` : m.st==="in" ? `ขณะนี้กำลังแข่ง สกอร์ ${m.h.score}–${m.a.score}` : `จบเกมที่ ${m.h.score}–${m.a.score}`;
-  P.push({h:"ภาพรวม", t:`${m.h.name} เปิดบ้านรับ ${m.a.name} ศึก${lg(m)} ${when} ${m.h.rank&&m.a.rank?`อันดับตารางตอนนี้ ${m.h.rank} ปะทะ ${m.a.rank} `:""}โมเดลให้เจ้าบ้านชนะ ${hp} เสมอ ${dp} ทีมเยือนชนะ ${ap} ภาพรวมจึงเป็นเกมที่ "${L.title}"`});
-  const fh=formWord(m.h.form), fa=formWord(m.a.form);
-  const hsS=sideStyle(m.hs), asS=sideStyle(m.as);
-  if(fh||fa||hsS||asS){
-    P.push({h:"ฟอร์มและสไตล์", t:[
-      fh?`${m.h.short} ${fh} (${m.h.form})${m.hs?` 5 นัดหลังยิง ${m.hs.gf} เสีย ${m.hs.ga}`:""}${hsS?` ${hsS}`:""}`:"",
-      fa?`ฝั่ง ${m.a.short} ${fa} (${m.a.form})${m.as?` ยิง ${m.as.gf} เสีย ${m.as.ga}`:""}${asS?` ${asS}`:""}`:""
-    ].filter(Boolean).join(" ส่วน")});
-  }
-  if(m.meets.length){
-    const w=m.meets.filter(x=>x.f>x.a).length, d=m.meets.filter(x=>x.f===x.a).length, l=m.meets.length-w-d;
-    const avg=m.meets.reduce((s,x)=>s+x.f+x.a,0)/m.meets.length;
-    P.push({h:"สถิติพบกัน", t:`${m.meets.length} นัดหลังสุด ${m.h.short} ชนะ ${w} เสมอ ${d} แพ้ ${l} เฉลี่ย ${avg.toFixed(1)} ประตูต่อนัด${avg>=3?" เจอกันทีไรยิงกันมันส์":avg<=2?" มักเป็นเกมปิดไม่ค่อยมีประตู":""}${m.meets.length>=3?" ผลส่วนนี้ถูกผสมเข้าโมเดลแล้ว":""}`});
-  }
-  const extra=(m.factors||[]).filter(f=>["venue","rest","lineup","weather","news","newsOld","trend","rating","calib","market"].includes(f.k));
-  if(extra.length) P.push({h:"ปัจจัยหน้างาน", list:extra.map(f=>`${f.label}: ${f.text}`)});
-  const tot=m.lh+m.la, top=m.sum.top;
-  P.push({h:"เกมรุกและประตู", t:`โมเดลคาด ${m.h.short} ยิง ${m.lh.toFixed(2)} ลูก ${m.a.short} ยิง ${m.la.toFixed(2)} ลูก รวม ${tot.toFixed(2)} ${tot>=3?"มีลุ้นเกมเปิดหน้าแลกกัน":tot<=2.2?"น่าจะเป็นเกมแน่นกลางสนาม ประตูไม่มาก":"จำนวนประตูน่าจะอยู่ระดับกลาง"} โอกาสสูง 2.5 ${pct(m.sum.over25)} ทั้งสองทีมยิงได้ ${pct(m.sum.btts)} สกอร์ที่โมเดลให้น้ำหนักที่สุดคือ ${top.slice(0,3).map(c=>`${c.h}-${c.a}`).join(", ")}`});
-  if(m.mk?.spread){
-    const s=hdpSplit(m.g,m.mk.spread.line), hc=cover(s);
-    const side=hc>=.5?`${m.h.short} ${signed(m.mk.spread.line)}`:`${m.a.short} ${signed(-m.mk.spread.line)}`;
-    const v=valueRow(m);
-    P.push({h:"มุมราคา", t:`ตลาด ${m.mk.book} เปิด ${ahPhrase(m.h.short,m.a.short,m.mk.spread.line)} โมเดลเอียงฝั่ง ${side} ครอบเส้น ${pct(Math.max(hc,1-hc))}${m.mk.total?` เส้นสูงต่ำ ${ballLabel(m.mk.total.line)} โมเดลให้สูง ${pct(cover(totSplit(m.g,m.mk.total.line).over))}`:""}${v?` จุดที่โมเดลมองสูงกว่าตลาดชัดสุดคือ ${v.label} (${pts(v.edge)} จุด)`:" ราคาตลาดใกล้เคียงกับโมเดล ยังไม่เห็นจุดต่างชัด"}`});
-  }
-  if(m.scorers?.list?.length){
-    const t3=m.scorers.list.slice(0,3);
-    const st=["h","a"].flatMap(s=>(m.scorers.story[s]||[]).filter(g=>g.name!=="ผู้เล่นคนอื่น").map(g=>g.name+(g.assist?` (จังหวะส่งจาก ${g.assist})`:"")));
-    P.push({h:"ดาวยิงที่ต้องจับตา", t:`ตัวเต็งเบียดชื่อบนสกอร์บอร์ดคือ ${t3.map(p=>`${p.name} (${p.team}) โอกาสยิง ${pct(p.pGoal)}`).join(", ")}${st.length?` ถ้าจบ ${m.sum.top[0].h}-${m.sum.top[0].a} ตามที่โมเดลทาย ชื่อที่น่าจะโผล่คือ ${st.join(", ")}`:""}`});
-  }
-  P.push({h:"สรุป", t:`${L.title} ทายสกอร์ ${top[0].h}-${top[0].a} เอน${m.sum.over25>=.5?"สูง":"ต่ำ"} 2.5 ${m.sum.btts>=.5?"และมีลุ้นทั้งสองทีมยิงได้":"และมีโอกาสที่บางฝั่งจะยิงไม่ได้"} ตัวเลขทั้งหมดเป็นค่าประมาณจากสถิติ ใช้ประกอบการดูบอล ไม่ใช่คำแนะนำให้เดิมพัน`});
-  return P;
-}
 function factorRows(m){
   const pctChg=r=>{ const v=Math.round((r-1)*100); return v===0?`<span class="faint">0%</span>`:`<span class="${v>0?"green":"lossc"}">${v>0?"+":""}${v}%</span>`; };
   const used=(m.factors||[]).map(f=>`<div class="frow"><div class="fl"><div class="fn">${esc(f.label)}</div><div class="ft">${esc(f.text)}</div></div>
@@ -2010,9 +1972,6 @@ function sheetOverview(m){
     ${liveBox(m)}
     ${botCard(m)}
     ${scoreCard(m)}
-    ${sec("บทวิเคราะห์")}
-    <div class="card article">${analysisParas(m).map(p=>`<h4>${esc(p.h)}</h4>${p.list?`<ul>${p.list.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>`:`<p>${esc(p.t)}</p>`}`).join("")}
-    </div>
     ${sec("ปัจจัยที่ใช้คำนวณ","ผลต่อประตูที่คาดของแต่ละทีม")}
     ${factorRows(m)}
     <p class="note">ดวงและโหราศาสตร์อยู่ในแท็บดวง แสดงคู่กับตัวเลข แต่ไม่ผสมใน % เพราะยังไม่มีหลักฐานว่าช่วยทายผลได้${luck&&(luck.hs!=null||luck.as!=null)?` · วันนี้ดวงหนุน ${luck.hs!=null&&luck.as!=null?(Math.abs(luck.hs-luck.as)<.1?"ใกล้เคียงกัน":(luck.hs>luck.as?m.h.short:m.a.short)):"ข้อมูลไม่ครบ"}`:""}</p>`;
@@ -2189,17 +2148,18 @@ function mdLite(t){
 function botBody(m){
   const st=S.bot[m.id], saved=store.get("bot:"+m.id,null);
   if(st?.busy) return `<div class="botstatus">${st.status.slice(-3).map(s=>`<span><span class="dot live pulse"></span>${esc(s)}</span>`).join("")}</div><div class="article bottext">${mdLite(st.text)}<span class="caret"></span></div>`;
-  if(st?.err) return `<p style="color:var(--loss);font-size:13.5px;margin:0">${esc(st.err)}</p>`;
-  if(saved) return `<div class="article bottext">${mdLite(saved.text)}</div>${saved.sources?.length?`<details class="botsrc"><summary>แหล่งข้อมูล ${saved.sources.length} แหล่ง</summary><ul>${saved.sources.map(s=>`<li><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a></li>`).join("")}</ul></details>`:""}<p class="note">เขียนเมื่อ ${stampTime(saved.at)}${saved.ai?` · โดย ${esc(saved.ai)}`:""}${saved.bot?" · ค้นข่าวจากเว็บ":" · ไม่ได้ค้นเว็บ"}</p>`;
-  return `<p class="muted" style="margin:0;font-size:13.5px">บอทจะอ่านตัวเลขทุกอย่างของคู่นี้ในแอป ดึงข้อมูลเชิงลึกจาก ESPN ค้นข่าวล่าสุดจากเว็บ แล้วเขียนเป็นทัศนะบอลพร้อมทายสกอร์และดาวยิง ใช้เวลาราว 20–50 วินาที</p>`;
+  return `<div class="article bottext">${mdLite(writeTasana(m))}</div>
+    <p class="note">เขียนสดจากตัวเลขล่าสุดของแอป อัปเดตเองเมื่อข้อมูลเปลี่ยน · ไม่ใช้ AI ภายนอก ไม่ต้องมีคีย์</p>
+    ${saved?`<details class="botsrc"><summary>ฉบับ AI ค้นเว็บ · ${stampTime(saved.at)}</summary><div class="article bottext">${mdLite(saved.text)}</div>${saved.sources?.length?`<ul>${saved.sources.map(s=>`<li><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a></li>`).join("")}</ul>`:""}</details>`:""}
+    ${st?.err?`<p style="color:var(--loss);font-size:13px;margin:8px 0 0">${esc(st.err)}</p>`:""}`;
 }
 function botCard(m){
-  const st=S.bot[m.id], saved=store.get("bot:"+m.id,null);
+  const st=S.bot[m.id];
   return `<div class="botcard">
     <div class="bothead"><span class="botav" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="7" width="16" height="12" rx="4"/><path d="M12 3v4M9 12h.01M15 12h.01M9.5 15.5h5"/></svg></span>
-      <div class="bt"><b>บอท Goal Club</b><small>ค้นเว็บ · ใช้โมเดลของแอป · เขียนทัศนะบอล</small></div></div>
+      <div class="bt"><b>บอท Goal Club</b><small>ระบบปิด · ใช้สถิติของแอป · เขียนทัศนะบอล</small></div></div>
     <div id="botBody">${botBody(m)}</div>
-    <button class="btn${saved?" ghost":""}" id="btnBot" style="width:100%;margin-top:12px" ${st?.busy?"disabled":""}>${st?.busy?"บอทกำลังทำงาน…":saved?"ให้บอทวิเคราะห์ใหม่":"ให้บอทวิเคราะห์บทเต็ม"}</button>
+    <button class="linkbtn" id="btnBot" style="margin-top:10px" ${st?.busy?"disabled":""}>${st?.busy?"AI กำลังค้นเว็บ…":"เสริมด้วย AI ค้นข่าวเว็บ (ต้องตั้งคีย์ AI)"}</button>
   </div>`;
 }
 function botPayload(m){
@@ -2252,6 +2212,116 @@ async function runBot(){
     delete S.bot[id];
   }catch(e){ S.bot[id]={err:e?.code==="not_granted"?"ยังไม่ได้อนุญาตให้หน้านี้ถาม Claude":e?.message||"บอททำงานไม่สำเร็จ ลองใหม่อีกครั้ง"}; }
   if(S.open?.id===id) paintSheet();
+}
+
+/* ---------- บอทระบบปิด: เขียนทัศนะบอลจากสถิติของแอปเอง ไม่เรียก AI ภายนอก ---------- */
+function hashStr(s){ let h=2166136261; for(const c of String(s)){ h^=c.charCodeAt(0); h=Math.imul(h,16777619); } return h>>>0; }
+function phraser(seed){ return (arr,salt="")=>arr[hashStr(seed+"|"+salt)%arr.length]; }
+function starsOf(p){ const n=p>=.70?5:p>=.64?4:p>=.58?3:p>=.53?2:1; return {n,txt:"★".repeat(n)+"☆".repeat(5-n)}; }
+function rec5(lines){ const s=linesStats(lines); return s; }
+function newsFor(m){
+  const keys=[m.h.name,m.a.name,m.h.short,m.a.short].map(t=>String(t||"").toLowerCase().split(" ")[0]).filter(x=>x.length>2);
+  return Object.values(S.newsPlayer||{}).filter(n=>keys.some(k=>String(n.team||"").toLowerCase().includes(k))).slice(0,8);
+}
+function writeTasana(m){
+  const pk=phraser(m.id), H=m.h.short, A=m.a.short, L=leanOf(m), top=m.sum.top[0], out=[];
+  const fav=m.sum.home>=m.sum.away?"h":"a", favN=fav==="h"?H:A, dogN=fav==="h"?A:H, pf=Math.max(m.sum.home,m.sum.away);
+  const tot=m.lh+m.la, W=(...x)=>out.push(...x);
+  /* 1. headline */
+  const hook = L.tone==="strong" ? pk([`${favN} ได้เปรียบชัดทั้งบนกระดาษและในตัวเลข`,`ตัวเลขชี้ทางเดียว ${favN} คือฝั่งที่คุมเกม`,`งานนี้ ${favN} ถือไพ่เหนือกว่าเห็น ๆ`],"hk")
+    : L.tone==="lean" ? pk([`${favN} มีภาษีกว่า แต่ ${dogN} ก็ไม่ได้มาแค่เป็นไม้ประดับ`,`ดูเผิน ๆ ${favN} น่าเชื่อกว่า แต่ช่องว่างไม่ได้กว้างอย่างที่คิด`,`${favN} เหนือกว่าครึ่งก้าว เกมนี้ต้องดูกันที่รายละเอียด`],"hk")
+    : pk([`สูสีจนแทบแยกไม่ออก ผลอาจตัดสินกันที่จังหวะเดียว`,`เกมวัดใจที่ตัวเลขยังไม่กล้าฟันธงข้างใด`,`สองทีมสูสี ใครพลาดน้อยกว่าคนนั้นได้ไป`],"hk");
+  W("## ทัศนะบอล", `${lg(m)} · ${m.h.name} พบ ${m.a.name} · ${m.st==="pre"?`${relLabel(bkkDateOf(m.ko))} เตะ ${kickTime(m.ko)} น.`:m.st==="in"?`กำลังแข่ง ${m.h.score}–${m.a.score}`:`จบแล้ว ${m.h.score}–${m.a.score}`}`, hook, "");
+  /* 2. situation */
+  W("## สถานการณ์ล่าสุด");
+  const tline=t=>t.rank?`- ${t.short} อันดับ ${t.rank}${t.points!=null?` ${t.points} แต้ม`:""}${t.played?` จาก ${t.played} นัด`:""}${t.gf!=null&&t.ga!=null?` ยิง ${t.gf} เสีย ${t.ga}`:""}${t.form?` ฟอร์มล่าสุด ${t.form} (${formWord(t.form)||"ข้อมูลน้อย"})`:""}`:t.form?`- ${t.short} ฟอร์มล่าสุด ${t.form} (${formWord(t.form)||"ข้อมูลน้อย"})`:`- ${t.short} ฟีดยังไม่มีตารางคะแนนและฟอร์ม`;
+  W(tline(m.h), tline(m.a));
+  if(m.h.rank&&m.a.rank){ const gap=Math.abs(m.h.rank-m.a.rank); W(gap>=8?`ห่างกัน ${gap} อันดับ ${pk(["คนละระดับบนตาราง","ช่องว่างบนตารางชัดเจน","ระดับทีมต่างกันพอสมควร"],"gap")}`:gap<=2?`อันดับติดกัน ${pk(["เกมนี้มีผลต่อตารางตรง ๆ","แพ้ไม่ได้ทั้งคู่","เป็นเกมแย่งตำแหน่งกันจริง ๆ"],"gap")}`:`ห่างกัน ${gap} อันดับ`); }
+  if(m.st==="in"&&m.live) W(`ตอนนี้นาที ${m.live.min} ${m.h.score}–${m.a.score} · ${liveCommentary(m).replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&amp;/g,"&")}`);
+  W("");
+  /* 3. news */
+  W("## ข่าวทีมและตัวผู้เล่น");
+  const nb=[]; const lu=m.ds?.lineup;
+  if(lu?.known){ nb.push(`- ตัวจริงประกาศแล้ว`); if(lu.hMiss?.length) nb.push(`- ${H} ไม่มีชื่อ ${lu.hMiss.join(", ")} ในตัวจริง`); if(lu.aMiss?.length) nb.push(`- ${A} ไม่มีชื่อ ${lu.aMiss.join(", ")} ในตัวจริง`); }
+  for(const n of newsFor(m)) nb.push(`- ${n.name}${n.team?` (${n.team})`:""}: ${n.status==="out"?"ไม่ได้ลง":n.status==="doubtful"?"ยังไม่แน่ว่าได้ลง":"กลับมาพร้อม"}${n.reason?` · ${n.reason}`:""}${n.d?` · ข่าววันที่ ${n.d}`:""}`);
+  const na=S.newsAdj?.[m.id]; if(na?.reason) nb.push(`- ข่าวของวันที่ระบบบันทึกไว้: ${na.reason}`);
+  W(...(nb.length?nb:[`- ระบบยังไม่มีข่าวตัวผู้เล่นของคู่นี้${lu?.known?"":" ตัวจริงมักประกาศราว 1 ชั่วโมงก่อนเตะ เปิดดูอีกครั้งตอนนั้นตัวเลขจะขยับตาม"}`]),"");
+  /* 4. stats */
+  W("## สถิติที่ต้องรู้");
+  const sb=[];
+  if(m.meets.length){ const w=m.meets.filter(x=>x.f>x.a).length, d=m.meets.filter(x=>x.f===x.a).length, l=m.meets.length-w-d, avg=m.meets.reduce((s,x)=>s+x.f+x.a,0)/m.meets.length;
+    sb.push(`- เจอกัน ${m.meets.length} นัดหลัง ${H} ชนะ ${w} เสมอ ${d} แพ้ ${l} เฉลี่ย ${avg.toFixed(1)} ประตูต่อนัด${(x=>x?` (ล่าสุด ${x.date} ${H} ${x.f}-${x.a})`:"")(m.meets.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date)))[0])}`); }
+  for(const [t,s] of [[H,m.hs],[A,m.as]]) if(s?.n) sb.push(`- ${t} ${s.n} นัดหลัง ยิง ${s.gf} เสีย ${s.ga} · สูง 2.5 ${s.over} นัด · ยิงทั้งคู่ ${s.btts} นัด · คลีนชีต ${s.clean} · ยิงไม่ได้ ${s.blank}`);
+  for(const f of (m.factors||[]).filter(f=>["venue","rest","trend","weather"].includes(f.k))) sb.push(`- ${f.label}: ${f.text}`);
+  W(...(sb.length?sb:["- ฟีดยังไม่มีสถิติเชิงลึกของคู่นี้ ตัวเลขด้านล่างคิดจากตารางคะแนนและค่าเฉลี่ยลีก"]),"");
+  /* 5. model numbers */
+  W("## ตัวเลขจากโมเดล Goal Club",
+    `- ผลการแข่งขัน: ${H} ${pct(m.sum.home)} · เสมอ ${pct(m.sum.draw)} · ${A} ${pct(m.sum.away)}`,
+    `- ประตูที่คาด: ${H} ${m.lh.toFixed(2)} · ${A} ${m.la.toFixed(2)} (รวม ${tot.toFixed(2)})`,
+    `- สูง 2.5 ${pct(m.sum.over25)} · ทั้งสองทีมยิง ${pct(m.sum.btts)} · ครึ่งแรกมีประตู ${pct(m.extra.goal1H)}`,
+    `- สกอร์ที่เป็นไปได้มากสุด: ${m.sum.top.slice(0,4).map(c=>`${c.h}-${c.a} (${pct(c.p)})`).join(", ")}`);
+  const big=(m.factors||[]).filter(f=>!f.base).map(f=>({f,w:Math.abs(f.h-1)+Math.abs(f.a-1)})).filter(x=>x.w>=.03).sort((a,b)=>b.w-a.w).slice(0,3);
+  if(big.length) W(`- ปัจจัยที่ขยับตัวเลขมากสุด: ${big.map(({f})=>`${f.label} (${H} ${signedPct(f.h)} / ${A} ${signedPct(f.a)})`).join(" · ")}`);
+  const mw=S.weights?.marketLg?.[m.lg]??S.weights?.market; if(mw!=null&&(m.factors||[]).some(f=>f.k==="market")) W(`- ผสมราคาตลาด ${Math.round(mw*100)}% ตามน้ำหนักที่ระบบเรียนรู้เองของลีกนี้`);
+  W("");
+  /* 6. game read */
+  W("## วิเคราะห์เกม");
+  const atk=m.lh>=m.la?H:A, sty=tot>=3.1?pk(["เกมเปิดหน้าแลก มีลุ้นประตูเยอะ","คาดว่าจะเป็นเกมรุกใส่กันสนุก","สองทีมมีของในแดนหน้า เกมไม่น่าจืด"],"st"):tot<=2.2?pk(["เกมน่าจะแน่นกลางสนาม ประตูไม่มาก","คาดว่าจะเป็นเกมรัดกุม เล่นหาจังหวะ","มีแนวโน้มเป็นเกมปิด ใครได้ก่อนได้เปรียบมาก"],"st"):pk(["จังหวะเกมน่าจะอยู่ระดับกลาง","ประตูน่าจะมาแบบพอดี ๆ","เกมไม่ปิดแต่ก็ไม่ได้เปิดสุด"],"st");
+  const para=[`${sty} โมเดลมองว่า ${atk} สร้างโอกาสได้มากกว่า (${Math.max(m.lh,m.la).toFixed(2)} ต่อ ${Math.min(m.lh,m.la).toFixed(2)})`];
+  const hS=sideStyle(m.hs), aS=sideStyle(m.as); if(hS) para.push(`${H} ${hS}`); if(aS) para.push(`ฝั่ง ${A} ${aS}`);
+  const X=m.extra; para.push(`ทีมที่น่าจะได้ประตูแรกคือ ${X.first.h>=X.first.a?H:A} (${pct(Math.max(X.first.h,X.first.a))}) ส่วนครึ่ง/จบที่ออกบ่อยสุดคือ ${HTFT_NAME(m,X.htftTop[0][0])}`);
+  const ed=bestEdge(m); if(m.mk) para.push(ed&&ed.edge>=.03?`มุมราคา ตลาด ${m.mk.book} กับโมเดลเห็นต่างชัดสุดที่ ${ed.label} (โมเดล ${pct(ed.model)} ตลาด ${pct(ed.fair)})`:`ราคาตลาด ${m.mk.book} ใกล้กับโมเดล ยังไม่เห็นจุดต่างที่ชัด`);
+  if(m.mk?.spread&&L.fav){ const hc=cover(hdpSplit(m.g,m.mk.spread.line)), ahSide=hc>=.5?H:A; if(ahSide!==L.fav) para.push(pk([`แม้ ${L.fav} จะเป็นต่อ แต่ตัวเลขมองว่าราคาต่อที่ตลาดให้ไว้หนักเกินไปนิด ฝั่งรองอย่าง ${ahSide} จึงน่าสนใจกว่าในแง่แฮนดิแคป`,`${L.fav} น่าจะได้ผลดีกว่าก็จริง แต่การชนะห่างตามเส้นต่อไม่ง่าย ตัวเลขเลยเอียงไปทาง ${ahSide}`],"ah")); }
+  W(para.join(" "),"");
+  /* 7. verdict */
+  W("## ทัศนะ");
+  const c=bestCall(m), live=m.st==="in"&&m.live, LV=m.live;
+  if(live){
+    const lf=LV.ph>=LV.pa?H:A, lp=Math.max(LV.ph,LV.pa);
+    W(`- ทิศทางเกมตอนนี้: ${lp>=.5?`${lf} คุมเกม ${pct(lp)}`:`ยังเปิด เสมอ ${pct(LV.pd)}`}`,`- ทายสกอร์จบ (สด): ${LV.final.h}-${LV.final.a}`,`- จบสูง 2.5: ${pct(LV.over25)} · มีประตูเพิ่ม ${pct(LV.pMore)}`);
+  } else {
+    W(`- ทิศทางเกม: ${L.title}`);
+    if(m.mk?.spread){ const hc=cover(hdpSplit(m.g,m.mk.spread.line)); W(`- แฮนดิแคป ${ahPhrase(H,A,m.mk.spread.line)}: โมเดลเอียง ${hc>=.5?`${H} ${signed(m.mk.spread.line)}`:`${A} ${signed(-m.mk.spread.line)}`} ครอบเส้น ${pct(Math.max(hc,1-hc))}`); }
+    if(m.mk?.total){ const oc=cover(totSplit(m.g,m.mk.total.line).over); W(`- สูงต่ำ ${ballLabel(m.mk.total.line)}: เอน${oc>=.5?"สูง":"ต่ำ"} ${pct(Math.max(oc,1-oc))}`); }
+    else W(`- สูงต่ำ 2.5: เอน${m.sum.over25>=.5?"สูง":"ต่ำ"} ${pct(Math.max(m.sum.over25,1-m.sum.over25))}`);
+    W(`- ทายสกอร์: ${top.h}-${top.a}`);
+  }
+  const sl=(m.scorers?.list||[]).filter(p=>!(m.scorers.known&&p.play<1));
+  if(sl.length){ const s=sl[0], s2=sl[1]; W(`- ดาวยิงที่น่าจับตา: ${s.name} (${s.team}) ${pct(s.pGoal)}${s2?` · ${s2.name} (${s2.team}) ${pct(s2.pGoal)}`:""}`); }
+  if(c&&!live){ const st=starsOf(c.prob); W(`- ตัวเลือกที่ตัวเลขมั่นใจสุด: ${c.label} ${pct(c.prob)} · ความมั่นใจ ${st.txt}`); }
+  const rec=pickRecord(30); if(rec.n) W(`- สถิติฟันธงของระบบ 30 วัน: เข้า ${rec.won} จาก ${rec.n} (${pct(rec.won/rec.n)})`);
+  const les=(S.lessons?.items||[]).filter(x=>x.startsWith(m.lg+":")); if(les.length) W(`- ระบบเรียนรู้ของลีกนี้: ${les[0].slice(m.lg.length+1).trim()}`);
+  if(m.st==="post"&&m.h.score!=null){ const v=verdict(m); if(v){ const n=[v.res.ok,v.ou.ok,v.exact.ok,v.btts.ok,v.hdp?.ok].filter(x=>x===true).length; W(`- ผลจริง ${m.h.score}–${m.a.score}: ระบบทายถูก ${n} จาก ${v.hdp?5:4} ตลาด${v.exact.ok?" รวมสกอร์ตรงเป๊ะ":""}`); } }
+  W("");
+  /* 8. luck, for fun */
+  const lk=scorerLuck(m), tl=teamLuck(m);
+  if(lk.best||(tl&&(tl.hs!=null||tl.as!=null))){
+    W("## ดวงวันนี้ (เพื่อความสนุก)");
+    if(lk.best) W(`- ดาวยิงดวงหนุนสุด: ${lk.best.name} (${lk.best.team}) ทักษาวันแข่งเป็น${lk.best.luck.taksa} ปี${lk.best.luck.animal} ${lk.best.luck.zodiac}`);
+    if(tl&&tl.hs!=null&&tl.as!=null) W(`- ภาพรวมดวงทีม: ${Math.abs(tl.hs-tl.as)<.1?"ใกล้เคียงกัน":`${tl.hs>tl.as?H:A} ดวงดีกว่า`}`);
+    W("- ดวงใช้อ่านเล่น ไม่ได้ผสมในตัวเลข %","");
+  }
+  W(`ทัศนะนี้เขียนโดยบอทระบบปิดของ Goal Club จากสถิติในแอปเท่านั้น ใช้ประกอบการดูบอล ไม่ใช่คำแนะนำให้เดิมพัน`);
+  return out.join("\n");
+}
+function signedPct(r){ const v=Math.round((r-1)*100); return (v>0?"+":"")+v+"%"; }
+function writeDaily(day){
+  const ms=day.matches; if(!ms.length) return null;
+  const pk=phraser(S.date), pre=ms.filter(m=>m.st==="pre"), live=ms.filter(m=>m.st==="in"), post=ms.filter(m=>m.st==="post");
+  const lgs=new Set(ms.map(m=>m.lg)).size, fav=ms.slice().sort((a,b)=>Math.max(b.sum.home,b.sum.away)-Math.max(a.sum.home,a.sum.away))[0];
+  const open=ms.slice().sort((a,b)=>(b.lh+b.la)-(a.lh+a.la))[0], tight=ms.slice().sort((a,b)=>b.sum.draw-a.sum.draw)[0];
+  const favSide=m=>m.sum.home>=m.sum.away?m.h.short:m.a.short;
+  const parts=[`${relLabel(S.date)}มี ${ms.length} คู่ใน ${lgs} รายการ${live.length?` กำลังแข่ง ${live.length} คู่`:""}${post.length?` จบไปแล้ว ${post.length} คู่`:""}`];
+  parts.push(`${pk(["ทีมที่ตัวเลขหนุนแรงสุดคือ","เต็งหนักของวันคือ","ฝั่งที่โมเดลเชื่อมือที่สุดคือ"],"f")} ${favSide(fav)} (${fav.h.short} - ${fav.a.short}) ${pct(Math.max(fav.sum.home,fav.sum.away))}`);
+  if(open!==fav) parts.push(`${pk(["คู่ที่น่าจะยิงกันมันส์สุดคือ","เกมเปิดหน้าแลกที่สุดของวันคือ","ถ้าอยากดูประตูต้อง"],"o")} ${open.h.short} - ${open.a.short} คาดรวม ${(open.lh+open.la).toFixed(1)} ประตู`);
+  if(tight!==fav&&tight!==open) parts.push(`ส่วน ${tight.h.short} - ${tight.a.short} ${pk(["สูสีสุด ลุ้นเสมอ","เป็นเกมวัดใจ เสมอ","แทบแยกไม่ออก เสมอ"],"t")} ${pct(tight.sum.draw)}`);
+  const vals=ms.map(m=>({m,e:bestEdge(m)})).filter(x=>x.e&&x.e.edge>=.04).sort((a,b)=>b.e.edge-a.e.edge);
+  const notes=[];
+  for(const m of [fav,open,tight].filter((x,i,a)=>a.indexOf(x)===i)) notes.push({match:`${m.h.short} - ${m.a.short}`,text:`${leanOf(m).title} · ทายสกอร์ ${m.sum.top[0].h}-${m.sum.top[0].a} · สูง 2.5 ${pct(m.sum.over25)}`});
+  for(const {m,e} of vals.slice(0,2)) if(!notes.some(n=>n.match===`${m.h.short} - ${m.a.short}`)) notes.push({match:`${m.h.short} - ${m.a.short}`,text:`โมเดลมองต่างจากตลาดที่ ${e.label} (${pts(e.edge)} จุด)`});
+  if(vals.length) parts.push(`มี ${vals.length} คู่ที่โมเดลกับราคาตลาดเห็นต่างเกิน 4 จุด`);
+  const rec=pickRecord(14); if(rec.n) parts.push(`ฟันธง 14 วันหลังเข้า ${rec.won}/${rec.n}`);
+  return {summary:parts.join(" · "),notes};
 }
 
 /* news-based adjustments returned by the daily brief */

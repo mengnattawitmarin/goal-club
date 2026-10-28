@@ -37,9 +37,14 @@ try {
   check("model factors applied", ["h2h", "pace", "venue", "rest", "lineup"].every((k) => factors.includes(k)), factors.join(","));
   for (const t of ["market", "stats", "luck", "overview"]) { await A.click(`[data-set="sheetTab:${t}"]`); await A.waitForTimeout(150); }
   check("sheet tabs switch without errors", errors.length === 0);
-  await A.click('[data-set="sheetTab:overview"]'); await A.click("#btnBot"); await A.waitForTimeout(1200);
+  await A.click('[data-set="sheetTab:overview"]');
+  const closed = await A.evaluate(() => document.querySelector("#botBody")?.innerText || "");
+  check("closed-system bot writes a full ทัศนะ instantly", ["ทัศนะบอล", "สถานการณ์ล่าสุด", "ข่าวทีมและตัวผู้เล่น", "สถิติที่ต้องรู้", "ตัวเลขจากโมเดล Goal Club", "วิเคราะห์เกม", "ทายสกอร์", "ไม่ใช่คำแนะนำให้เดิมพัน"].every((k) => closed.includes(k)) && !/undefined|NaN|null/.test(closed), closed.slice(0, 80).replace(/\s+/g, " "));
+  const daily = await A.evaluate(() => { const d = writeDaily(getDay(S.date)); return d ? d.summary + d.notes.map((n) => n.text).join(" ") : ""; });
+  check("closed daily summary", daily.length > 30 && !/undefined|NaN/.test(daily), daily.slice(0, 80));
+  await A.click("#btnBot"); await A.waitForTimeout(1200);
   const botText = await A.evaluate(() => document.querySelector("#botBody")?.innerText || "");
-  check("bot streams an analysis with sources", botText.includes("ทัศนะบอล ทดสอบ") && botText.includes("แหล่งข้อมูล"), botText.slice(0, 60).replace(/\s+/g, " "));
+  check("optional AI version is kept beside the closed one", botText.includes("ฉบับ AI ค้นเว็บ") && botText.includes("สถานการณ์ล่าสุด"), botText.slice(0, 60).replace(/\s+/g, " "));
   await A.goBack(); await A.waitForTimeout(300);
   check("back button closes the sheet", !(await A.isVisible("#sheet")));
 
