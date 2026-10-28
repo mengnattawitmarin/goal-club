@@ -1,0 +1,6 @@
+{
+  "name": "goal-club",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=18" }
+}
