@@ -121,6 +121,10 @@ h2.sec small{font-family:var(--font-body);font-size:12px;color:var(--faint);font
 .btn:disabled{opacity:.55;cursor:default}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .empty{text-align:center;padding:28px 16px}
+.skel{display:flex;flex-direction:column;gap:10px}
+.sk{height:12px;border-radius:6px;background:linear-gradient(90deg,var(--surface-2),#2c261d,var(--surface-2));background-size:200% 100%;animation:shimmer 1.2s linear infinite}
+.sk.w40{width:40%}.sk.w70{width:70%}.sk.w60{width:60%}.sk.bar{height:8px;width:100%}
+@keyframes shimmer{to{background-position:-200% 0}}
 .empty .serif{font-size:20px;color:var(--gold)}
 
 /* list rows */
@@ -351,6 +355,10 @@ function refine(m){
 
 /* market rows: model vs de-vigged market */
 function edgeRows(m){
+  if(m._rows) return m._rows;
+  const rows=computeRows(m); Object.defineProperty(m,"_rows",{value:rows,enumerable:false}); return rows;
+}
+function computeRows(m){
   const mk=m.mk, rows=[]; if(!mk) return rows;
   if(mk.home&&mk.draw&&mk.away){
     const fair=devig([mk.home.decimal,mk.draw.decimal,mk.away.decimal]);
@@ -417,7 +425,12 @@ function parseMarket(o){
     spread: sl!=null&&sh&&sa?{line:sl,home:sh,away:sa}:null, total: tl!=null&&ov&&un?{line:tl,over:ov,under:un}:null};
   return (home||away||draw||mk.spread||mk.total)?mk:null;
 }
+const tableCache=new Map(); // slug -> {at, value}
 async function loadTable(slug){
+  const hit=tableCache.get(slug); if(hit && Date.now()-hit.at<30*60e3) return hit.value;
+  const value=await loadTableRaw(slug); tableCache.set(slug,{at:Date.now(),value}); return value;
+}
+async function loadTableRaw(slug){
   try{
     const p=await espn(`v2/sports/soccer/${slug}/standings`); const rows=new Map(); let g=0,pl=0;
     for(const ch of p.children||[]) for(const e of ch.standings?.entries||[]){
@@ -430,9 +443,10 @@ async function loadTable(slug){
   }catch{ return null; }
 }
 async function pool(items,limit,fn){ const out=new Array(items.length); let i=0; await Promise.all(Array.from({length:Math.min(limit,items.length)},async()=>{ while(i<items.length){ const k=i++; out[k]=await fn(items[k]); } })); return out; }
-async function loadLiveDay(date){
+async function loadLiveDay(date, onlySlugs){
   const ymd=date.replaceAll("-","");
-  const per=await pool(LEAGUES,6,async([slug])=>{
+  const list=onlySlugs?.length ? LEAGUES.filter(([s])=>onlySlugs.includes(s)) : LEAGUES;
+  const per=await pool(list,6,async([slug])=>{
     try{
       const b=await espn(`site/v2/sports/soccer/${slug}/scoreboard?dates=${ymd}`); const evs=b.events||[]; if(!evs.length) return [];
       const tbl=await loadTable(slug);
@@ -514,13 +528,16 @@ async function probeLive(){
   try{ await espn(`site/v2/sports/soccer/eng.1/scoreboard`,5000); S.liveOk=true; }catch{ S.liveOk=false; }
   return S.liveOk;
 }
-async function refresh(date, manual){
-  if(S.loading) return; S.loading=true;
+async function refresh(date, manual, light){
+  if(S.loading){ S.queued={date,manual}; return; }
+  S.loading=date; S.err=null;
   const btn=$("#btnRefresh");
-  btn.classList.add("spin");
+  btn.classList.add("spin"); paintStatus();
   try{
     if(await probeLive()){
-      const live=await loadLiveDay(date);
+      const prev=S.days[date];
+      const slugs = light && prev?.source==="live" ? [...new Set(prev.matches.map(m=>m.lg))] : null;
+      const live=await loadLiveDay(date, slugs);
       const old=S.days[date]; const keep=new Map((old?.matches||[]).map(m=>[m.id,m.ds]));
       live.matches.forEach(m=>{ const d=keep.get(m.id); if(d) m.ds=d; });
       S.days[date]=prepare({...live, source:"live"});
@@ -530,11 +547,24 @@ async function refresh(date, manual){
     } else if(manual){
       toast("หน้านี้เชื่อมฟีด ESPN ไม่ได้ จึงใช้ข้อมูลชุดที่บันทึกไว้ เปิดจากเว็บที่ติดตั้งไว้เพื่อดูสด");
     }
-  }catch{ if(manual) toast("ดึงข้อมูลใหม่ไม่สำเร็จ ใช้ชุดเดิมต่อ"); }
+  }catch{ S.err=new Date().toISOString(); if(manual) toast("ดึงข้อมูลใหม่ไม่สำเร็จ ใช้ชุดเดิมต่อ"); }
   S.loading=false;
   btn.classList.remove("spin");
+  if(S.queued){ const q=S.queued; S.queued=null; if(q.date!==date||q.manual) return refresh(q.date,q.manual); }
   scheduleNext();
   render();
+  if(S.liveOk && date===bkkToday()) prefetch(shiftDate(date,1));
+}
+/* quietly load tomorrow once so its chip count and board are ready */
+const prefetched=new Set();
+async function prefetch(date){
+  if(prefetched.has(date)||S.days[date]?.source==="live") return; prefetched.add(date);
+  try{ const live=await loadLiveDay(date); S.days[date]=prepare({...live, source:"live"}); saveDay(date); if(!S.open) render(); }catch{}
+}
+/* after midnight Bangkok time, move a board that was showing "today" to the new day */
+function rollDay(){
+  const t=bkkToday(); if(S.today && S.today!==t && S.date===S.today){ S.date=t; S.league=""; }
+  S.today=t;
 }
 /* auto update: every minute while a match is live or about to start, otherwise every 10 minutes */
 let pollT;
@@ -542,11 +572,13 @@ function hotDay(day){ const now=Date.now(); return (day?.matches||[]).some(m=>m.
 function scheduleNext(){
   clearTimeout(pollT); S.nextMs=null; if(!S.liveOk) return;
   const ms=hotDay(S.days[S.date])?60e3:10*60e3; S.nextMs=ms;
-  pollT=setTimeout(()=>{ if(document.visibilityState==="visible") refresh(S.date,false); else scheduleNext(); },ms);
+  S.tick=(S.tick||0)+1;
+  pollT=setTimeout(()=>{ if(document.visibilityState!=="visible") return scheduleNext(); rollDay(); refresh(S.date,false, ms<600e3 && S.tick%10!==0); },ms);
 }
 document.addEventListener("visibilitychange",()=>{
-  const d=S.days[S.date];
-  if(document.visibilityState==="visible" && S.liveOk && d?.fetchedAt && Date.now()-Date.parse(d.fetchedAt)>60e3) refresh(S.date,false);
+  if(document.visibilityState!=="visible") return;
+  rollDay(); const d=S.days[S.date];
+  if(S.liveOk && (!d?.fetchedAt || d.source!=="live" || Date.now()-Date.parse(d.fetchedAt)>60e3)) refresh(S.date,false); else render();
 });
 function updateSheetScore(nm){
   if(!S.open||S.open.id!==nm.id) return;
@@ -608,7 +640,11 @@ function dateChips(){
   return `<div class="chips" role="tablist" aria-label="เลือกวัน">${[...set].sort().map(d=>{
     const n=getDay(d).matches.length; return `<button class="chip ${d===S.date?"on":""}" data-date="${d}">${relLabel(d)}${n?`<span class="n num">${n}</span>`:""}</button>`;}).join("")}</div>`;
 }
+function loadingDay(){
+  return `<div class="stack" aria-busy="true">${[0,1,2].map(()=>`<div class="card skel"><div class="sk w40"></div><div class="sk w70"></div><div class="sk w60"></div><div class="sk bar"></div></div>`).join("")}<p class="muted" style="text-align:center;font-size:13px">กำลังโหลดโปรแกรมของ${relLabel(S.date)}…</p></div>`;
+}
 function emptyDay(){
+  if(S.loading===S.date || (S.liveOk===null && getDay(S.date).source==="none")) return loadingDay();
   const ds=Object.keys(SNAPSHOT||{}).sort(); const next=ds.find(d=>d>S.date); const sat=nextSaturday(S.date);
   return `<div class="card empty"><div class="serif">${relLabel(S.date)} ไม่มีคู่ในลีกที่ติดตาม</div>
     <p class="muted" style="margin:6px 0 14px">${getDay(S.date).source==="none"?"ข้อมูลชุดที่บันทึกไว้ไม่มีโปรแกรมของวันนี้":"ฟีดยังไม่มีโปรแกรมของวันนี้"}</p>
@@ -867,14 +903,19 @@ async function openMatch(id, date){
   if(!m){ for(const d of Object.keys(S.days)){ m=S.days[d].matches.find(x=>x.id===id); if(m) break; } }
   if(!m) return;
   S.open=m; const sh=$("#sheet"); sh.innerHTML=sheetHtml(m); sh.hidden=false; sh.scrollTop=0; document.body.style.overflow="hidden"; runCalc();
-  try{ history.replaceState(null,"","#match-"+id); }catch{}
+  try{ if(location.hash==="#match-"+id || S.pushed) history.replaceState({sheet:1},"","#match-"+id); else { history.pushState({sheet:1},"","#match-"+id); S.pushed=true; } }catch{}
   if(!m.ds && S.liveOk){
     const ds=await loadLiveDossier(m);
     if(ds && S.open?.id===id){ const idx=day.matches.indexOf(m); const nm=refine({...m.raw, ds}); if(idx>=0) day.matches[idx]=nm; S.open=nm; sh.innerHTML=sheetHtml(nm); runCalc(); }
     else if(!ds){ const el=$("#dsLoading"); if(el) el.textContent="ดึงสถิติเชิงลึกไม่สำเร็จ"; }
   }
 }
-function closeSheet(){ $("#sheet").hidden=true; $("#sheet").innerHTML=""; S.open=null; document.body.style.overflow=""; try{ history.replaceState(null,"","#"+S.tab); }catch{} render(); }
+function hideSheet(){ $("#sheet").hidden=true; $("#sheet").innerHTML=""; S.open=null; document.body.style.overflow=""; render(); }
+function closeSheet(){
+  if(S.pushed){ S.pushed=false; try{ history.back(); return; }catch{} }
+  hideSheet(); try{ history.replaceState(null,"","#"+S.tab); }catch{}
+}
+window.addEventListener("popstate",()=>{ if(S.open && !location.hash.startsWith("#match-")){ S.pushed=false; hideSheet(); } });
 
 /* ---------- AI brief via Claude (sample capability) ---------- */
 async function runBrief(){
@@ -907,20 +948,24 @@ async function runBrief(){
 }
 
 /* ---------- render + events ---------- */
+function paintStatus(){ const el=$("#status"); if(el) el.innerHTML=statusText(); }
 function statusText(){
   const day=getDay(S.date);
+  if(S.loading===S.date) return `<span class="dot live"></span> กำลังอัปเดตข้อมูลสด…`;
+  if(S.err && day.source!=="snapshot") return `<span class="dot" style="background:var(--loss)"></span> เชื่อมต่อไม่ได้ · แสดงข้อมูลเมื่อ ${kickTime(day.fetchedAt||S.err)} · จะลองใหม่อัตโนมัติ`;
   if(day.source==="live") return `<span class="dot live"></span> สดจาก ESPN · อัปเดต ${kickTime(day.fetchedAt)}${S.nextMs?` · อัปเดตเองทุก ${S.nextMs>=600e3?"10 นาที":"1 นาที"}`:""}`;
   if(day.source==="cache") return `<span class="dot"></span> ข้อมูลที่ดึงไว้ล่าสุด · ${stampTime(day.fetchedAt)}${S.liveOk===null?" · กำลังเชื่อมฟีดสด…":""}`;
   if(day.source==="snapshot") return `<span class="dot"></span> ข้อมูลจาก ESPN ชุดที่บันทึกไว้ · ณ ${stampTime(day.fetchedAt)}`;
   return `<span class="dot"></span> ยังไม่มีข้อมูลของ${relLabel(S.date)}`;
 }
 function render(){
-  $("#status").innerHTML=statusText();
+  paintStatus();
+  if(S.open) return; // board refreshes after the sheet closes
   $("#tabs").innerHTML=TABS.map(([k,l,ic])=>`<a href="#${k}" class="${S.tab===k?"on":""}" data-tab="${k}" ${S.tab===k?'aria-current="page"':""}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">${ic}</svg>${l}</a>`).join("");
   const v={home:viewHome,schedule:viewSchedule,analyze:viewAnalyze,saved:viewSaved,more:viewMore}[S.tab]||viewHome;
   $("#view").innerHTML=v();
 }
-function setDate(d){ S.date=d; S.league=""; render(); if(S.liveOk) refresh(d,false); }
+function setDate(d){ S.date=d; S.league=""; render(); window.scrollTo({top:0}); const day=S.days[d]; if(S.liveOk && (day?.source!=="live" || Date.now()-Date.parse(day.fetchedAt)>60e3)) refresh(d,false); else if(S.liveOk) scheduleNext(); }
 function toggleFav(id){
   const m=(S.open&&S.open.id===id)?S.open:Object.values(S.days).flatMap(d=>d.matches).find(x=>x.id===id); if(!m) return;
   if(isFav(m)){ delete S.favs[m.h.id]; delete S.favs[m.a.id]; toast("เอาออกจากทีมโปรดแล้ว"); }
@@ -951,7 +996,7 @@ document.addEventListener("keydown",e=>{
   if((e.key==="Enter"||e.key===" ") && e.target.matches?.(".match[role=button]")){ e.preventDefault(); openMatch(e.target.dataset.open); }
 });
 document.addEventListener("input",e=>{
-  if(e.target.id==="q"){ S.q=e.target.value.trim(); render(); }
+  if(e.target.id==="q"){ clearTimeout(S.qT); S.qT=setTimeout(()=>{ S.q=e.target.value.trim(); render(); },160); }
   if(["cHome","cAway","tOver","tUnder"].includes(e.target.id)) runCalc();
 });
 document.addEventListener("change",e=>{
@@ -964,11 +1009,11 @@ function fromHash(){
   if(h.startsWith("match-")){ const id=h.slice(6); const d=Object.keys(SNAPSHOT||{}).find(d=>SNAPSHOT[d].matches.some(m=>m.id===id)); if(d){ render(); openMatch(id,d); return true; } }
   return false;
 }
-window.addEventListener("hashchange",()=>{ if(!fromHash()) render(); });
+window.addEventListener("hashchange",()=>{ if(location.hash.startsWith("#match-") && S.open) return; if(S.open && !location.hash.startsWith("#match-")) return; if(!fromHash()) render(); });
 
 /* start on today; if today has nothing saved, jump to the nearest saved day so the board isn't empty */
 (function start(){
-  const t=bkkToday();
+  const t=bkkToday(); S.today=t;
   if(!getDay(t).matches.length && !store.get("day:"+t,null)){ const ds=Object.keys(SNAPSHOT||{}).sort(); const near=ds.find(d=>d>=t); if(near) S.date=near; }
   if(!fromHash()) render();
   probeLive().then(ok=>{ if(ok && !getDay(t).matches.length) S.date=t; refresh(S.date,false); });
