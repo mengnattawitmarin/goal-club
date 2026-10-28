@@ -630,12 +630,12 @@ function briefCard(day){
   return `<div class="card gold brief">
     <div class="row" style="justify-content:space-between"><div class="serif" style="font-size:19px;color:var(--gold)">บทวิเคราะห์วันนี้</div>${b?`<span class="faint" style="font-size:12px">เขียนเมื่อ ${stampTime(b.at)}</span>`:""}</div>
     ${b?`<p>${esc(b.summary)}</p>${b.notes?.length?`<ul>${b.notes.map(n=>`<li><b>${esc(n.match)}</b> — ${esc(n.text)}</li>`).join("")}</ul>`:""}`
-       :`<p class="muted">กดปุ่มให้ Claude อ่านตัวเลขโมเดลกับราคาตลาดของ ${day.matches.length} คู่ แล้วสรุปภาพรวมของวันเป็นภาษาไทย ระบบจำผลไว้ใช้ทั้งวัน</p>`}
+       :`<p class="muted">กดปุ่มให้ Claude อ่านตัวเลขโมเดลกับราคาตลาดของ ${day.matches.length} คู่${window.claude?"":" พร้อมข่าวของวันนี้"} แล้วสรุปเป็นภาษาไทย ระบบจำผลไว้ใช้ทั้งวัน</p>`}
     ${b?.players?.length?`<div style="margin-top:10px"><b style="font-size:13px;color:var(--gold)">นักเตะในข่าว</b><ul>${b.players.map(p=>`<li><b>${esc(p.name)}</b>${p.club?` (${esc(p.club)})`:""} — ${esc(p.detail)}</li>`).join("")}</ul></div>`:""}
     ${b?.headlines?.length?`<details style="margin-top:8px"><summary class="muted" style="font-size:13px">ข่าวที่ใช้ ${b.headlines.length} ชิ้น</summary><ul style="font-size:13px">${b.headlines.map(h=>`<li><span class="faint">${esc(h.source)}</span> ${h.url?`<a href="${esc(h.url)}" target="_blank" rel="noopener" style="color:var(--fg)">${esc(h.title)}</a>`:esc(h.title)}</li>`).join("")}</ul></details>`:""}
     ${S.briefErr?`<p style="color:var(--loss);font-size:13px">${esc(S.briefErr)}</p>`:""}
     <div class="row" style="margin-top:12px"><button class="btn" id="btnBrief" ${S.briefBusy||!day.matches.length?"disabled":""}>${S.briefBusy?"กำลังวิเคราะห์…":b?"วิเคราะห์อีกรอบ":"วิเคราะห์วันนี้"}</button><a class="btn ghost" href="#more" data-goto="picks">ไปหน้าฟันธง</a></div>
-    <p class="note">${b?.headlines?.length?"สรุปจากสถิติ ราคา และหัวข่าวจริงที่ลิงก์ไว้ ไม่ใช่คำแนะนำให้เดิมพัน":"สรุปจากสถิติและราคาในหน้านี้ เวอร์ชันที่ติดตั้งบนเว็บจะอ่านข่าว BBC, Guardian และ ESPN ด้วย"}</p>
+    <p class="note">${b?.headlines?.length?"สรุปจากสถิติ ราคา และหัวข่าวจริงที่ลิงก์ไว้ ไม่ใช่คำแนะนำให้เดิมพัน":(window.claude?"สรุปจากสถิติและราคาในหน้านี้ ยังไม่ได้อ่านข่าว":"กดแล้วจะอ่านหัวข่าว BBC Sport, The Guardian และ ESPN ก่อนสรุป ไม่ใช่คำแนะนำให้เดิมพัน")}</p>
   </div>`;
 }
 function viewHome(){
