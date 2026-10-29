@@ -275,7 +275,7 @@ const FACTOR_NAME={h2h:"ผลที่เคยเจอกัน",pace:"เก
 function learningBlock(){
   const W=S.weights||{}, L=S.lessons;
   const fac=Object.entries(W.factors||{});
-  return `${sec("ระบบเรียนรู้อะไรแล้ว", W.n?`จากผลจริง ${W.n} นัด`:"")}
+  return `${sec("ระบบเรียนรู้อะไรแล้ว", `${MEDUSA.name}${W.n?` · จากผลจริง ${W.n} นัด`:""}`)}
     <div class="card">
       ${fac.length?`<div class="statgrid" style="grid-template-columns:minmax(0,1fr) auto auto"><span class="h">ปัจจัย</span><span class="h">น้ำหนัก</span><span class="h"></span>
         ${fac.map(([k,v])=>`<span>${esc(FACTOR_NAME[k]||k)}</span><span class="num">×${v}</span><span class="${v>1?"green":v<1?"lossc":"faint"}" style="font-size:12px">${v===0?"ปิด":v>1?"เพิ่ม":v<1?"ลด":"คงเดิม"}</span>`).join("")}</div>`
@@ -424,6 +424,7 @@ function factorRows(m){
   if(!have.has("h2h")) missing.push(["ผลที่เคยเจอกัน", m.ds?"เคยเจอกันไม่ถึง 3 นัด":"ยังไม่ได้ดึงสถิติเชิงลึก"]);
   if(!have.has("venue")) missing.push(["ฟอร์มในบ้าน/นอกบ้าน","ฟีดยังไม่ระบุสนามของ 5 นัดหลัง"]);
   if(!have.has("rest")) missing.push(["วันพักและความล้า","ยังไม่มีวันที่ของนัดก่อนหน้า"]);
+  if(!have.has("injury")) missing.push(["ผู้เล่นบาดเจ็บ/ติดโทษ", m.ds?.lineup?.known?"ประกาศตัวจริงแล้ว ใช้ปัจจัยตัวจริงแทน":m.ds?.inj?"ไม่มีดาวยิงหลักในรายชื่อเจ็บ":"ฟีดยังไม่มีรายชื่อผู้เล่นบาดเจ็บของคู่นี้"]);
   if(!have.has("lineup")) missing.push(["ตัวจริงที่ประกาศ","มักประกาศราว 1 ชั่วโมงก่อนเตะ"]);
   if(!have.has("weather")) missing.push(["สภาพอากาศและสนาม", window.claude?"ดูได้ในเว็บที่ติดตั้ง":"มีเฉพาะคู่ใน 14 วันข้างหน้าที่รู้เมืองของสนาม"]);
   if(!have.has("news")) missing.push(["ข่าววันนี้","กดวิเคราะห์วันนี้ที่หน้าหลักเพื่ออ่านข่าว"]);
@@ -545,7 +546,7 @@ function sheetOverview(m){
     ${liveBox(m)}
     ${botCard(m)}
     ${scoreCard(m)}
-    ${sec("ปัจจัยที่ใช้คำนวณ","ผลต่อประตูที่คาดของแต่ละทีม")}
+    ${sec("ปัจจัยที่ใช้คำนวณ",`อัลกอริทึม${MEDUSA.name} · ผลต่อประตูที่คาดของแต่ละทีม`)}
     ${factorRows(m)}
     <p class="note">ดวงและโหราศาสตร์อยู่ในแท็บดวง แสดงคู่กับตัวเลข แต่ไม่ผสมใน % เพราะยังไม่มีหลักฐานว่าช่วยทายผลได้${luck&&(luck.hs!=null||luck.as!=null)?` · วันนี้ดวงหนุน ${luck.hs!=null&&luck.as!=null?(Math.abs(luck.hs-luck.as)<.1?"ใกล้เคียงกัน":(luck.hs>luck.as?m.h.short:m.a.short)):"ข้อมูลไม่ครบ"}`:""}</p>`;
 }
@@ -816,9 +817,14 @@ function writeTasana(m){
   W("## ข่าวทีมและตัวผู้เล่น");
   const nb=[]; const lu=m.ds?.lineup;
   if(lu?.known){ nb.push(`- ตัวจริงประกาศแล้ว`); if(lu.hMiss?.length) nb.push(`- ${H} ไม่มีชื่อ ${lu.hMiss.join(", ")} ในตัวจริง`); if(lu.aMiss?.length) nb.push(`- ${A} ไม่มีชื่อ ${lu.aMiss.join(", ")} ในตัวจริง`); }
+  const inj=m.ds?.inj;
+  if(inj) for(const [side,t] of [["h",H],["a",A]]){ const L_=inj[side]||[]; if(!L_.length) continue;
+    const out_=L_.filter(i=>i.status==="out"), dbt=L_.filter(i=>i.status!=="out"), fmt=i=>`${i.name}${i.detail?` (${i.detail})`:""}`;
+    nb.push(`- ${t} บาดเจ็บ/ติดโทษ ${L_.length} คน${out_.length?` · ไม่ได้ลง: ${out_.slice(0,6).map(fmt).join(", ")}`:""}${dbt.length?` · ไม่แน่นอน: ${dbt.slice(0,5).map(fmt).join(", ")}`:""}`); }
+  const fi=(m.factors||[]).find(f=>f.k==="injury"); if(fi) nb.push(`- ผลต่อโมเดล: ${H} ${signedPct(fi.h)} · ${A} ${signedPct(fi.a)} ประตูที่คาด`);
   for(const n of newsFor(m)) nb.push(`- ${n.name}${n.team?` (${n.team})`:""}: ${n.status==="out"?"ไม่ได้ลง":n.status==="doubtful"?"ยังไม่แน่ว่าได้ลง":"กลับมาพร้อม"}${n.reason?` · ${n.reason}`:""}${n.d?` · ข่าววันที่ ${n.d}`:""}`);
   const na=S.newsAdj?.[m.id]; if(na?.reason) nb.push(`- ข่าวของวันที่ระบบบันทึกไว้: ${na.reason}`);
-  W(...(nb.length?nb:[`- ระบบยังไม่มีข่าวตัวผู้เล่นของคู่นี้${lu?.known?"":" ตัวจริงมักประกาศราว 1 ชั่วโมงก่อนเตะ เปิดดูอีกครั้งตอนนั้นตัวเลขจะขยับตาม"}`]),"");
+  W(...(nb.length?nb:[`- ฟีดยังไม่มีรายชื่อผู้เล่นบาดเจ็บหรือข่าวตัวผู้เล่นของคู่นี้${lu?.known?"":" ตัวจริงมักประกาศราว 1 ชั่วโมงก่อนเตะ เปิดดูอีกครั้งตอนนั้นตัวเลขจะขยับตาม"}`]),"");
   /* 4. stats */
   W("## สถิติที่ต้องรู้");
   const sb=[];
@@ -874,7 +880,7 @@ function writeTasana(m){
     if(tl&&tl.hs!=null&&tl.as!=null) W(`- ภาพรวมดวงทีม: ${Math.abs(tl.hs-tl.as)<.1?"ใกล้เคียงกัน":`${tl.hs>tl.as?H:A} ดวงดีกว่า`}`);
     W("- ดวงใช้อ่านเล่น ไม่ได้ผสมในตัวเลข %","");
   }
-  W(`ทัศนะนี้เขียนโดยบอทระบบปิดของ Goal Club จากสถิติในแอปเท่านั้น ใช้ประกอบการดูบอล ไม่ใช่คำแนะนำให้เดิมพัน`);
+  W(`ทัศนะนี้เขียนโดยบอทระบบปิดของ Goal Club ด้วยอัลกอริทึม${MEDUSA.name} จากสถิติในแอปเท่านั้น ใช้ประกอบการดูบอล ไม่ใช่คำแนะนำให้เดิมพัน`);
   return out.join("\n");
 }
 function signedPct(r){ const v=Math.round((r-1)*100); return (v>0?"+":"")+v+"%"; }

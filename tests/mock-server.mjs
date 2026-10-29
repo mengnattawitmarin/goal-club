@@ -55,6 +55,7 @@ function summary() {
     leaders: [{ team: { id: "359" }, leaders: [{ name: "goalsLeaders", leaders: [{ displayValue: "7", athlete: { id: "101", displayName: "Bukayo Saka" } }, { displayValue: "4", athlete: { id: "102", displayName: "Kai Havertz" } }] }] },
       { team: { id: "363" }, leaders: [{ name: "goalsLeaders", leaders: [{ displayValue: "6", athlete: { id: "201", displayName: "Cole Palmer" } }] }] }],
     rosters: [{ team: { id: "359" }, roster: Array.from({ length: 11 }, (_, i) => ({ starter: true, athlete: { id: String(i === 0 ? "101" : 300 + i) } })) }, { team: { id: "363" }, roster: Array.from({ length: 11 }, (_, i) => ({ starter: true, athlete: { id: String(400 + i) } })) }],
+    injuries: [{ team: { id: "363" }, injuries: [{ status: "Out", athlete: { id: "201", displayName: "Cole Palmer" }, details: { type: "Hamstring" } }, { status: "Out", athlete: { id: "209", displayName: "Reece James" } }] }, { team: { id: "359" }, injuries: [{ status: "Day-To-Day", athlete: { id: "310", displayName: "Ben White" } }] }],
     gameInfo: { venue: { fullName: "Emirates Stadium", address: { city: "London" } } } };
 }
 function espn(u) {

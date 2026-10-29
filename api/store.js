@@ -95,7 +95,7 @@ export default async function handler(req, res) {
       const num = (x) => (Number.isFinite(+x) && +x > 0 ? +(+x).toFixed(4) : undefined);
       const row = { id: String(p.id), d: date, lg: String(p.lg || "").slice(0, 24), lh0: +p.lh0, la0: +p.la0, ph: +p.ph, pa: +p.pa, ko: p.ko,
         pH: num(p.pH), pA: num(p.pA), bH: num(p.bH), bA: num(p.bA),
-        fr: p.fr && typeof p.fr === "object" ? Object.fromEntries(Object.entries(p.fr).filter(([k, v]) => /^[a-zA-Z]{2,12}$/.test(k) && Array.isArray(v) && v.length === 2 && v.every((x) => Number.isFinite(+x) && Math.abs(+x) < 2)).slice(0, 16).map(([k, v]) => [k, [+v[0], +v[1]]])) : undefined, mkH: num(p.mkH), mkA: num(p.mkA), mh: num(p.mh), md: num(p.md), ma: num(p.ma), hid: String(p.hid || ""), aid: String(p.aid || "") };
+        fr: p.fr && typeof p.fr === "object" ? Object.fromEntries(Object.entries(p.fr).filter(([k, v]) => /^[a-zA-Z]{2,12}$/.test(k) && Array.isArray(v) && v.length === 2 && v.every((x) => Number.isFinite(+x) && Math.abs(+x) < 2)).slice(0, 16).map(([k, v]) => [k, [+v[0], +v[1]]])) : undefined, mv: num(p.mv), mkH: num(p.mkH), mkA: num(p.mkA), mh: num(p.mh), md: num(p.md), ma: num(p.ma), hid: String(p.hid || ""), aid: String(p.aid || "") };
       if (!(row.lh0 > 0 && row.la0 > 0)) continue;
       cmds.push(["SET", `pred:${row.id}`, JSON.stringify(row), "EX", String(14 * 86400)]);
     }

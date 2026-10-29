@@ -40,6 +40,9 @@ try {
   await A.click('[data-set="sheetTab:overview"]');
   const closed = await A.evaluate(() => document.querySelector("#botBody")?.innerText || "");
   check("closed-system bot writes a full ทัศนะ instantly", ["ทัศนะบอล", "สถานการณ์ล่าสุด", "ข่าวทีมและตัวผู้เล่น", "สถิติที่ต้องรู้", "ตัวเลขจากโมเดล Goal Club", "วิเคราะห์เกม", "ทายสกอร์", "ไม่ใช่คำแนะนำให้เดิมพัน"].every((k) => closed.includes(k)) && !/undefined|NaN|null/.test(closed), closed.slice(0, 80).replace(/\s+/g, " "));
+  check("closed bot lists injuries", closed.includes("Cole Palmer (Hamstring)") && closed.includes("บาดเจ็บ"), closed.match(/.*บาดเจ็บ.*/)?.[0] || "");
+  const inj = await A.evaluate(() => { const m = refine({ ...S.open.raw, ds: { ...S.open.ds, lineup: null } }); const f = m.factors.find((x) => x.k === "injury"); const pal = m.scorers?.list.find((p) => p.name === "Cole Palmer"); return f ? { a: f.a, h: f.h, palmer: pal?.pGoal, v: MEDUSA.v } : null; });
+  check("เมดูซ่า: injured scorer cuts his team's expected goals before line-ups", inj && inj.a < 0.95 && inj.h > 0.97 && inj.palmer < 0.05 && inj.v >= 2, JSON.stringify(inj));
   const daily = await A.evaluate(() => { const d = writeDaily(getDay(S.date)); return d ? d.summary + d.notes.map((n) => n.text).join(" ") : ""; });
   check("closed daily summary", daily.length > 30 && !/undefined|NaN/.test(daily), daily.slice(0, 80));
   await A.click("#btnBot"); await A.waitForTimeout(1200);

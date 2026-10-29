@@ -121,6 +121,8 @@ function meetingsFor(m){
     return null;
   }).filter(Boolean);
 }
+/* เมดูซ่า: ชื่อของอัลกอริทึมวิเคราะห์ เพิ่มเลขทุกครั้งที่ปรับวิธีคำนวณ (ดู MEDUSA.md) */
+const MEDUSA={v:2, name:"เมดูซ่า 2", date:"2026-10-29"};
 function refine(m){
   /* Each factor records how it moves the expected goals (λ) of each side, so the page can show its work. */
   const steps=[], factors=[];
@@ -168,6 +170,28 @@ function refine(m){
     lh=clamp(lh*(1-.06*Math.min(2,lu.hMiss.length)),0.15,4.2); la=clamp(la*(1-.06*Math.min(2,lu.aMiss.length)),0.15,4.2);
     const miss=[...lu.hMiss.map(n=>`${n} (${m.h.short})`),...lu.aMiss.map(n=>`${n} (${m.a.short})`)];
     push("lineup","ตัวจริงที่ประกาศ",miss.length?`ดาวยิงไม่อยู่ใน 11 ตัวจริง: ${miss.join(", ")}`:"ดาวยิงหลักของทั้งสองทีมลงตัวจริงครบ",bh,ba);
+  }
+  /* injury list from ESPN (เมดูซ่า 2): before line-ups are known, take away the injured players' share of the team's goals */
+  const inj=m.ds?.inj;
+  if(inj&&!lu?.known){
+    const ps=m.ds?.players||[], bh=lh, ba=la, notes=[];
+    const cut=s=>{
+      const t=s==="h"?m.h:m.a, list=inj[s]||[]; if(!list.length) return 0;
+      const mine=ps.filter(p=>p.side===s), tg=Math.max(t.gf||0, mine.reduce((a,p)=>a+(p.goals||0),0)*1.6, 1);
+      let r=0, other=0;
+      for(const i of list){
+        const p=mine.find(x=>(i.id&&x.id===i.id)||(i.name&&String(x.name).toLowerCase()===i.name.toLowerCase()));
+        const w=i.status==="out"?.45:.2;
+        if(p&&((p.goals||0)+(p.assists||0))>0){ r+=w*clamp(((p.goals||0)+.5*(p.assists||0))/tg,0,.6); notes.push(`${i.name} (${t.short}${i.status==="out"?" ไม่ได้ลง":" ไม่แน่นอน"})`); }
+        else if(i.status==="out") other++;
+      }
+      return Math.min(.15, r+Math.min(.03,other*.01));
+    };
+    const ch=cut("h"), ca=cut("a");
+    if(ch>0||ca>0){
+      lh=clamp(lh*(1-ch),0.15,4.2); la=clamp(la*(1-ca),0.15,4.2);
+      push("injury","ผู้เล่นบาดเจ็บ/ติดโทษ",`${m.h.short} ${inj.h.length} คน · ${m.a.short} ${inj.a.length} คน${notes.length?` · ตัวยิงที่หายไป: ${notes.join(", ")}`:" · ไม่มีดาวยิงหลักในรายชื่อ"}`,bh,ba);
+    }
   }
   /* weather and altitude at the ground */
   const wx=S?.ext?.[m.id]?.wx;
@@ -348,11 +372,13 @@ function scorerModel(m){
     const nw=S?.newsPlayer?.[String(p.name||"").toLowerCase()];
     const fresh_=nw&&(Date.parse(m.ko)-Date.parse(nw.d))/864e5<=7;
     if(fresh_&&!known){ if(nw.status==="out") play=.05; else if(nw.status==="doubtful") play=.5; }
+    const hurt=(m.ds?.inj?.[s]||[]).find(i=>(i.id&&i.id===String(p.id))||(i.name&&i.name.toLowerCase()===String(p.name||"").toLowerCase()));
+    if(hurt&&!known) play=Math.min(play, hurt.status==="out"?.05:.5);
     const gShare=clamp((p.goals||0)/tg,0,.6), aShare=clamp((p.assists||0)/tg,0,.5);
     let xg=lam*gShare*play, xa=lam*aShare*play;
     const rec=p.id?S?.players?.[p.id]:null;
     if(rec&&rec.apps>=3){ xg=.5*xg+.5*(rec.g/rec.apps)*play; xa=.5*xa+.5*(rec.a/rec.apps)*play; }
-    out.push({name:p.name, side:s, team:s==="h"?m.h.short:m.a.short, goals:p.goals, assists:p.assists, play, news:fresh_?nw:null,
+    out.push({name:p.name, side:s, team:s==="h"?m.h.short:m.a.short, goals:p.goals, assists:p.assists, play, news:fresh_?nw:hurt&&!known?{status:hurt.status,reason:hurt.raw||"บาดเจ็บ"}:null,
       pGoal:1-Math.exp(-xg), pAssist:1-Math.exp(-xa), pFirst:(s==="h"?m.extra?.first?.h:m.extra?.first?.a)??0, xg, xa, gShare});
   }
   out.forEach(o=>{ o.pFirst = (o.side==="h"?(1-m.g[0][0])*m.lh/(m.lh+m.la):(1-m.g[0][0])*m.la/(m.lh+m.la))*o.gShare*o.play; });
@@ -533,7 +559,7 @@ function recordDay(date){
       if(m.st==="pre" && m.lh0!=null && (!sentPred[m.id] || now-sentPred[m.id]>30*60e3)){ sentPred[m.id]=now; const mk=m.mk?.home&&m.mk.draw&&m.mk.away?devig([m.mk.home.decimal,m.mk.draw.decimal,m.mk.away.decimal]):null;
         preds.push({id:m.id,lg:m.lg,lh0:+m.lh0.toFixed(3),la0:+m.la0.toFixed(3),ph:+m.sum.home.toFixed(3),pa:+m.sum.away.toFixed(3),ko:m.ko,hid:m.h.id,aid:m.a.id,
           pH:+m.pH.toFixed(3),pA:+m.pA.toFixed(3),bH:+m.bH.toFixed(3),bA:+m.bA.toFixed(3),
-          fr:Object.fromEntries((m.factors||[]).filter(f=>!f.base&&f.k!=="market"&&f.rh>0&&f.ra>0).map(f=>[f.k,[+Math.log(f.rh).toFixed(4),+Math.log(f.ra).toFixed(4)]])),mkH:m.mkt?+m.mkt.lh.toFixed(3):undefined,mkA:m.mkt?+m.mkt.la.toFixed(3):undefined,mh:mk?.[0],md:mk?.[1],ma:mk?.[2]}); }
+          mv:MEDUSA.v,fr:Object.fromEntries((m.factors||[]).filter(f=>!f.base&&f.k!=="market"&&f.rh>0&&f.ra>0).map(f=>[f.k,[+Math.log(f.rh).toFixed(4),+Math.log(f.ra).toFixed(4)]])),mkH:m.mkt?+m.mkt.lh.toFixed(3):undefined,mkA:m.mkt?+m.mkt.la.toFixed(3):undefined,mh:mk?.[0],md:mk?.[1],ma:mk?.[2]}); }
       if(m.st==="post" && m.h.score!=null && !sentRes[m.id]){ sentRes[m.id]=1; results.push({id:m.id,hs:m.h.score,as:m.a.score,match:`${m.h.short} ${m.h.score}–${m.a.score} ${m.a.short}`}); }
     }
     if(preds.length||results.length) syncPush({date,preds,results}).then(()=>{ if(results.length) syncPull(date).then(ok=>{ if(ok&&!S.open) render(); }); });
@@ -700,9 +726,13 @@ async function loadLiveDossier(m){
     for(const r of p.rosters||[]){ const tid=String(r.team?.id??""); const st=(r.roster||[]).filter(x=>x.starter); if(st.length>=10){ known=true; starters[tid]=new Set(st.map(x=>String(x.athlete?.id))); } }
     const miss=tid=>known&&starters[tid] ? Object.values(leaders[tid]||{}).filter(x=>(x.goals||0)>=3&&!starters[tid].has(x.id)).map(x=>x.name) : [];
     const v=p.gameInfo?.venue;
+    const inj={h:[],a:[]};
+    for(const t of p.injuries||[]){ const tid=String(t.team?.id??""), side=tid===String(m.h.id)?"h":tid===String(m.a.id)?"a":null; if(!side) continue;
+      for(const i of (t.injuries||[]).slice(0,15)){ const a=i.athlete||{}; const raw=String(i.status||i.type?.description||i.type?.name||"");
+        inj[side].push({id:a.id?String(a.id):null,name:a.displayName||a.shortName||"",status:/out|suspen|reserve|ruled/i.test(raw)?"out":"doubtful",raw:raw.slice(0,40),detail:String(i.details?.type||i.details?.detail||i.longComment||i.shortComment||"").slice(0,60)}); } }
     const players=[...Object.values(leaders[m.h.id]||{}),...Object.values(leaders[m.a.id]||{})].map(x=>({...x,team:x.team===m.h.id?m.h.name:m.a.name,side:x.team===m.h.id?"h":"a"}));
     return {h2h:ser?.summary||null,meet,hf:five(m.h.id),af:five(m.a.id),venue:v?.fullName||null,city:v?.address?.city||null,country:v?.address?.country||null,
-      players, marks:[], ls:liveStatsFromSummary(p), lineup: known?{known:true,hMiss:miss(m.h.id),aMiss:miss(m.a.id),starters:[...(starters[m.h.id]||[]),...(starters[m.a.id]||[])]}:null};
+      players, marks:[], ls:liveStatsFromSummary(p), inj:(inj.h.length||inj.a.length)?inj:null, lineup: known?{known:true,hMiss:miss(m.h.id),aMiss:miss(m.a.id),starters:[...(starters[m.h.id]||[]),...(starters[m.a.id]||[])]}:null};
   }catch{ return null; }
 }
 
