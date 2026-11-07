@@ -461,6 +461,9 @@ function leanOf(m){
   const ph=m.sum.home, pa=m.sum.away, fav=ph>=pa?m.h.short:m.a.short, d=Math.abs(ph-pa);
   if(d>=.30) return {title:`${fav} เต็งหนึ่งชัด`,tone:"strong",fav};
   if(d>=.15) return {title:`${fav} ภาษีดีกว่า`,tone:"lean",fav};
+  /* close game: say who is less likely to lose, the same side the called score follows */
+  const hn=ph+m.sum.draw, an=pa+m.sum.draw, dc=hn>=an?m.h.short:m.a.short;
+  if(Math.max(ph,pa,m.sum.draw)<.40) return {title:`สูสี ${dc} มีโอกาสไม่แพ้ ${pct(Math.max(hn,an))}`,tone:"even",fav:dc};
   if(m.sum.draw>=.28) return {title:"สูสี ลุ้นเสมอสูง",tone:"even",fav:null};
   return {title:`สูสี ${fav} เหนือกว่าเล็กน้อย`,tone:"even",fav};
 }

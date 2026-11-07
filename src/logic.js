@@ -78,8 +78,16 @@ function callScore(g, preds, offH=0, offA=0){
   return cells[0];
 }
 function resOf(sum){ return sum.home>=sum.away&&sum.home>=sum.draw?"h":sum.away>=sum.draw?"a":"d"; }
+/* เมดูซ่า 3.3: in a close game (no result above 40%) the result call is "this side does not lose",
+   the side with the bigger win+draw chance, so the score never says "Spurs win" while the numbers
+   (and the pick) say "Leeds do not lose 65%" */
+function resCall(sum){
+  const r=resOf(sum), top=Math.max(sum.home,sum.draw,sum.away);
+  if(top<.40&&r!=="d") return sum.home+sum.draw>=sum.away+sum.draw?"hd":"ad";
+  return r;
+}
 function mainPreds(sum){
-  const r=resOf(sum), ps=[(h,a)=>r==="h"?h>a:r==="a"?a>h:h===a];
+  const r=resCall(sum), ps=[(h,a)=>r==="h"?h>a:r==="a"?a>h:r==="hd"?h>=a:r==="ad"?a>=h:h===a];
   ps.push(sum.over25>=.5?(h,a)=>h+a>=3:(h,a)=>h+a<=2);
   if(Math.abs(sum.btts-.5)>=.06) ps.push(sum.btts>=.5?(h,a)=>h>0&&a>0:(h,a)=>h===0||a===0);
   return ps;
@@ -139,7 +147,7 @@ function meetingsFor(m){
   }).filter(Boolean);
 }
 /* เมดูซ่า: ชื่อของอัลกอริทึมวิเคราะห์ เพิ่มเลขทุกครั้งที่ปรับวิธีคำนวณ (ดู MEDUSA.md) */
-const MEDUSA={v:3.2, name:"เมดูซ่า 3.2", date:"2026-11-07"};
+const MEDUSA={v:3.3, name:"เมดูซ่า 3.3", date:"2026-11-07"};
 /* เส้นทางเกม: chance to win after scoring first / conceding first (first goal time ~ exponential) */
 function pathOdds(m){
   const L=m.lh+m.la; if(!(L>0)) return null;
@@ -299,6 +307,8 @@ function refine(m){
   }
   const g=grid(lh,la), sum=summarize(g); sum.call=callScore(g,mainPreds(sum));
   const out={...m, raw:m.raw||m, lh, la, lh0, la0, pH, pA, bH, bA, mkt, basis, g, sum, steps, factors, hs, as, meets};
+  /* one called score per match: when there is a pick, the score is the pick's (it also agrees with the other calls where it can) */
+  const bc=bestCall(out); if(bc?.score){ const [ch,ca]=bc.score.split("-").map(Number); if(Number.isInteger(ch)&&Number.isInteger(ca)) out.sum.call={h:ch,a:ca,p:out.g[ch]?.[ca]??0}; }
   out.live=liveModel(out); out.extra=extraMarkets(out); out.scorers=scorerModel(out); out.dq=dataQuality(out);
   return out;
 }
