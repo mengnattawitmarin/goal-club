@@ -85,4 +85,6 @@ gemMode = "invent"; pj = await polish();
 check("rewrite with an invented player and number is rejected", pj.ok === false && pj.problems?.some((x) => x.includes("99")) && pj.problems?.some((x) => /mbapp/i.test(x)), JSON.stringify(pj));
 const { checkGrounded } = await import(join(root, "lib/grounded.js"));
 check("betting talk is rejected", !checkGrounded(facts, facts + "\nแทงเลย ชัวร์").ok);
+process.env.GEMINI_API_KEY = "AQ.TestNewFormatKey"; process.env.ANTHROPIC_API_KEY = "";
+check("new Google key format (AQ.) in GEMINI_API_KEY is used as Gemini", aiProviders()[0]?.provider === "gemini" && aiProviders().length === 1);
 process.exit(failed ? 1 : 0);
