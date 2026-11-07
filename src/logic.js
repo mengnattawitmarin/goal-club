@@ -139,7 +139,17 @@ function meetingsFor(m){
   }).filter(Boolean);
 }
 /* เมดูซ่า: ชื่อของอัลกอริทึมวิเคราะห์ เพิ่มเลขทุกครั้งที่ปรับวิธีคำนวณ (ดู MEDUSA.md) */
-const MEDUSA={v:3, name:"เมดูซ่า 3", date:"2026-11-07"};
+const MEDUSA={v:3.1, name:"เมดูซ่า 3.1", date:"2026-11-07"};
+/* how complete this match's data is, 0-100 (เมดูซ่า 3.1): table, form, prices, learned ratings, league average */
+function dataQuality(m){
+  const both=(f)=>(f(m.h)?1:0)+(f(m.a)?1:0), R=S?.ratings||{};
+  let q=both(hasTable)*15 + both(t=>String(t.form||"").length>=3)*7.5;
+  if(m.mk?.home&&m.mk?.draw&&m.mk?.away) q+=25; if(m.mk?.spread||m.mk?.total) q+=5;
+  q+=both(t=>(R[t.id]?.n||0)>=5)*7.5;
+  if(m.lgAvg||S?.lgavg?.[m.lg]) q+=10;
+  q=Math.round(Math.min(100,q));
+  return {q, label:q>=70?"ข้อมูลครบ":q>=45?"ข้อมูลพอใช้":"ข้อมูลน้อย", tone:q>=70?"good":q>=45?"ok":"low"};
+}
 function refine(m){
   /* Each factor records how it moves the expected goals (λ) of each side, so the page can show its work. */
   const steps=[], factors=[];
@@ -270,7 +280,7 @@ function refine(m){
   }
   const g=grid(lh,la), sum=summarize(g); sum.call=callScore(g,mainPreds(sum));
   const out={...m, raw:m.raw||m, lh, la, lh0, la0, pH, pA, bH, bA, mkt, basis, g, sum, steps, factors, hs, as, meets};
-  out.live=liveModel(out); out.extra=extraMarkets(out); out.scorers=scorerModel(out);
+  out.live=liveModel(out); out.extra=extraMarkets(out); out.scorers=scorerModel(out); out.dq=dataQuality(out);
   return out;
 }
 
@@ -486,7 +496,7 @@ async function syncPull(date){
     const j=await getJson(`/api/store?date=${date}${teams?`&teams=${teams}`:""}`,8000);
     if(!j?.enabled) return false;
     Shared.on=true; Shared.picks[date]=j.picks||{}; Shared.pickHist=j.pickHist||[]; Shared.histN=j.histN||0; Shared.pulled[date]=Date.now();
-    if(j.calib) S.calib=j.calib; if(j.audit) S.audit=j.audit;
+    if(j.calib) S.calib=j.calib; if(j.audit) S.audit=j.audit; if(j.health) S.health=j.health;
     if(j.newsPlayer) S.newsPlayer=j.newsPlayer; if(j.lessons) S.lessons=j.lessons;
     S.ratings={...(S.ratings||{}),...(j.ratings||{})}; S.lgavg={...(S.lgavg||{}),...(j.lgavg||{})}; if(j.weights) S.weights=j.weights; if(j.evals) S.evals=j.evals;
     if(day?.matches?.length) S.days[date]=prepare({...day,matches:day.matches.map(x=>x.raw||x)});
@@ -523,10 +533,13 @@ function bestCall(m){
     const home=m.sum.home>=m.sum.away;
     c.push({type:"1x2",side:home?"h":"a",line:0,prob:Math.max(m.sum.home,m.sum.away),label:`${home?m.h.short:m.a.short} ชนะ`,phrase:"ผลชนะในเวลา 90 นาที"});
   }
-  const b=c.sort((x,y)=>y.prob-x.prob)[0]; if(!b) return null;
+  /* prefer the call where the model also beats the market's fair price, not just the safest-looking line */
+  const rows=edgeRows(m), key=x=>x.type==="1x2"?`1x2-${x.side}`:x.type==="ah"?`ah-${x.side}`:`ou-${x.side}`;
+  c.forEach(x=>{ const r=rows.find(r=>r.key===key(x)); x.edge=r?.edge??null; x.rank=x.prob+.5*Math.max(-.05,x.edge??0); });
+  const b=c.sort((x,y)=>y.rank-x.rank)[0]; if(!b) return null;
   const pickPred=b.type==="ah"?(h,a)=>{ const r=settlePick(b,h,a); return r==="win"||r==="half"; }:b.type==="ou"?(h,a)=>{ const r=settlePick(b,h,a); return r==="win"||r==="half"; }:(h,a)=>b.side==="h"?h>a:a>h;
   const sc=callScore(m.g,[pickPred,...mainPreds(m.sum)]);
-  return {id:m.id, ...b, score:`${sc.h}-${sc.a}`};
+  return {id:m.id, lg:m.lg, ...b, score:`${sc.h}-${sc.a}`, dq:m.dq?.q??null};
 }
 function picksLimit(n){ return Math.min(10, Math.max(3, Math.ceil(n/3.5))); }
 function picksFor(date){
@@ -536,8 +549,10 @@ function picksFor(date){
   const byId=new Map(ms.map(m=>[m.id,m]));
   const frozen=saved.filter(p=>byId.has(p.id)&&byId.get(p.id).st!=="pre");
   const cal=S?.weights?.pickCal||{};
-  const fresh=ms.map(bestCall).filter(Boolean).map(p=>{ const c=cal[p.type]; return c?{...p,raw:p.prob,prob:Math.min(.95,p.prob*c)}:p; })
-    .filter(p=>p.prob>=.55&&!frozen.some(z=>z.id===p.id)).sort((a,b)=>b.prob-a.prob);
+  /* เมดูซ่า 3.1: no picks on thin data, none where the market's fair price is clearly better than the model's,
+     ranked by calibrated probability plus half the edge over the market; fewer picks on a weak day */
+  const fresh=ms.map(bestCall).filter(Boolean).map(p=>{ const c=cal[p.type]; const prob=c?Math.min(.95,p.prob*c):p.prob; return {...p,raw:c?p.prob:undefined,prob,rank:prob+.5*Math.max(-.05,p.edge??0)}; })
+    .filter(p=>p.prob>=.55&&(p.dq??100)>=45&&(p.edge==null||p.edge>=-.01)&&!frozen.some(z=>z.id===p.id)).sort((a,b)=>b.rank-a.rank);
   const list=[...frozen,...fresh.slice(0,Math.max(0,limit-frozen.length))].sort((a,b)=>b.prob-a.prob);
   if(date>=shiftDate(bkkToday(),-1) && day.source!=="snapshot"){
     store.set("picks:"+date, list);
@@ -716,9 +731,11 @@ async function pool(items,limit,fn){ const out=new Array(items.length); let i=0;
 async function loadLiveDay(date, onlySlugs){
   const ymd=date.replaceAll("-","");
   const list=onlySlugs?.length ? LEAGUES.filter(([s])=>onlySlugs.includes(s)) : LEAGUES;
+  const feed={events:0,bad:0,failed:0,leagues:list.length};
   const per=await pool(list,6,async([slug])=>{
     try{
       const b=await espn(`site/v2/sports/soccer/${slug}/scoreboard?dates=${ymd}`); const evs=b.events||[]; if(!evs.length) return [];
+      for(const ev of evs){ feed.events++; const c=ev.competitions?.[0]; if(!ev.id||!c?.status?.type?.state||(c.competitors||[]).filter(x=>x.team?.id).length!==2) feed.bad++; }
       const tbl=await loadTable(slug);
       return evs.map(ev=>{
         const c=ev.competitions?.[0], H=c?.competitors?.find(x=>x.homeAway==="home"), A=c?.competitors?.find(x=>x.homeAway==="away"); if(!H||!A) return null;
@@ -730,8 +747,9 @@ async function loadLiveDay(date, onlySlugs){
         return {id:ev.id,lg:slug,ko:ev.date,st:name.includes("POSTPONED")?"pp":name.includes("CANCEL")?"pp":state,clock,h,a,lh:base.lh,la:base.la,basis:base.basis,mk:parseMarket(c?.odds?.[0]),ds:null,live:true,lgAvg:tbl?.avg??null,
           ls:state==="pre"?null:liveStatsOf(c?.competitors||[],c?.details||[],H,A)};
       }).filter(Boolean);
-    }catch{ return null; }
+    }catch{ feed.failed++; return null; }
   });
+  S.feed={...feed, at:new Date().toISOString(), ok:feed.failed<=feed.leagues/2&&feed.bad<=Math.max(2,feed.events*.05)};
   if(per.every(x=>x==null)) throw new Error("feed");
   return {fetchedAt:new Date().toISOString(), matches:per.flatMap(x=>x||[])};
 }

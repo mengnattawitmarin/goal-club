@@ -10,7 +10,10 @@ function redis([c, ...a]) {
   const h = () => db.get(a[0]) || {}; const set = () => db.get(a[0]) || new Set(); const list = () => db.get(a[0]) || [];
   switch (c) {
     case "GET": return db.has(a[0]) ? db.get(a[0]) : null;
-    case "SET": db.set(a[0], a[1]); return "OK";
+    case "SET": if (a.includes("NX") && db.has(a[0])) return null; db.set(a[0], a[1]); return "OK";
+    case "INCR": { const n = Number(db.get(a[0]) || 0) + 1; db.set(a[0], String(n)); return n; }
+    case "EXPIRE": return 1;
+    case "COPY": { if (!db.has(a[0])) return 0; const v = db.get(a[0]); db.set(a[1], v instanceof Set ? new Set(v) : Array.isArray(v) ? [...v] : typeof v === "object" ? { ...v } : v); return 1; }
     case "DEL": return db.delete(a[0]) ? 1 : 0;
     case "LPUSH": { const l = list(); l.unshift(...a.slice(1).reverse()); db.set(a[0], l); return l.length; }
     case "LTRIM": db.set(a[0], list().slice(+a[1], +a[2] + 1)); return "OK";
@@ -54,7 +57,8 @@ globalThis.fetch = async (url, opts) => {
 
 const { kv } = await import(join(root, "lib/kv.js"));
 const cron = (await import(join(root, "api/cron.js"))).default;
-const run = async () => { let out; const res = { setHeader() {}, status() { return this; }, json(o) { out = o; } }; await cron({ headers: {} }, res); return out; };
+process.env.CRON_SECRET = "s3";
+const run = async (auth = "Bearer s3") => { let out, code = 200; const res = { setHeader() {}, status(c) { code = c; return this; }, json(o) { out = o; out._code = code; } }; await cron({ headers: { authorization: auth } }, res); return out; };
 
 await kv("SET", "pred:7001", JSON.stringify({ id: "7001", d: yday, lg: "eng.1", lh0: 1.6, la0: 1.0, ph: 0.5, pa: 0.25, pH: 1.6, pA: 1.0, mkH: 1.7, mkA: 0.9, mh: 0.52, md: 0.25, ma: 0.23 }));
 await kv("SET", `picks:${yday}`, JSON.stringify({ 7001: { id: "7001", type: "ah", side: "h", line: -0.5, prob: 0.6, label: "Alpha -0.5", ko: new Date(Date.now() - 864e5).toISOString() } }));
@@ -95,4 +99,14 @@ const lessons = JSON.parse(await kv("GET", "lessons"));
 check("writes lessons for the bot", lessons.items.length >= 3, lessons.items[0]);
 const np = await kv("HGETALL", "newsplayer");
 check("player news: keeps names found in headlines, drops invented ones", np.includes("striker a") && !np.includes("made up name"), JSON.stringify(r3.newsPlayers));
+{
+  const bad = await run("Bearer nope");
+  check("refuses a caller without the secret", bad._code === 401);
+  delete process.env.CRON_SECRET; db.delete("cronlock");
+  const a = await run(""), b = await run("");
+  check("without CRON_SECRET runs at most once per 3 hours", a._code === 200 && b._code === 429, `${a._code} ${b._code}`);
+  const log = JSON.parse(db.get("cronlog") || "null");
+  check("writes a job log with feed check", log && log.ok === true && log.feed && log.feed.leagues > 0 && log.feedOk === true, JSON.stringify(log));
+  check("weekly backup copied learned data", db.has("bak:hist") && db.has("bak:ratings") && db.has("bak:at"));
+}
 kvServer.close(); process.exit(failed ? 1 : 0);

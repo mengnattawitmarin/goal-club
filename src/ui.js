@@ -191,7 +191,7 @@ function progCard(m){
   return `<div class="pcard${liveCls(m)}" role="button" tabindex="0" data-open="${m.id}">
     <div class="pc-head"><span class="flag" aria-hidden="true">${flagOf(m)}</span><span class="lg">${esc(lg(m))}</span>${isGoal(m)?`<span class="tag value">ประตู!</span>`:""}${m.st==="pre"?`<span class="time num">${kickTime(m.ko)}</span>`:stateTag(m)}${starBtn(m)}</div>
     ${side(m.h,m.h.score)}${side(m.a,m.a.score)}
-    <div class="pc-foot">${m.st==="post"&&m.h.score!=null?verdictBadges(m):""}${m.live?`<span class="num" style="color:var(--win)">ตอนนี้ ${esc(m.h.short)} ${pct(m.live.ph)} · เสมอ ${pct(m.live.pd)} · ${esc(m.a.short)} ${pct(m.live.pa)} · ทายจบ ${m.live.final.h}-${m.live.final.a}</span>`:m.st==="post"?"":`<span class="num">${esc(m.h.short)} ${pct(m.sum.home)} · เสมอ ${pct(m.sum.draw)} · ${esc(m.a.short)} ${pct(m.sum.away)}</span>`}${m.mk?.spread?`<span><b>${esc(ahPhrase(m.h.short,m.a.short,m.mk.spread.line))}</b></span>`:""}${v?`<span class="tag value">มีค่า ${pts(v.edge)}</span>`:""}</div>
+    <div class="pc-foot">${m.st==="post"&&m.h.score!=null?verdictBadges(m):""}${m.live?`<span class="num" style="color:var(--win)">ตอนนี้ ${esc(m.h.short)} ${pct(m.live.ph)} · เสมอ ${pct(m.live.pd)} · ${esc(m.a.short)} ${pct(m.live.pa)} · ทายจบ ${m.live.final.h}-${m.live.final.a}</span>`:m.st==="post"?"":`<span class="num">${esc(m.h.short)} ${pct(m.sum.home)} · เสมอ ${pct(m.sum.draw)} · ${esc(m.a.short)} ${pct(m.sum.away)}</span>`}${m.mk?.spread?`<span><b>${esc(ahPhrase(m.h.short,m.a.short,m.mk.spread.line))}</b></span>`:""}${v?`<span class="tag value">มีค่า ${pts(v.edge)}</span>`:""}${m.st==="pre"&&m.dq?.tone==="low"?`<span class="tag dq low">ข้อมูลน้อย</span>`:""}</div>
   </div>`;
 }
 function spark(vals, color){
@@ -305,8 +305,10 @@ function accuracyView(){
   const avg=(x,n)=>n?(x/n):null, f2=x=>x==null?"–":x.toFixed(3);
   const llM=avg(tot.llM,tot.n), llK=avg(tot.llK,tot.nK);
   const verdict = llM==null||llK==null ? "ยังมีผลไม่พอเทียบ" : llM<llK ? "โมเดลทายแม่นกว่าราคาตลาด" : "ราคาตลาดยังแม่นกว่าโมเดล";
+  const hw=healthWarn();
   if(!Shared.on) return `<div class="card empty"><h3>ยังวัดผลไม่ได้</h3><p>การวัดความแม่นต้องเปิดข้อมูลร่วมทุกเครื่อง (ฐานข้อมูล Upstash) ซึ่งเปิดได้ในเว็บที่ติดตั้ง</p></div>`;
   return `<p class="pagelead">ทุกวันระบบเก็บผลจริงของทุกคู่ เทียบกับที่โมเดลและราคาตลาดทายไว้ก่อนเตะ แล้วใช้ผลนี้ปรับโมเดลเอง</p>
+    ${hw?`<div class="card" style="border-color:var(--loss);color:var(--loss);margin-bottom:12px">⚠ ${esc(hw)} · ดูรายละเอียดที่ เพิ่มเติม → สถานะระบบ</div>`:""}
     <div class="tiles">
       <div class="tile c-gold"><div class="tt"><span class="k">คู่ที่วัดผลแล้ว</span></div><span class="v num">${tot.n||0}</span><span class="u">${days.length} วัน</span></div>
       <div class="tile c-green"><div class="tt"><span class="k">ทายผลถูก (โมเดล)</span></div><span class="v num">${tot.n?Math.round(tot.hitM/tot.n*100)+"%":"–"}</span><span class="u">ตลาด ${tot.nK?Math.round(tot.hitK/tot.nK*100)+"%":"–"}</span></div>
@@ -339,6 +341,28 @@ function viewSaved(){
     ${sec("โปรแกรมถัดไป")}${next.length?rows(next):`<div class="card muted">ยังไม่มีโปรแกรมของทีมโปรดในข้อมูลที่โหลดไว้</div>`}
     ${past.length?sec("ผลล่าสุด")+rows(past):""}`;
 }
+/* system status (เมดูซ่า 3.1): feed, daily learning job, backup, protection */
+function healthWarn(){
+  const c=S.health?.cron; if(!Shared.on) return null;
+  if(!c) return "งานเรียนรู้ประจำวันยังไม่เคยบันทึกผลการรัน";
+  const h=(Date.now()-Date.parse(c.at))/36e5;
+  if(!c.ok) return `งานเรียนรู้รอบล่าสุดล้มเหลว (${stampTime(c.at)})`;
+  if(h>36) return `งานเรียนรู้ไม่ได้รันมา ${Math.round(h)} ชั่วโมง ระบบหยุดเรียนรู้ชั่วคราว`;
+  if(c.feedOk===false) return "รอบล่าสุดพบข้อมูล ESPN ผิดรูปแบบหรือดึงไม่ได้หลายลีก";
+  return null;
+}
+function healthItem(){
+  const H=S.health, c=H?.cron, F=S.feed, w=healthWarn();
+  const rows=[
+    ["ฟีด ESPN", F?(F.ok?`<span class="green">ปกติ</span> · ${F.events} คู่${F.bad?` · ผิดรูปแบบ ${F.bad}`:""}${F.failed?` · ดึงไม่ได้ ${F.failed}/${F.leagues} ลีก`:""}`:`<span style="color:var(--loss)">ผิดปกติ</span> · ดึงไม่ได้ ${F.failed}/${F.leagues} ลีก · ผิดรูปแบบ ${F.bad}`):"ยังไม่ได้ดึง"],
+    ["งานเรียนรู้ประจำวัน", !Shared.on?"ต้องเปิดข้อมูลร่วม":c?`${c.ok?`<span class="green">รันแล้ว</span>`:`<span style="color:var(--loss)">ล้มเหลว</span>`} ${stampTime(c.at)}${c.ok?` · ผลจบ ${c.finished??0} คู่ · เรียนรู้ใหม่ ${c.settled??0}`:""}`:"ยังไม่มีบันทึก"],
+    ["สำรองข้อมูล", H?.backupAt?`สำรองล่าสุด ${stampTime(new Date(H.backupAt).toISOString())} (ทุกสัปดาห์)`:Shared.on?"ยังไม่เคยสำรอง (งานประจำวันจะสำรองให้)":"–"],
+    ["การป้องกันข้อมูลปลอม", H?.guard?`<span class="green">เปิด</span> · ผลจริงและทีเด็ดตรวจกับ ESPN ก่อนบันทึก`:"–"],
+    ["ฐานข้อมูล", H?.keys?`${H.keys} รายการ`:"–"],
+  ];
+  return `<div class="gitem"><div class="lbl">สถานะระบบ · ${MEDUSA.name}</div>${w?`<p class="note" style="color:var(--loss)">⚠ ${esc(w)}</p>`:""}
+    <div class="statgrid" style="grid-template-columns:auto minmax(0,1fr);font-size:13px">${rows.map(([k,v])=>`<span class="muted">${k}</span><span>${v}</span>`).join("")}</div></div>`;
+}
 function viewMore(){
   const day=getDay(S.date);
   const ex=day.matches.find(m=>m.mk?.spread&&m.steps.length>1)||day.matches[0];
@@ -351,6 +375,7 @@ function viewMore(){
     <div class="gitem"><div class="lbl">สถานะ</div><div class="desc row" style="gap:6px">${statusText()}</div>
       <p class="note">${S.liveOk?"ใช้ฟีดสด อัปเดตเองทุกนาทีระหว่างแข่ง และทุก 10 นาทีเมื่อไม่มีคู่เตะ":"หน้านี้ต่อฟีดสดไม่ได้ จึงใช้ชุดที่บันทึกไว้ เปิดที่ goal-club.vercel.app เพื่อดูสด"}</p></div>
     <div class="gitem"><div class="lbl">ข้อมูลร่วมทุกเครื่อง</div><div class="desc">${Shared.on?`<span class="green">เปิดอยู่</span> · ฟันธง ผลงานย้อนหลัง บทวิเคราะห์ และสิ่งที่โมเดลเรียนรู้ ใช้ชุดเดียวกันทุกเครื่อง · สะสมผลแล้ว ${Shared.histN} นัด`:window.claude?"ใช้ได้ในเว็บที่ติดตั้ง":"ยังไม่ได้ต่อฐานข้อมูล ข้อมูลเก็บแยกในแต่ละเครื่อง (ตั้งได้ที่ Vercel → Storage → Upstash Redis)"}</div></div>
+    ${healthItem()}
     <div class="gitem row"><button class="btn ghost small" data-act="refresh">ดึงข้อมูลใหม่</button><button class="btn ghost small" data-act="clear">ล้างข้อมูลในเครื่อง</button></div>
     <div class="gitem"><div class="lbl">แหล่งข้อมูล</div><div class="desc">โปรแกรม สกอร์ ตารางคะแนน และราคา DraftKings จาก ESPN · หัวข่าวจาก BBC Sport, The Guardian และ ESPN · ราคาเป็นของตลาดต่างประเทศ ไม่ใช่ราคาเว็บไทย</div></div>
   </div>
@@ -577,7 +602,7 @@ function sheetOverview(m){
   const L=leanOf(m), conf=Math.max(m.sum.home,m.sum.away);
   const luck=teamLuck(m);
   return `<div class="verdict">
-      <div class="vk">${m.st==="pre"?"มุมมองก่อนเกม":m.st==="in"?"มุมมองก่อนเกม · กำลังแข่ง":"มุมมองก่อนเกม · จบแล้ว"}</div>
+      <div class="vk">${m.st==="pre"?"มุมมองก่อนเกม":m.st==="in"?"มุมมองก่อนเกม · กำลังแข่ง":"มุมมองก่อนเกม · จบแล้ว"} · <span class="dq ${m.dq?.tone||""}" title="ความครบของข้อมูล: ตาราง ฟอร์ม ราคา เรตติ้งทีม ค่าเฉลี่ยลีก">${m.dq?.label||""} ${m.dq?.q??""}/100</span></div>
       <div class="vt">${esc(L.title)}</div>
       <div class="vm"><div class="meter wide"><i style="width:${Math.round(conf*100)}%"></i></div><span class="num">${pct(conf)}</span></div>
       <div class="vchips">
@@ -887,6 +912,7 @@ function writeTasana(m){
     `- สูง 2.5 ${pct(m.sum.over25)} · ทั้งสองทีมยิง ${pct(m.sum.btts)} · ครึ่งแรกมีประตู ${pct(m.extra.goal1H)}`,
     `- สกอร์ที่เป็นไปได้มากสุด: ${m.sum.top.slice(0,4).map(c=>`${c.h}-${c.a} (${pct(c.p)})`).join(", ")}`);
   const big=(m.factors||[]).filter(f=>!f.base).map(f=>({f,w:Math.abs(f.h-1)+Math.abs(f.a-1)})).filter(x=>x.w>=.03).sort((a,b)=>b.w-a.w).slice(0,3);
+  if(m.dq) W(`- ความครบของข้อมูล: ${m.dq.label} (${m.dq.q}/100)${m.dq.tone==="low"?" ตัวเลขคู่นี้ควรเชื่อน้อยลง":""}`);
   if(big.length) W(`- ปัจจัยที่ขยับตัวเลขมากสุด: ${big.map(({f})=>`${f.label} (${H} ${signedPct(f.h)} / ${A} ${signedPct(f.a)})`).join(" · ")}`);
   const mw=S.weights?.marketLg?.[m.lg]??S.weights?.market; if(mw!=null&&(m.factors||[]).some(f=>f.k==="market")) W(`- ผสมราคาตลาด ${Math.round(mw*100)}% ตามน้ำหนักที่ระบบเรียนรู้เองของลีกนี้`);
   W("");

@@ -9,7 +9,9 @@ import { kv, kvPipe, kvEnabled, parse } from "../lib/kv.js";
 import { aiConfig, aiText } from "../lib/ai.js";
 import { updateRatings, probs, logLoss, brier, outcome, blend, tune, totalLoss, predictRow, PICK_VALUE } from "../lib/learn.js";
 
-const LEAGUES = ["tha.1","eng.1","esp.1","ger.1","ita.1","fra.1","uefa.champions","uefa.europa","uefa.europa.conf","eng.2","eng.league_cup","ned.1","por.1","bel.1","sco.1","tur.1","usa.1","mex.1","bra.1","arg.1","ksa.1","jpn.1","chn.1","aus.1"];
+import { LEAGUES } from "../lib/leagues.js";
+/* keys that hold everything the app has learned; copied to bak:* once a week (เมดูซ่า 3.1) */
+export const BACKUP_KEYS = ["hist", "pickhist", "ratings", "lgavg", "players", "weights", "lessons", "evals", "newsplayer", "histdone", "pickdone", "learned"];
 const nyDate = (d) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 const shift = (iso, n) => { const [y, m, d] = iso.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
 async function getJson(url) { const r = await fetch(url, { signal: AbortSignal.timeout(7000) }); if (!r.ok) throw new Error(r.status); return r.json(); }
@@ -27,22 +29,41 @@ export default async function handler(req, res) {
   const secret = process.env.CRON_SECRET;
   if (secret && req.headers?.authorization !== `Bearer ${secret}`) { res.status(401).json({ error: "unauthorized" }); return; }
   if (!kvEnabled) { res.status(200).json({ ok: false, error: "no database" }); return; }
-  const t0 = Date.now(), today = nyDate(new Date()), days = [shift(today, -2), shift(today, -1)];
+  /* without CRON_SECRET anyone could call this; allow one run per 3 hours */
+  if (!secret && (await kv("SET", "cronlock", String(Date.now()), "NX", "EX", "10800")) !== "OK") { res.status(429).json({ ok: false, error: "ran recently" }); return; }
+  const t0 = Date.now();
+  try { await run(req, res, t0); }
+  catch (e) { await kv("SET", "cronlog", JSON.stringify({ at: new Date().toISOString(), ok: false, error: String(e?.message || e).slice(0, 200), ms: Date.now() - t0 })).catch(() => {}); res.status(200).json({ ok: false, error: "job failed" }); }
+}
+async function finish(res, report, t0) {
+  try { report.backup = await backup(); } catch { report.backup = { failed: true }; }
+  report.ms = Date.now() - t0;
+  const feedOk = !report.feed || (report.feed.failed <= report.feed.leagues / 2 && report.feed.bad <= Math.max(2, report.feed.events * 0.05));
+  await kv("SET", "cronlog", JSON.stringify({ at: new Date().toISOString(), ok: true, feedOk, ms: report.ms, finished: report.finished, settled: report.settled, picks: report.picks, feed: report.feed || null, backup: report.backup || null, lessons: report.lessons || 0 })).catch(() => {});
+  res.status(200).json(report);
+}
+async function run(req, res, t0) {
+  const today = nyDate(new Date()), days = [shift(today, -2), shift(today, -1)];
   const report = { days, finished: 0, settled: 0, picks: 0, ratingsUpdated: 0, players: 0, evaluated: [] };
 
   /* 1. finished matches */
-  const games = [];
+  const games = [], feed = { leagues: 0, failed: 0, events: 0, bad: 0 };
   await pool(LEAGUES.flatMap((lg) => days.map((d) => [lg, d])), 8, async ([lg, d]) => {
-    const b = await getJson(`https://site.api.espn.com/apis/site/v2/sports/soccer/${lg}/scoreboard?dates=${d.replaceAll("-", "")}`);
+    feed.leagues++;
+    let b; try { b = await getJson(`https://site.api.espn.com/apis/site/v2/sports/soccer/${lg}/scoreboard?dates=${d.replaceAll("-", "")}`); } catch (e) { feed.failed++; throw e; }
     for (const ev of b.events || []) {
-      const c = ev.competitions?.[0]; if (c?.status?.type?.state !== "post") continue;
+      /* feed check: every event should carry an id, two teams with ids and a status */
+      feed.events++;
+      const c0 = ev.competitions?.[0];
+      if (!ev.id || !c0?.status?.type?.state || (c0.competitors || []).filter((x) => x.team?.id).length !== 2) { feed.bad++; continue; }
+      const c = c0; if (c?.status?.type?.state !== "post") continue;
       const H = c.competitors?.find((x) => x.homeAway === "home"), A = c.competitors?.find((x) => x.homeAway === "away");
       const hs = Number(H?.score), as = Number(A?.score); if (!Number.isInteger(hs) || !Number.isInteger(as)) continue;
       games.push({ id: String(ev.id), lg, d, hs, as, hid: String(H.team?.id), aid: String(A.team?.id), hn: H.team?.shortDisplayName || H.team?.displayName, an: A.team?.shortDisplayName || A.team?.displayName });
     }
   });
-  report.finished = games.length;
-  if (!games.length) { res.status(200).json(report); return; }
+  report.finished = games.length; report.feed = feed;
+  if (!games.length) return finish(res, report, t0);
 
   /* skip games already learned */
   const seen = await kvPipe(games.map((g) => ["SISMEMBER", "learned", g.id]));
@@ -169,8 +190,17 @@ export default async function handler(req, res) {
   if (aiConfig() && Date.now() - t0 < 32000) {
     try { report.newsPlayers = await scanPlayerNews(today); } catch { report.newsPlayers = "failed"; }
   }
-  report.ms = Date.now() - t0;
-  res.status(200).json(report);
+  return finish(res, report, t0);
+}
+
+/* weekly copy of everything learned into bak:<key> (restore: POST /api/backup with CRON_SECRET) */
+async function backup() {
+  const last = Number(await kv("GET", "bak:at")) || 0;
+  if (Date.now() - last < 6.5 * 864e5) return { at: last ? new Date(last).toISOString() : null, skipped: true };
+  const out = await kvPipe(BACKUP_KEYS.map((k) => ["COPY", k, `bak:${k}`, "REPLACE"]));
+  const copied = out.filter((x) => x === 1).length;
+  await kv("SET", "bak:at", String(Date.now()));
+  return { at: new Date().toISOString(), copied };
 }
 
 async function headlines() {

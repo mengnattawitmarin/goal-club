@@ -14,7 +14,12 @@ const db = new Map();
 function redis([c, ...a]) {
   c = String(c).toUpperCase();
   if (c === "GET") return db.has(a[0]) ? db.get(a[0]) : null;
-  if (c === "SET") { db.set(a[0], a[1]); return "OK"; }
+  if (c === "SET") { if (a.includes("NX") && db.has(a[0])) return null; db.set(a[0], a[1]); return "OK"; }
+  if (c === "INCR") { const n = Number(db.get(a[0]) || 0) + 1; db.set(a[0], String(n)); return n; }
+  if (c === "EXPIRE") return 1;
+  if (c === "SISMEMBER") { const s = db.get(a[0]); return s instanceof Set && s.has(a[1]) ? 1 : 0; }
+  if (c === "DBSIZE") return db.size;
+  if (c === "COPY") { if (!db.has(a[0])) return 0; const v = db.get(a[0]); db.set(a[1], v instanceof Set ? new Set(v) : Array.isArray(v) ? [...v] : typeof v === "object" ? { ...v } : v); return 1; }
   if (c === "DEL") return db.delete(a[0]) ? 1 : 0;
   if (c === "LPUSH") { const l = db.get(a[0]) || []; l.unshift(...a.slice(1).reverse()); db.set(a[0], l); return l.length; }
   if (c === "LTRIM") { const l = db.get(a[0]) || []; db.set(a[0], l.slice(+a[1], +a[2] + 1)); return "OK"; }
@@ -34,6 +39,19 @@ const kvServer = http.createServer((req, res) => {
 await new Promise((r) => kvServer.listen(0, r));
 process.env.KV_REST_API_URL = `http://localhost:${kvServer.address().port}`;
 process.env.KV_REST_API_TOKEN = "test";
+/* the store checks scores and picks with ESPN on the server: answer those from the fake feed */
+const realFetch = globalThis.fetch;
+globalThis.fetch = async (url, opts) => {
+  const u = new URL(String(url));
+  if (u.hostname === "site.api.espn.com" && u.pathname.endsWith("/summary")) {
+    const id = u.searchParams.get("event"), st = id === "9001" ? STEPS[step] : STEPS[0];
+    if (id !== "9001" && id !== "9002") return new Response("{}", { status: 404 });
+    const body = { header: { competitions: [{ date: new Date(Date.now() + (id === "9001" ? -60e3 : 5 * 3600e3)).toISOString(), status: { type: { state: st[0] } },
+      competitors: [{ homeAway: "home", score: String(st[2]), team: { id: id === "9001" ? "359" : "367" } }, { homeAway: "away", score: String(st[3]), team: { id: id === "9001" ? "363" : "368" } }] }] } };
+    return new Response(JSON.stringify(body), { status: 200 });
+  }
+  return realFetch(url, opts);
+};
 const store = (await import(join(root, "api/store.js"))).default;
 
 /* ---- fake ESPN ---- */
@@ -71,7 +89,11 @@ function espn(u) {
   if (p.endsWith("/scoreboard") && p.includes("/eng.1/") && u.searchParams.get("dates") === today)
     return { events: [ev("9001", ["359", "Arsenal"], ["363", "Chelsea"], STEPS[step], new Date(Date.now() - 60e3)), ev("9002", ["367", "Spurs"], ["368", "Everton"], STEPS[0], new Date(Date.now() + 5 * 3600e3))] };
   if (p.endsWith("/scoreboard")) return { events: p.includes("eng.1") && !u.searchParams.get("dates") ? [{}] : [] };
-  if (p.endsWith("/standings")) return { children: [] };
+  if (p.endsWith("/standings")) {
+    if (!p.includes("/eng.1/")) return { children: [] };
+    const e = (id, pl, gf, ga, pts, rank) => ({ team: { id }, stats: [["gamesPlayed", pl], ["pointsFor", gf], ["pointsAgainst", ga], ["points", pts], ["rank", rank]].map(([name, value]) => ({ name, value })) });
+    return { children: [{ standings: { entries: [e("359", 10, 20, 8, 23, 2), e("363", 10, 17, 11, 18, 5), e("367", 10, 15, 14, 15, 8), e("368", 10, 9, 15, 10, 15)] } }] };
+  }
   if (p.endsWith("/summary")) return summary();
   return null;
 }

@@ -54,6 +54,8 @@ try {
   check("back button closes the sheet", !(await A.isVisible("#sheet")));
 
   // live: step to 1st half, re-render and open the live match
+  // a real pick on the match that is about to start (the server checks it with ESPN)
+  await A.evaluate(() => fetch("/api/store", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ date: S.date, picks: [{ id: "9001", lg: "eng.1", type: "ou", side: "o", line: 2.5, prob: 0.6, label: "สูง 2.5", score: "2-1", ko: new Date(Date.now() + 60e3).toISOString(), match: "Arsenal – Chelsea" }] }) }));
   await fetch(`${BASE}/step`); await A.evaluate(() => refresh(S.date, false)); await A.waitForTimeout(1200);
   await A.click('#view .pcard[data-open="9001"]'); await A.waitForTimeout(800);
   const live = await A.evaluate(() => document.querySelector("#liveBox")?.innerText || "");
@@ -82,6 +84,24 @@ try {
   await B.evaluate(() => syncPull(S.date)); await B.waitForTimeout(300);
   check("pick settled and visible on the other device", (await B.evaluate(() => Shared.pickHist.length)) >= 1);
   check("result stored for learning", (await B.evaluate(() => Shared.histN)) >= 1);
+  // เมดูซ่า 3.1: the shared store does not trust clients
+  const post = (body) => fetch(`${BASE}/api/store`, { method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": "10.0.0.9" }, body: JSON.stringify(body) }).then((r) => r.status);
+  const today = await A.evaluate(() => S.date);
+  const g0 = await (await fetch(`${BASE}/api/store?date=${today}`)).json();
+  await post({ date: today, preds: [{ id: "9002", lg: "eng.1", lh0: 1.4, la0: 1.1, ph: 0.45, pa: 0.3, ko: new Date(Date.now() + 5 * 3600e3).toISOString() }] });
+  await post({ date: today, results: [{ id: "9002", hs: 9, as: 0 }] });
+  await post({ date: today, picks: [{ id: "777777", lg: "eng.1", type: "ou", side: "o", line: 2.5, prob: 0.9, label: "fake", ko: new Date(Date.now() + 3600e3).toISOString() }, { id: "9002", type: "ah", side: "h", line: -0.5, prob: 0.9, label: "no league", ko: new Date(Date.now() + 3600e3).toISOString() }] });
+  const g1 = await (await fetch(`${BASE}/api/store?date=${today}`)).json();
+  check("fake score for an unfinished match is ignored", g1.histN === g0.histN, `${g0.histN} -> ${g1.histN}`);
+  check("fake picks (unknown match, no league) are rejected", !g1.picks["777777"] && !g1.picks["9002"]?.label?.includes("no league"));
+  check("finished match learned with ESPN's score", g1.audit && (g1.health?.guard === true));
+  let last = 200; for (let i = 0; i < 45; i++) last = await post({ date: today });
+  check("rate limit stops a flood of writes", last === 429, String(last));
+  check("every pick has enough data and is not worse than the market", await A.evaluate(() => picksFor(S.date).list.every((p) => (p.dq ?? 100) >= 45 && (p.edge == null || p.edge >= -0.01 || p.m?.st !== "pre"))));
+  check("data quality on every match", await A.evaluate(() => getDay(S.date).matches.every((m) => m.dq && m.dq.q >= 0 && m.dq.q <= 100 && m.dq.label)));
+  await A.evaluate(() => { S.tab = "more"; render(); }); await A.waitForTimeout(300);
+  const more = await A.evaluate(() => document.querySelector("#view")?.innerText || "");
+  check("system status shows feed, learning job, backup and protection", ["สถานะระบบ", "ฟีด ESPN", "งานเรียนรู้ประจำวัน", "สำรองข้อมูล", "การป้องกันข้อมูลปลอม"].every((k) => more.includes(k)), more.match(/สถานะระบบ[\s\S]{0,160}/)?.[0]?.replace(/\s+/g, " "));
   check("no page errors", errors.length === 0, errors.join(" | "));
 } finally {
   await browser.close(); server.kill();
