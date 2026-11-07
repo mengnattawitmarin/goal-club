@@ -2395,8 +2395,12 @@ function botCard(m){
     <div class="bothead"><span class="botav" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="7" width="16" height="12" rx="4"/><path d="M12 3v4M9 12h.01M15 12h.01M9.5 15.5h5"/></svg></span>
       <div class="bt"><b>บอท Goal Club</b><small>สถิติของแอป · ${MEDUSA.name} · ${S.polish[m.id]?.text?"เรียบเรียงโดย AI":"เขียนทัศนะบอล"}</small></div></div>
     <div id="botBody">${botBody(m)}</div>
-    <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn ghost small" data-act="copyai">คัดลอกไปถาม AI</button><span class="spacer"></span>
-    <button class="linkbtn" id="btnBot" style="width:auto" ${st?.busy?"disabled":""}>${st?.busy?"AI กำลังค้นเว็บ…":"ให้ AI ค้นข่าวเว็บเพิ่ม"}</button></div>
+    <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap">
+      <button class="btn ghost small" data-act="copyai">คัดลอกไปถาม AI</button>
+      <a class="btn ghost small" href="${esc(googleAI(m))}" target="_blank" rel="noopener">ถาม Google AI</a>
+      <a class="btn ghost small" href="${esc(googleNews(m))}" target="_blank" rel="noopener">ค้นข่าวใน Google</a>
+      ${AI_ONLINE?`<button class="linkbtn" id="btnBot" style="width:auto" ${st?.busy?"disabled":""}>${st?.busy?"AI กำลังค้นเว็บ…":"ให้ AI ค้นข่าวเว็บเพิ่ม"}</button>`:""}</div>
+    <p class="note" style="margin-top:6px">คัดลอกแล้วนำไปวางใน AiPASS, Gemini หรือ ChatGPT ได้เลย · ปุ่ม Google เปิดในแท็บใหม่</p>
   </div>`;
 }
 function botPayload(m){
@@ -2418,7 +2422,13 @@ function botPayload(m){
     luckForFun:luck?.list?.length?luck.list.map(p=>`${p.name}: ทักษา${p.luck.taksa} ปี${p.luck.animal} ${p.luck.zodiac} คะแนน ${p.luck.score}`):null};
 }
 /* เมดูซ่า 3.2: AI analyst rewrite of the closed-system preview (hosted site only; checked on the server) */
+/* AI on the server is switched off for now (owner's call, 7 Nov 2026): keep copy-to-AI and Google links only.
+   Set to true to bring back the AI analyst rewrite and the "AI web search" button. */
+const AI_ONLINE=false;
+function googleAI(m){ return "https://www.google.com/search?udm=50&q="+encodeURIComponent(`วิเคราะห์ฟุตบอล ${m.h.name} พบ ${m.a.name} ${lg(m)} ข่าวล่าสุด ตัวเจ็บ ตัวจริงที่คาด ฟอร์ม และสถิติที่เจอกัน`); }
+function googleNews(m){ return "https://www.google.com/search?tbm=nws&q="+encodeURIComponent(`${m.h.name} ${m.a.name} team news injuries`); }
 async function ensurePolish(m){
+  if(!AI_ONLINE) return;
   if(!m||m.st!=="pre"||window.claude||!S.liveOk||!Shared.on) return;
   const id=m.id; if(S.polish[id]?.text||S.polish[id]?.pending||S.polish[id]?.failedAt>Date.now()-10*60e3) return;
   S.polish[id]={pending:true};

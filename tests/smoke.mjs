@@ -51,9 +51,7 @@ try {
   check("rotation news lowers the resting side's expected goals", rot && rot.h < 0.95 && rot.a > 1, JSON.stringify(rot));
   const daily = await A.evaluate(() => { const d = writeDaily(getDay(S.date)); return d ? d.summary + d.notes.map((n) => n.text).join(" ") : ""; });
   check("closed daily summary", daily.length > 30 && !/undefined|NaN/.test(daily), daily.slice(0, 80));
-  await A.click("#btnBot"); await A.waitForTimeout(1200);
-  const botText = await A.evaluate(() => document.querySelector("#botBody")?.innerText || "");
-  check("optional AI version is kept beside the closed one", botText.includes("ฉบับ AI ค้นเว็บ") && botText.includes("สถานการณ์ล่าสุด"), botText.slice(0, 60).replace(/\s+/g, " "));
+  check("Google AI and Google news links for the match", await A.evaluate(() => { const a = [...document.querySelectorAll("#botBody ~ .row a")].map((x) => x.href); return a.some((h) => h.includes("google.com/search?udm=50")) && a.some((h) => h.includes("tbm=nws")) && !document.querySelector("#btnBot"); }));
   await A.goBack(); await A.waitForTimeout(300);
   check("back button closes the sheet", !(await A.isVisible("#sheet")));
 
