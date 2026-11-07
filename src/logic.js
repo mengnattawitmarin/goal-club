@@ -139,7 +139,17 @@ function meetingsFor(m){
   }).filter(Boolean);
 }
 /* เมดูซ่า: ชื่อของอัลกอริทึมวิเคราะห์ เพิ่มเลขทุกครั้งที่ปรับวิธีคำนวณ (ดู MEDUSA.md) */
-const MEDUSA={v:3.1, name:"เมดูซ่า 3.1", date:"2026-11-07"};
+const MEDUSA={v:3.2, name:"เมดูซ่า 3.2", date:"2026-11-07"};
+/* เส้นทางเกม: chance to win after scoring first / conceding first (first goal time ~ exponential) */
+function pathOdds(m){
+  const L=m.lh+m.la; if(!(L>0)) return null;
+  const P=l=>{ const a=[]; let p=Math.exp(-l); for(let i=0;i<=8;i++){ a.push(p); p*=l/(i+1); } return a; };
+  let hw=0,hd=0,aw=0,ad=0,norm=0; const N=24;
+  for(let k=0;k<N;k++){ const t=(k+.5)/N, w=L*Math.exp(-L*t)/N; norm+=w; const x=P(m.lh*(1-t)), y=P(m.la*(1-t));
+    let a1=0,a2=0,b1=0,b2=0; for(let i=0;i<=8;i++) for(let j=0;j<=8;j++){ const p=x[i]*y[j]; if(1+i>j) a1+=p; else if(1+i===j) a2+=p; if(1+j>i) b1+=p; else if(1+j===i) b2+=p; }
+    hw+=w*a1; hd+=w*a2; aw+=w*b1; ad+=w*b2; }
+  return {homeFirst:{win:hw/norm,draw:hd/norm,lose:1-(hw+hd)/norm}, awayFirst:{win:aw/norm,draw:ad/norm,lose:1-(aw+ad)/norm}, none:Math.exp(-L)};
+}
 /* how complete this match's data is, 0-100 (เมดูซ่า 3.1): table, form, prices, learned ratings, league average */
 function dataQuality(m){
   const both=(f)=>(f(m.h)?1:0)+(f(m.a)?1:0), R=S?.ratings||{};
@@ -261,6 +271,15 @@ function refine(m){
     const mu=avg>0.4?avg:1.35, rlh=mu*1.12*RH.att*RA.def, rla=mu/1.12*RA.att*RH.def, W=Math.min(.3,.12+(Math.min(RH.n,RA.n)-6)*.01);
     const bh=lh, ba=la; lh=clamp(Math.exp(Math.log(lh)*(1-W)+Math.log(rlh)*W),0.15,4.2); la=clamp(Math.exp(Math.log(la)*(1-W)+Math.log(rla)*W),0.15,4.2);
     push("rating","ความแข็งของทีม (เรียนรู้ทุกวัน)",`เกมรุก/รับ ${m.h.short} ${RH.att.toFixed(2)}/${RH.def.toFixed(2)} · ${m.a.short} ${RA.att.toFixed(2)}/${RA.def.toFixed(2)} จาก ${RH.n}/${RA.n} นัดที่บันทึก → ${rlh.toFixed(2)}–${rla.toFixed(2)} ผสม ${Math.round(W*100)}%`,bh,ba);
+  }
+  /* coach says he will rest players / rotate (news scan, last 3 days) — เมดูซ่า 3.2 */
+  const rotOf=t=>{ const n=String(t.name||"").toLowerCase(), sh=String(t.short||"").toLowerCase();
+    for(const [k,v] of Object.entries(S?.rotation||{})){ if(!v?.d||v.signal!=="rotation"||k.length<4) continue; const age=(Date.parse(m.ko)-Date.parse(v.d))/864e5; if(age<-0.5||age>3) continue; if(n.includes(k)||k.includes(n)||k===sh) return v; } return null; };
+  const rH=rotOf(m.h), rA=rotOf(m.a);
+  if(rH||rA){
+    const bh=lh, ba=la;
+    if(rH){ lh=clamp(lh*.93,0.15,4.2); la=clamp(la*1.04,0.15,4.2); } if(rA){ la=clamp(la*.93,0.15,4.2); lh=clamp(lh*1.04,0.15,4.2); }
+    push("rotation","ข่าวหมุนตัว/พักตัวหลัก",[rH&&`${m.h.short}: ${rH.reason||"โค้ชเตรียมหมุนตัว"}`,rA&&`${m.a.short}: ${rA.reason||"โค้ชเตรียมหมุนตัว"}`].filter(Boolean).join(" · "),bh,ba);
   }
   /* learned from this app's own past predictions vs real scores */
   const lh0=lh, la0=la;
@@ -496,7 +515,7 @@ async function syncPull(date){
     const j=await getJson(`/api/store?date=${date}${teams?`&teams=${teams}`:""}`,8000);
     if(!j?.enabled) return false;
     Shared.on=true; Shared.picks[date]=j.picks||{}; Shared.pickHist=j.pickHist||[]; Shared.histN=j.histN||0; Shared.pulled[date]=Date.now();
-    if(j.calib) S.calib=j.calib; if(j.audit) S.audit=j.audit; if(j.health) S.health=j.health;
+    if(j.calib) S.calib=j.calib; if(j.audit) S.audit=j.audit; if(j.health) S.health=j.health; if(j.reviews) S.reviews=j.reviews; if(j.rotation) S.rotation=j.rotation;
     if(j.newsPlayer) S.newsPlayer=j.newsPlayer; if(j.lessons) S.lessons=j.lessons;
     S.ratings={...(S.ratings||{}),...(j.ratings||{})}; S.lgavg={...(S.lgavg||{}),...(j.lgavg||{})}; if(j.weights) S.weights=j.weights; if(j.evals) S.evals=j.evals;
     if(day?.matches?.length) S.days[date]=prepare({...day,matches:day.matches.map(x=>x.raw||x)});
@@ -866,6 +885,7 @@ async function loadPeople(m){
 
 /* ---------- app state ---------- */
 const S = {
+  polish:{}, reviews:{}, rotation:{},
   date: bkkToday(),
   tab: "home",
   filter: "all",        // all | hot

@@ -6,7 +6,9 @@
 // 5. scores the model against the market for the day (log loss, Brier, hit rate)
 // 6. weekly: re-tunes the market blend weight on everything learned so far
 import { kv, kvPipe, kvEnabled, parse } from "../lib/kv.js";
-import { aiConfig, aiText } from "../lib/ai.js";
+import { aiConfig, aiText, aiParse } from "../lib/ai.js";
+import { headlines } from "../lib/news.js";
+import { ruleReview } from "../lib/review.js";
 import { updateRatings, probs, logLoss, brier, outcome, blend, tune, totalLoss, predictRow, PICK_VALUE } from "../lib/learn.js";
 
 import { LEAGUES } from "../lib/leagues.js";
@@ -116,9 +118,14 @@ async function run(req, res, t0) {
   if (ids.length) { await kv("HSET", "ratings", ...ids.flatMap((id) => [id, JSON.stringify(R[id])])); report.ratingsUpdated = ids.length; }
 
   /* 4. scorers and assisters per player (summaries, bounded by time) */
-  const plays = {};
+  const plays = {}, facts = {};
   await pool(fresh.filter(() => Date.now() - t0 < 30000), 8, async (g) => {
     const s = await getJson(`https://site.api.espn.com/apis/site/v2/sports/soccer/${g.lg}/summary?event=${g.id}`);
+    /* what happened on the pitch, for the post-match review */
+    const T = s.boxscore?.teams || [], st = (t, re) => { const x = (t?.statistics || []).find((y) => re.test(String(y.name || y.label || ""))); const v = parseFloat(String(x?.displayValue ?? "")); return Number.isFinite(v) ? v : null; };
+    const H = T.find((t) => String(t.team?.id) === g.hid) || T[0], A = T.find((t) => String(t.team?.id) === g.aid) || T[1];
+    const reds = (s.keyEvents || []).filter((k) => /red card|second yellow/i.test(`${k.type?.text || ""} ${k.text || ""}`)).map((k) => ({ side: String(k.team?.id) === g.hid ? "h" : "a", min: parseInt(k.clock?.displayValue, 10) || null }));
+    facts[g.id] = { sotH: st(H, /^shotsOnTarget$/i), sotA: st(A, /^shotsOnTarget$/i), shH: st(H, /^totalShots$/i), shA: st(A, /^totalShots$/i), reds };
     for (const sp of s.scoringPlays || []) {
       const ath = sp.athletesInvolved || []; if (!ath.length || /own goal/i.test(sp.type?.text || sp.text || "")) continue;
       const add = (a, k) => { if (!a?.id) return; const r = (plays[a.id] = plays[a.id] || { name: a.displayName, g: 0, a: 0, team: sp.team?.displayName || "" }); r[k]++; };
@@ -140,6 +147,22 @@ async function run(req, res, t0) {
     await kv("HSET", "evals", d, JSON.stringify(sum)); report.evaluated.push(d);
   }
   await kvPipe(fresh.map((g) => ["SADD", "learned", g.id]));
+
+  /* 5b. post-match review (เมดูซ่า 3.2): why each clear miss went wrong; rule-based, reworded by AI when available */
+  const missed = fresh.map((g, i) => ({ g, p: parse(preds[i]) })).filter(({ g, p }) => p && p.ph != null && outcome(g.hs, g.as) !== [p.ph, 1 - p.ph - p.pa, p.pa].indexOf(Math.max(p.ph, 1 - p.ph - p.pa, p.pa)))
+    .map(({ g, p }) => ruleReview(g, p, facts[g.id])).sort((a, b) => b.surprise - a.surprise).slice(0, 10);
+  if (missed.length) {
+    if (aiConfig() && Date.now() - t0 < 30000) {
+      try {
+        const txt = await aiText(`เรียบเรียงเหตุผลที่ทายพลาดแต่ละคู่ให้เป็นภาษานักวิเคราะห์ไทย 1 ประโยค ใช้เฉพาะตัวเลขและข้อเท็จจริงที่ให้ ห้ามเพิ่มข้อมูลใหม่ ตอบ JSON เท่านั้น {"r":[{"id":"...","text":"..."}]}\n${JSON.stringify(missed.map((m) => ({ id: m.id, match: m.match, facts: m.reason })))}`, { maxTokens: 1200, timeout: 20000 });
+        const out = aiParse(txt, { r: [] });
+        for (const r of out.r || []) { const m = missed.find((x) => x.id === String(r.id)); if (!m || !r.text) continue; const okN = (String(r.text).match(/\d+/g) || []).every((n) => m.reason.includes(n) || m.match.includes(n)); if (okN) { m.text = String(r.text).slice(0, 220); m.ai = true; } }
+      } catch {}
+    }
+    const byD = {}; for (const m of missed) (byD[m.d] = byD[m.d] || []).push(m);
+    for (const [d, list] of Object.entries(byD)) { const old = parse(await kv("HGET", "reviews", d), []); const ids = new Set(list.map((x) => x.id)); await kv("HSET", "reviews", d, JSON.stringify([...list, ...old.filter((x) => !ids.has(x.id))].slice(0, 12))); }
+    report.reviews = missed.length;
+  }
 
   /* 6. self-improvement: re-tune factor strengths and market weights, calibrate picks, write lessons */
   const wt = parse(await kv("GET", "weights"), {});
@@ -182,16 +205,22 @@ async function run(req, res, t0) {
       lessons.push(`ฟันธง${type === "ah" ? "แฮนดิแคป" : type === "ou" ? "สูงต่ำ" : "ผลชนะ"}: ทายไว้เฉลี่ย ${Math.round(pred * 100)}% ได้จริง ${Math.round(act * 100)}% จาก ${rows.length} คู่ → ${c < 1 ? "ลด" : c > 1 ? "เพิ่ม" : "คง"}ความมั่นใจ ×${c.toFixed(2)}`);
     }
     await kv("SET", "weights", JSON.stringify(next));
+    /* what the post-match reviews of the last week say */
+    const rv = Object.values(pairsOf(await kv("HGETALL", "reviews"))).flat().filter((x) => x && Date.parse(today) - Date.parse(x.d) < 8 * 864e5);
+    if (rv.length >= 5) { const c = {}; for (const x of rv) c[x.kind] = (c[x.kind] || 0) + 1; const top = Object.entries(c).sort((a, b) => b[1] - a[1])[0]; lessons.push(`รีวิวหลังเกม 7 วัน: พลาด ${rv.length} คู่ สาเหตุที่พบบ่อยสุดคือ${REVIEW_KIND[top[0]] || top[0]} (${top[1]} คู่)`); }
     await kv("SET", "lessons", JSON.stringify({ at: next.at, items: lessons.slice(0, 20) }));
     report.weights = next; report.lessons = lessons.length;
   }
 
   /* 7. player news: who is out or doubtful, from today's headlines (needs ANTHROPIC_API_KEY) */
   if (aiConfig() && Date.now() - t0 < 32000) {
-    try { report.newsPlayers = await scanPlayerNews(today); } catch { report.newsPlayers = "failed"; }
+    try { report.newsPlayers = await scanPlayerNews(today); } catch (e) { report.newsPlayers = "failed"; if (process.env.CRON_DEBUG) console.error(e); }
   }
   return finish(res, report, t0);
 }
+
+const REVIEW_KIND = { red: "ใบแดงเปลี่ยนเกม", luck: "คุมเกมแต่จบไม่คม (โชคไม่เข้าข้าง)", under: "ประเมินทีมที่ชนะต่ำไป", open: "เกมเปิดกว่าที่คาดมาก", close: "เกมสูสีที่พลิกได้ทุกทาง" };
+const pairsOf = (arr) => { const o = {}; for (let i = 0; Array.isArray(arr) && i < arr.length; i += 2) o[arr[i]] = parse(arr[i + 1], []); return o; };
 
 /* weekly copy of everything learned into bak:<key> (restore: POST /api/backup with CRON_SECRET) */
 async function backup() {
@@ -203,24 +232,29 @@ async function backup() {
   return { at: new Date().toISOString(), copied };
 }
 
-async function headlines() {
-  const rss = async (url) => { try { const x = await (await fetch(url, { signal: AbortSignal.timeout(5000) })).text(); return [...x.matchAll(/<item>[\s\S]*?<title>([\s\S]*?)<\/title>/g)].slice(0, 15).map((m) => m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").trim()); } catch { return []; } };
-  const espn = async (lg) => { try { const j = await getJson(`https://site.api.espn.com/apis/site/v2/sports/soccer/${lg}/news?limit=8`); return (j.articles || []).map((a) => `${a.headline} — ${a.description || ""}`); } catch { return []; } };
-  return (await Promise.all([rss("https://feeds.bbci.co.uk/sport/football/rss.xml"), rss("https://www.theguardian.com/football/rss"), ...["eng.1", "esp.1", "ita.1", "ger.1", "fra.1"].map(espn)])).flat().slice(0, 70);
-}
+/* player and team news from today's headlines (English + Thai): out / doubtful / back, and coaches planning to rotate */
 async function scanPlayerNews(today) {
-  const lines = await headlines(); if (!lines.length) return 0;
-  const prompt = `จากหัวข่าวฟุตบอลด้านล่าง ดึงเฉพาะนักเตะที่ข่าวระบุชัดว่า บาดเจ็บ/โดนแบน/ไม่ได้ลงนัดถัดไป (out) หรือ ไม่แน่ว่าจะได้ลง (doubtful) หรือ หายเจ็บกลับมา (back)
-ห้ามเดา ถ้าข่าวไม่ระบุชัดให้ข้าม ตอบ JSON เท่านั้น: {"players":[{"name":"ชื่อตามข่าว","team":"สโมสร","status":"out|doubtful|back","reason":"สั้น ๆ ภาษาไทย"}]}
+  const { items, health } = await headlines(); await kv("SET", "newsfeeds", JSON.stringify({ at: new Date().toISOString(), health })).catch(() => {});
+  const lines = items.map((h) => h.title); if (!lines.length) return 0;
+  const prompt = `จากหัวข่าวฟุตบอลด้านล่าง (มีทั้งภาษาอังกฤษและภาษาไทย) ดึงเฉพาะสิ่งที่ข่าวระบุชัด ห้ามเดา ถ้าไม่ชัดให้ข้าม
+1) players: นักเตะที่ บาดเจ็บ/โดนแบน/ไม่ได้ลงนัดถัดไป (out) ไม่แน่ว่าจะได้ลง (doubtful) หายเจ็บกลับมา (back)
+2) teams: ทีมที่โค้ชบอกว่าจะพักตัวหลัก หมุนเวียนผู้เล่น หรือให้โอกาสตัวสำรองในนัดถัดไป (signal "rotation") หรือเปลี่ยนโค้ช (signal "coach")
+ชื่อให้เขียนตามข่าว ทีมใช้ชื่อสโมสรภาษาอังกฤษถ้ารู้ ตอบ JSON เท่านั้น:
+{"players":[{"name":"","team":"","status":"out|doubtful|back","reason":"สั้น ๆ ภาษาไทย"}],"teams":[{"team":"","signal":"rotation|coach","reason":"สั้น ๆ ภาษาไทย"}]}
 หัวข่าว: ${JSON.stringify(lines)}`;
-  const text = await aiText(prompt, { maxTokens: 1500, timeout: 22000 });
-  const out = parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1), { players: [] });
+  const text = await aiText(prompt, { maxTokens: 1800, timeout: 22000 });
+  const out = aiParse(text, { players: [], teams: [] });
   const blob = lines.join(" ").toLowerCase();
-  const ok = (out.players || []).filter((p) => p?.name && /^(out|doubtful|back)$/.test(p.status) && String(p.name).toLowerCase().split(/\s+/).some((w) => w.length > 2 && blob.includes(w)));
+  const seen = (n) => String(n || "").toLowerCase().split(/\s+/).some((w) => w.length > 2 && blob.includes(w));
+  const ok = (out.players || []).filter((p) => p?.name && /^(out|doubtful|back)$/.test(p.status) && seen(p.name));
   const cmds = ok.map((p) => p.status === "back" ? ["HDEL", "newsplayer", String(p.name).toLowerCase()] : ["HSET", "newsplayer", String(p.name).toLowerCase(), JSON.stringify({ name: p.name, team: p.team || "", status: p.status, reason: String(p.reason || "").slice(0, 120), d: today })]);
-  /* forget news older than 14 days */
-  const all = await kv("HGETALL", "newsplayer") || [];
-  for (let i = 0; i < all.length; i += 2) { const v = parse(all[i + 1]); if (v?.d && (Date.parse(today) - Date.parse(v.d)) / 864e5 > 14) cmds.push(["HDEL", "newsplayer", all[i]]); }
+  const teams = (out.teams || []).filter((t) => t?.team && /^(rotation|coach)$/.test(t.signal) && seen(t.team));
+  for (const t of teams) cmds.push(["HSET", "rotation", String(t.team).toLowerCase(), JSON.stringify({ team: t.team, signal: t.signal, reason: String(t.reason || "").slice(0, 120), d: today })]);
+  /* forget news older than 14 days, rotation talk older than 4 */
+  for (const [key, days] of [["newsplayer", 14], ["rotation", 4]]) {
+    const all = await kv("HGETALL", key) || [];
+    for (let i = 0; i < all.length; i += 2) { const v = parse(all[i + 1]); if (v?.d && (Date.parse(today) - Date.parse(v.d)) / 864e5 > days) cmds.push(["HDEL", key, all[i]]); }
+  }
   if (cmds.length) await kvPipe(cmds);
-  return ok.length;
+  return ok.length + teams.length;
 }

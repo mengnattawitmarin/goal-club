@@ -43,4 +43,46 @@ check("unknown key type is named by its first characters", ev.some((e) => e.t ==
 delete process.env.ANTHROPIC_API_KEY;
 ev = await run();
 check("no key gives a clear message", ev[0]?.t === "error" && ev[0].d.includes("คีย์"));
+
+/* ---- เมดูซ่า 3.2: Gemini ---- */
+const GEM_SSE = [
+  { candidates: [{ content: { parts: [{ text: "## ทัศนะบอล Gemini\n" }] }, groundingMetadata: { webSearchQueries: ["Inter team news"] } }] },
+  { candidates: [{ content: { parts: [{ text: "เนื้อหา" }] }, finishReason: "STOP", groundingMetadata: { groundingChunks: [{ web: { uri: "https://g.example", title: "G" } }] } }] },
+].map((o) => `data: ${JSON.stringify(o)}\r\n\r\n`).join("");
+const MODELS = { models: [{ name: "models/gemini-2.0-flash", supportedGenerationMethods: ["generateContent"] }, { name: "models/gemini-3.8-flash", supportedGenerationMethods: ["generateContent"] }, { name: "models/gemini-3.8-flash-lite", supportedGenerationMethods: ["generateContent"] }, { name: "models/gemini-3.8-flash-image", supportedGenerationMethods: ["generateContent"] }] };
+let gemMode = "ok", urls = [];
+globalThis.fetch = async (url, opts) => {
+  const u = String(url); urls.push(u);
+  const stream = (s) => new Response(new ReadableStream({ start(c) { const e = new TextEncoder(); for (let i = 0; i < s.length; i += 37) c.enqueue(e.encode(s.slice(i, i + 37))); c.close(); } }), { status: 200 });
+  if (u.includes("generativelanguage") && u.endsWith("/models?pageSize=200")) return new Response(JSON.stringify(MODELS), { status: 200 });
+  if (u.includes("streamGenerateContent")) return gemMode === "quota" ? new Response(JSON.stringify({ error: { code: 429, status: "RESOURCE_EXHAUSTED", message: "Quota exceeded" } }), { status: 429 }) : stream(GEM_SSE);
+  if (u.includes(":generateContent")) {
+    const facts = JSON.parse(opts.body).contents[0].parts[0].text;
+    const good = facts.split("\n").filter((l) => l.startsWith("##") || l.startsWith("-")).join("\n") + "\nเกมนี้น่าสนใจมาก ".repeat(10);
+    const bad = good + "\n- Kylian Mbappé ยิงแน่ 99%";
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: gemMode === "invent" ? bad : good }] } }] }), { status: 200 });
+  }
+  if (u.includes("api.anthropic.com")) return stream(CLAUDE);
+  return new Response("{}", { status: 200 });
+};
+process.env.GEMINI_API_KEY = "AIzaTestKey123"; process.env.ANTHROPIC_API_KEY = "";
+const { aiProviders, geminiModel } = await import(join(root, "lib/ai.js"));
+check("Gemini key is picked first and the newest general flash model is chosen", aiProviders()[0].provider === "gemini" && (await geminiModel(aiProviders()[0])) === "gemini-3.8-flash");
+ev = await run();
+check("Gemini streams with Google Search grounding", urls.some((u) => u.includes("gemini-3.8-flash:streamGenerateContent")) && ev.filter((e) => e.t === "text").map((e) => e.d).join("") === "## ทัศนะบอล Gemini\nเนื้อหา" && ev.some((e) => e.t === "status" && e.d.includes("Inter team news")) && (ev.find((e) => e.t === "src")?.d || []).some((s) => s.url === "https://g.example"));
+gemMode = "quota";
+ev = await run();
+check("Gemini quota used up gives a clear Thai message", ev.some((e) => e.t === "error" && e.d.includes("โควตาฟรีของ Gemini")), ev.map((e) => e.d).join(" | "));
+process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+ev = await run();
+check("falls through to Claude when Gemini quota is used up", ev.filter((e) => e.t === "text").map((e) => e.d).join("").includes("Claude"));
+process.env.ANTHROPIC_API_KEY = ""; gemMode = "ok";
+const facts = "## ทัศนะบอล\nพรีเมียร์ลีก · Arsenal พบ Chelsea\n## ตัวเลขจากโมเดล Goal Club\n- ผลการแข่งขัน: Arsenal 52% · เสมอ 26% · Chelsea 22%\n- ประตูที่คาด: Arsenal 1.62 · Chelsea 1.05\n## ทัศนะ\n- ทายสกอร์: 2-1\n- ดาวยิงที่น่าจับตา: Bukayo Saka (Arsenal) 41%\n" + "ข้อมูลเพิ่มเติม ".repeat(20);
+const polish = async () => { let out; const res = { setHeader() {}, status() { return this; }, json(o) { out = o; } }; await h({ method: "POST", query: {}, headers: {}, body: { mode: "polish", id: "9", facts } }, res); return out; };
+let pj = await polish();
+check("AI analyst rewrite passes the fact check", pj.ok === true && pj.text.includes("ไม่ใช่คำแนะนำให้เดิมพัน"), JSON.stringify(pj).slice(0, 120));
+gemMode = "invent"; pj = await polish();
+check("rewrite with an invented player and number is rejected", pj.ok === false && pj.problems?.some((x) => x.includes("99")) && pj.problems?.some((x) => /mbapp/i.test(x)), JSON.stringify(pj));
+const { checkGrounded } = await import(join(root, "lib/grounded.js"));
+check("betting talk is rejected", !checkGrounded(facts, facts + "\nแทงเลย ชัวร์").ok);
 process.exit(failed ? 1 : 0);

@@ -1,43 +1,15 @@
 // Daily brief: reads real headlines (BBC Sport, The Guardian, ESPN) and the app's model numbers,
-// then asks Claude for a Thai summary. Needs ANTHROPIC_API_KEY in the Vercel project settings.
+// then asks the AI (Gemini / Claude / Grok, see lib/ai.js) for a Thai summary.
 import { kv, kvPipe, kvEnabled } from "../lib/kv.js";
 import { aiConfig, aiText } from "../lib/ai.js";
-
-const FEEDS = [
-  { source: "BBC Sport", url: "https://feeds.bbci.co.uk/sport/football/rss.xml" },
-  { source: "The Guardian", url: "https://www.theguardian.com/football/rss" },
-];
-const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5-5";
-
-function decode(s) {
-  return s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").replace(/&amp;/g, "&").replace(/&#39;|&apos;/g, "'")
-    .replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/<[^>]+>/g, "").trim();
-}
-async function rss({ source, url }) {
-  try {
-    const r = await fetch(url, { signal: AbortSignal.timeout(6000) });
-    const xml = await r.text();
-    return [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].slice(0, 8).map((m) => ({
-      source,
-      title: decode((m[1].match(/<title>([\s\S]*?)<\/title>/) || [])[1] || ""),
-      url: decode((m[1].match(/<link>([\s\S]*?)<\/link>/) || [])[1] || ""),
-    })).filter((x) => x.title);
-  } catch { return []; }
-}
-async function espnNews() {
-  try {
-    const r = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/news?limit=6", { signal: AbortSignal.timeout(6000) });
-    const j = await r.json();
-    return (j.articles || []).map((a) => ({ source: "ESPN", title: a.headline, url: a.links?.web?.href || "" })).filter((x) => x.title);
-  } catch { return []; }
-}
+import { headlines as allHeadlines } from "../lib/news.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
-  if (!aiConfig()) { res.status(200).json({ error: "ยังไม่ได้ตั้งคีย์ AI ใน Vercel (ANTHROPIC_API_KEY หรือ XAI_API_KEY) จึงยังเขียนบทวิเคราะห์ไม่ได้" }); return; }
+  if (!aiConfig()) { res.status(200).json({ error: "ยังไม่ได้ตั้งคีย์ AI ใน Vercel (GEMINI_API_KEY ฟรีจาก aistudio.google.com หรือ ANTHROPIC_API_KEY / XAI_API_KEY) จึงยังเขียนบทวิเคราะห์ไม่ได้" }); return; }
   const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
   const matches = Array.isArray(body.matches) ? body.matches.slice(0, 30) : [];
-  const headlines = (await Promise.all([...FEEDS.map(rss), espnNews()])).flat().slice(0, 20);
+  const headlines = (await allHeadlines({ max: 40 })).items.filter((h, i, a) => a.findIndex((x) => x.title === h.title) === i).slice(0, 30);
 
   const prompt = `คุณคือนักวิเคราะห์สถิติฟุตบอลของแอป Goal Club เขียนภาษาไทยทั้งหมด
 ข้อมูลคือผลโมเดลและราคาตลาดของวันที่ ${body.date} (เวลาไทย) และหัวข่าวจริงของวันนี้

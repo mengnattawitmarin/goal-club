@@ -45,6 +45,10 @@ try {
   check("เมดูซ่า: injured scorer cuts his team's expected goals before line-ups", inj && inj.a < 0.95 && inj.h > 0.97 && inj.palmer < 0.05 && inj.v >= 2, JSON.stringify(inj));
   const coh = await A.evaluate(() => getDay(S.date).matches.concat(Object.values(S.days).flatMap((d) => d.matches || [])).filter((m) => m.sum?.call).map((m) => { const r = resOf(m.sum), c = m.sum.call; const okR = r === "h" ? c.h > c.a : r === "a" ? c.a > c.h : c.h === c.a; const okO = (m.sum.over25 >= 0.5) === (c.h + c.a >= 3); const b = bestCall(m); let okP = true; if (b) { const [h, a] = b.score.split("-").map(Number); okP = b.type === "1x2" ? (b.side === "h" ? h > a : a > h) : ["win", "half"].includes(settlePick(b, h, a)); } return okR && okO && okP; }));
   check("เมดูซ่า 3: called score never contradicts result, over/under or the pick", coh.length > 0 && coh.every(Boolean), `${coh.filter(Boolean).length}/${coh.length}`);
+  check("เมดูซ่า 3.2: bot explains the game path (score first / concede first)", closed.includes("เส้นทางเกม") && /ได้ประตูก่อน: โอกาสชนะ \d+%/.test(closed));
+  check("copy-to-AI button present", await A.evaluate(() => !!document.querySelector('[data-act="copyai"]') && aiPrompt(S.open).includes("ไม่ใช่คำแนะนำให้เดิมพัน")));
+  const rot = await A.evaluate(() => { S.rotation = { arsenal: { team: "Arsenal", signal: "rotation", reason: "โค้ชเตรียมพักตัวหลัก", d: new Date().toISOString().slice(0, 10) } }; const m = refine({ ...S.open.raw }); S.rotation = {}; const f = m.factors.find((x) => x.k === "rotation"); return f ? { h: f.h, a: f.a } : null; });
+  check("rotation news lowers the resting side's expected goals", rot && rot.h < 0.95 && rot.a > 1, JSON.stringify(rot));
   const daily = await A.evaluate(() => { const d = writeDaily(getDay(S.date)); return d ? d.summary + d.notes.map((n) => n.text).join(" ") : ""; });
   check("closed daily summary", daily.length > 30 && !/undefined|NaN/.test(daily), daily.slice(0, 80));
   await A.click("#btnBot"); await A.waitForTimeout(1200);
@@ -101,7 +105,7 @@ try {
   check("data quality on every match", await A.evaluate(() => getDay(S.date).matches.every((m) => m.dq && m.dq.q >= 0 && m.dq.q <= 100 && m.dq.label)));
   await A.evaluate(() => { S.tab = "more"; render(); }); await A.waitForTimeout(300);
   const more = await A.evaluate(() => document.querySelector("#view")?.innerText || "");
-  check("system status shows feed, learning job, backup and protection", ["สถานะระบบ", "ฟีด ESPN", "งานเรียนรู้ประจำวัน", "สำรองข้อมูล", "การป้องกันข้อมูลปลอม"].every((k) => more.includes(k)), more.match(/สถานะระบบ[\s\S]{0,160}/)?.[0]?.replace(/\s+/g, " "));
+  check("system status shows feed, learning job, backup and protection", ["สถานะระบบ", "ฟีด ESPN", "งานเรียนรู้ประจำวัน", "สำรองข้อมูล", "การป้องกันข้อมูลปลอม", "AI หลังบ้าน", "แหล่งข่าว"].every((k) => more.includes(k)), more.match(/สถานะระบบ[\s\S]{0,160}/)?.[0]?.replace(/\s+/g, " "));
   check("no page errors", errors.length === 0, errors.join(" | "));
 } finally {
   await browser.close(); server.kill();

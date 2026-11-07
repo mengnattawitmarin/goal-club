@@ -47,11 +47,12 @@ globalThis.fetch = async (url, opts) => {
   if (u.includes("/scoreboard")) return json({ events: [] });
   if (u.includes("/summary?event=7001")) return json({ scoringPlays: [{ team: { displayName: "Alpha" }, athletesInvolved: [{ id: "11", displayName: "Striker A" }, { id: "12", displayName: "Mid A" }] }, { team: { displayName: "Alpha" }, athletesInvolved: [{ id: "11", displayName: "Striker A" }] }],
     rosters: [{ team: { displayName: "Alpha" }, roster: [{ starter: true, athlete: { id: "11", displayName: "Striker A" } }, { starter: true, athlete: { id: "12", displayName: "Mid A" } }] }] });
+  if (u.includes("/summary?event=7002")) return json({ boxscore: { teams: [{ team: { id: "3" }, statistics: [{ name: "shotsOnTarget", displayValue: "7" }, { name: "totalShots", displayValue: "18" }] }, { team: { id: "4" }, statistics: [{ name: "shotsOnTarget", displayValue: "1" }, { name: "totalShots", displayValue: "5" }] }] } });
   if (u.includes("/summary")) return json({});
-  if (u.includes("bbci.co.uk")) return new Response("<rss><item><title>Striker A ruled out with hamstring injury</title></item></rss>", { status: 200 });
+  if (u.includes("bbci.co.uk")) return new Response("<rss><item><title>Striker A ruled out with hamstring injury</title></item><item><title>Alpha boss to rest key players for cup tie</title></item></rss>", { status: 200 });
   if (u.includes("theguardian.com")) return new Response("<rss></rss>", { status: 200 });
   if (u.includes("/news")) return json({ articles: [] });
-  if (u.includes("api.anthropic.com")) return json({ content: [{ type: "text", text: JSON.stringify({ players: [{ name: "Striker A", team: "Alpha", status: "out", reason: "เจ็บต้นขา" }, { name: "Made Up Name", team: "X", status: "out", reason: "x" }] }) }] });
+  if (u.includes("api.anthropic.com")) return json({ content: [{ type: "text", text: JSON.stringify({ players: [{ name: "Striker A", team: "Alpha", status: "out", reason: "เจ็บต้นขา" }, { name: "Made Up Name", team: "X", status: "out", reason: "x" }], teams: [{ team: "Alpha", signal: "rotation", reason: "โค้ชเตรียมพักตัวหลัก" }, { team: "Invented FC", signal: "rotation", reason: "x" }] }) }] });
   return new Response("{}", { status: 404 });
 };
 
@@ -61,12 +62,13 @@ process.env.CRON_SECRET = "s3";
 const run = async (auth = "Bearer s3") => { let out, code = 200; const res = { setHeader() {}, status(c) { code = c; return this; }, json(o) { out = o; out._code = code; } }; await cron({ headers: { authorization: auth } }, res); return out; };
 
 await kv("SET", "pred:7001", JSON.stringify({ id: "7001", d: yday, lg: "eng.1", lh0: 1.6, la0: 1.0, ph: 0.5, pa: 0.25, pH: 1.6, pA: 1.0, mkH: 1.7, mkA: 0.9, mh: 0.52, md: 0.25, ma: 0.23 }));
+await kv("SET", "pred:7002", JSON.stringify({ id: "7002", d: yday, lg: "eng.1", lh0: 1.9, la0: 0.8, ph: 0.62, pa: 0.15, pH: 1.9, pA: 0.8 }));
 await kv("SET", `picks:${yday}`, JSON.stringify({ 7001: { id: "7001", type: "ah", side: "h", line: -0.5, prob: 0.6, label: "Alpha -0.5", ko: new Date(Date.now() - 864e5).toISOString() } }));
 
 let failed = 0; const check = (n, ok, x = "") => { console.log(`${ok ? "✓" : "✗"} cron: ${n}${x ? "  " + x : ""}`); if (!ok) failed++; };
 const r1 = await run();
 check("collects finished matches", r1.finished === 2, JSON.stringify(r1));
-check("settles stored prediction", r1.settled === 1);
+check("settles stored predictions", r1.settled === 2);
 check("settles pick", r1.picks === 1 && JSON.parse((await kv("LRANGE", "pickhist", "0", "0"))[0]).res === "win");
 const ratings = await kv("HMGET", "ratings", "1", "2");
 const a = JSON.parse(ratings[0]), b = JSON.parse(ratings[1]);
@@ -74,9 +76,9 @@ check("winner's attack goes up, loser's defence weakens", a.att > 1 && b.def > 1
 const pl = JSON.parse((await kv("HMGET", "players", "11"))[0]);
 check("player goals and apps recorded", pl.g === 2 && pl.apps === 1, JSON.stringify(pl));
 const ev = JSON.parse(await kv("HGET", "evals", yday));
-check("daily evaluation model vs market", ev.n === 1 && ev.nK === 1 && ev.llM > 0, JSON.stringify(ev));
+check("daily evaluation model vs market", ev.n === 2 && ev.nK === 1 && ev.llM > 0, JSON.stringify(ev));
 const r2 = await run();
-check("second run does not double count", r2.settled === 0 && r2.picks === 0 && JSON.parse(await kv("HGET", "evals", yday)).n === 1);
+check("second run does not double count", r2.settled === 0 && r2.picks === 0 && JSON.parse(await kv("HGET", "evals", yday)).n === 2);
 // self-tuning: a helpful factor and a noise factor; market more accurate than stats
 const rows = [];
 for (let i = 0; i < 200; i++) {
@@ -88,7 +90,7 @@ for (let i = 0; i < 200; i++) {
 }
 await kv("LPUSH", "hist", ...rows); await kv("SET", "weights", JSON.stringify({ at: "2000-01-01T00:00:00Z" }));
 for (let i = 0; i < 25; i++) await kv("LPUSH", "pickhist", JSON.stringify({ type: "ou", prob: 0.65, res: i % 2 ? "win" : "lose" }));
-process.env.ANTHROPIC_API_KEY = "test";
+process.env.ANTHROPIC_API_KEY = "sk-ant-test";
 const r3 = await run();
 const wt = JSON.parse(await kv("GET", "weights"));
 check("keeps or boosts the helpful factor", (wt.factors?.good ?? 0) >= 1, JSON.stringify(wt.factors));
@@ -99,6 +101,15 @@ const lessons = JSON.parse(await kv("GET", "lessons"));
 check("writes lessons for the bot", lessons.items.length >= 3, lessons.items[0]);
 const np = await kv("HGETALL", "newsplayer");
 check("player news: keeps names found in headlines, drops invented ones", np.includes("striker a") && !np.includes("made up name"), JSON.stringify(r3.newsPlayers));
+{
+  const rv = JSON.parse((await kv("HGET", "reviews", yday)) || "[]");
+  const g = rv.find((x) => x.id === "7002");
+  check("post-match review explains a miss (dominated but did not score)", g && g.kind === "luck" && /ยิงเข้ากรอบ 7–1/.test(g.reason), JSON.stringify(g));
+  check("review not written for a correct call", !rv.some((x) => x.id === "7001"));
+  const rot = await kv("HGETALL", "rotation");
+  check("rotation news kept only for teams in the headlines", rot.includes("alpha") && !rot.includes("invented fc"), JSON.stringify(rot));
+  check("news feeds health recorded", !!(await kv("GET", "newsfeeds")));
+}
 {
   const bad = await run("Bearer nope");
   check("refuses a caller without the secret", bad._code === 401);

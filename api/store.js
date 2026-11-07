@@ -42,11 +42,11 @@ export default async function handler(req, res) {
       if (!DAY.test(date)) { res.status(400).json({ error: "bad date" }); return; }
       const teams = String(req.query.teams || "").split(",").filter((x) => ID.test(x)).slice(0, 200);
       const players = String(req.query.players || "").split(",").filter((x) => ID.test(x)).slice(0, 60);
-      const [picks, brief, ph, hist, news, weights, evals, lgavg, np, lessons, rat, pl, cronlog, bakAt, dbsize] = await kvPipe([
+      const [picks, brief, ph, hist, news, weights, evals, lgavg, np, lessons, rat, pl, cronlog, bakAt, dbsize, reviews, rotation, aist, feeds] = await kvPipe([
         ["GET", `picks:${date}`], ["GET", `brief:${date}`], ["LRANGE", "pickhist", "0", "299"], ["LRANGE", "hist", "0", "1999"], ["HGETALL", "newsteam"],
         ["GET", "weights"], ["HGETALL", "evals"], ["HGETALL", "lgavg"], ["HGETALL", "newsplayer"], ["GET", "lessons"],
         teams.length ? ["HMGET", "ratings", ...teams] : ["GET", "__none"], players.length ? ["HMGET", "players", ...players] : ["GET", "__none"],
-        ["GET", "cronlog"], ["GET", "bak:at"], ["DBSIZE"],
+        ["GET", "cronlog"], ["GET", "bak:at"], ["DBSIZE"], ["HGETALL", "reviews"], ["HGETALL", "rotation"], ["GET", "ai:status"], ["GET", "newsfeeds"],
       ]);
       const pairs = (arr) => { const o = {}; for (let i = 0; Array.isArray(arr) && i < arr.length; i += 2) o[arr[i]] = parse(arr[i + 1]); return o; };
       const pick = (keys, vals) => { const o = {}; keys.forEach((k, i) => { const v = parse(Array.isArray(vals) ? vals[i] : null); if (v) o[k] = v; }); return o; };
@@ -62,7 +62,9 @@ export default async function handler(req, res) {
         calib: calib(histRows),
         histN: histRows.length,
         audit: audit(histRows),
-        health: { cron: parse(cronlog), backupAt: Number(bakAt) || null, keys: Number(dbsize) || null, guard: true },
+        health: { cron: parse(cronlog), backupAt: Number(bakAt) || null, keys: Number(dbsize) || null, guard: true, ai: parse(aist), feeds: parse(feeds) },
+        reviews: Object.fromEntries(Object.entries(pairs(reviews)).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 3)),
+        rotation: pairs(rotation),
         newsTeam,
         weights: parse(weights),
         newsPlayer: pairs(np),

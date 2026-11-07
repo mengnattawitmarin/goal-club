@@ -28,7 +28,7 @@ api/store.js       ข้อมูลร่วมทุกเครื่อง 
 api/brief.js       บทวิเคราะห์ประจำวัน: อ่าน RSS BBC/Guardian + ESPN news แล้วเรียก Claude
 api/cron.js        งานประจำวัน (Vercel Cron 05:30 UTC): เก็บผล, ตัดสิน, เรียนรู้ ratings/players, วัดผลเทียบตลาด, ปรับน้ำหนัก ตั้ง CRON_SECRET ได้ถ้าต้องการกันคนอื่นเรียก
 lib/learn.js       สูตรเรียนรู้ของงานประจำวัน (rating, log loss, Brier)
-api/analysis.js    (ทางเลือก ต้องมีคีย์) บอท AI: ค้นเว็บ (web_search) + ข้อมูล ESPN + ตัวเลขทั้งหมดของแอป แล้วเขียนทัศนะบอล สตรีมเป็น NDJSON (แคช ana2:<id>)
+api/analysis.js    (ทางเลือก ต้องมีคีย์) บอท AI + โหมด polish (นักวิเคราะห์ AI เรียบเรียง ตรวจด้วย lib/grounded.js): ค้นเว็บ (web_search) + ข้อมูล ESPN + ตัวเลขทั้งหมดของแอป แล้วเขียนทัศนะบอล สตรีมเป็น NDJSON (แคช ana2:<id>)
 lib/kv.js          Upstash REST client (หา env ได้ทุก prefix)
 lib/ai.js          เลือก Claude หรือ Grok ตามคีย์ + aiText() สำหรับคำตอบสั้น
 tests/             mock-server.mjs (ฟีด ESPN + Redis ปลอม) และ smoke.mjs (ทดสอบ end-to-end)
@@ -96,6 +96,8 @@ npm test           # build + ทดสอบงานประจำวัน + 
 
 ## Environment Variables (ตั้งใน Vercel)
 - อัลกอริทึมวิเคราะห์ชื่อ **เมดูซ่า** (`MEDUSA` ใน src/logic.js) ทุกครั้งที่เปลี่ยนวิธีคำนวณหรือวิธีวิเคราะห์ ต้องเพิ่มเลขเวอร์ชันและทำตามขั้นตอนใน MEDUSA.md (บันทึกการเปลี่ยนแปลง, archive ไป models/medusa-N/, ใส่ commit hash)
+- AI หลังบ้าน (`lib/ai.js`): Gemini (`GEMINI_API_KEY`, ขึ้นต้น AIza) มาก่อน แล้ว Grok, Claude, Cloudflare (`CLOUDFLARE_ACCOUNT_ID`+`CLOUDFLARE_API_TOKEN`) ไล่ต่อเมื่อพลาด · ตั้ง `AI_PROVIDER` เพื่อบังคับลำดับ · ทุกข้อความที่ AI เขียนให้ผู้ใช้เห็นต้องผ่าน `checkGrounded` หรือมีตัวตรวจตัวเลขแบบเดียวกัน · บอทระบบปิดเป็นตัวหลักเสมอ แอปต้องทำงานได้เมื่อไม่มีคีย์หรือโควตาหมด
+- การแก้โค้ดด้วย AI: เสนอผ่าน Pull Request → `npm test` → คนตรวจก่อนรวม ห้ามให้ AI แก้แล้วขึ้นเว็บเองโดยไม่มีคนตรวจ
 - ฐานข้อมูลกลางไม่เชื่อเครื่องลูก: `/api/store` ตรวจผลจริงและทีเด็ดกับ ESPN ฝั่งเซิร์ฟเวอร์ (`lib/guard.js`), ทีเด็ดต้องมี `lg`, จำกัด 40 POST/นาที/IP ห้ามถอดการตรวจเหล่านี้ · เทสต์จำลอง ESPN ฝั่งเซิร์ฟเวอร์ใน tests/mock-server.mjs
 - ควรตั้ง `CRON_SECRET` ใน Vercel (ถ้าไม่ตั้ง งานประจำวันรันได้ครั้งเดียวต่อ 3 ชม.) · `cronlog` เก็บผลการรันล่าสุด · สำรองทุกสัปดาห์ไปที่ `bak:*` · `/api/backup` (GET ดาวน์โหลด, POST {restore:1} กู้คืน) ต้องส่ง `Authorization: Bearer <CRON_SECRET>`
 - `m.dq` = ความครบของข้อมูล 0–100 ทีเด็ดต้อง ≥45 และส่วนต่างกับตลาด ≥ −1 จุด

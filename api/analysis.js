@@ -5,7 +5,9 @@
 // ส่งผลแบบสตรีมเป็นบรรทัด JSON (NDJSON) เพื่อให้หน้าแอปแสดงระหว่างเขียน
 // ใช้ Claude หรือ Grok ตามคีย์ที่ตั้งใน Vercel (ดู lib/ai.js)
 import { kv, kvEnabled, parse, readBody } from "../lib/kv.js";
-import { aiConfig, friendlyError } from "../lib/ai.js";
+import { aiConfig, aiProviders, friendlyError, aiText, aiStatus, geminiModel, geminiBody } from "../lib/ai.js";
+import { ANALYST, checkGrounded, hashText } from "../lib/grounded.js";
+import { rateLimit } from "../lib/guard.js";
 
 const ID = /^\d{1,12}$/;
 const SLUG = /^[a-z0-9._]+$/;
@@ -70,21 +72,46 @@ async function espnDeep(lg, id) {
 }
 
 
+/* เมดูซ่า 3.2: AI rewrites the closed-system preview; every number and name is checked against the facts */
+async function polish(req, res, data) {
+  res.setHeader("Cache-Control", "no-store");
+  const facts = String(data.facts || "").slice(0, 9000), id = String(data.id || "");
+  if (!ID.test(id) || facts.length < 200 || !facts.includes("## ")) { res.status(200).json({ ok: false, error: "bad facts" }); return; }
+  const key = `ana3:${id}`, h = hashText(facts);
+  const cached = kvEnabled ? parse(await kv("GET", key).catch(() => null)) : null;
+  /* reuse a checked rewrite for 3 hours, or while the facts are unchanged */
+  if (cached && (cached.h === h || Date.now() - Date.parse(cached.at) < 3 * 3600e3)) { res.status(200).json({ ok: true, cached: true, ...cached }); return; }
+  if (!aiConfig()) { res.status(200).json({ ok: false, error: "no key" }); return; }
+  if (kvEnabled && !(await rateLimit(req, "polish", 8, 60).catch(() => true))) { res.status(200).json({ ok: false, error: "busy" }); return; }
+  try {
+    const text = await aiText(`ข้อเท็จจริงของคู่นี้ (ห้ามใช้ข้อมูลอื่น):\n\n${facts}`, { system: ANALYST, maxTokens: 2200, timeout: 45000 });
+    const chk = checkGrounded(facts, text.slice(Math.max(0, text.indexOf("## "))));
+    if (!chk.ok) { res.status(200).json({ ok: false, error: "ไม่ผ่านการตรวจ", problems: chk.problems }); return; }
+    const out = { at: new Date().toISOString(), h, text: chk.text, ai: aiConfig()?.name };
+    if (kvEnabled) await kv("SET", key, JSON.stringify(out), "EX", String(2 * 86400)).catch(() => {});
+    res.status(200).json({ ok: true, ...out });
+  } catch (e) { res.status(200).json({ ok: false, error: String(e?.message || e).slice(0, 200) }); }
+}
+
 export default async function handler(req, res) {
   const id = String((req.query && req.query.id) || "");
   if (req.method === "GET") {
     if (!kvEnabled || !ID.test(id)) { res.status(200).json({}); return; }
-    try { res.status(200).json(parse(await kv("GET", `ana2:${id}`), {})); } catch { res.status(200).json({}); }
+    try { res.status(200).json(parse(await kv("GET", req.query.polish ? `ana3:${id}` : `ana2:${id}`), {})); } catch { res.status(200).json({}); }
     return;
   }
   if (req.method !== "POST") { res.status(405).json({ error: "GET or POST" }); return; }
+  const body0 = readBody(req);
+  if (body0.mode === "polish") return polish(req, res, body0);
   res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
   res.setHeader("Cache-Control", "no-store");
   const send = (o) => res.write(JSON.stringify(o) + "\n");
-  const cfg = aiConfig();
-  if (!cfg) { send({ t: "error", d: "ยังไม่ได้ตั้งคีย์ AI ใน Vercel (ANTHROPIC_API_KEY หรือ XAI_API_KEY)" }); res.end(); return; }
+  const list = aiProviders().filter((p) => p.provider !== "cloudflare");
+  let cfg = list[0];
+  if (!cfg) { send({ t: "error", d: "ยังไม่ได้ตั้งคีย์ AI ใน Vercel (GEMINI_API_KEY ฟรีจาก aistudio.google.com หรือ ANTHROPIC_API_KEY / XAI_API_KEY)" }); res.end(); return; }
+  if (kvEnabled && !(await rateLimit(req, "bot", 6, 60).catch(() => true))) { send({ t: "error", d: "ขอบทถี่เกินไป รอสักครู่แล้วลองใหม่" }); res.end(); return; }
 
-  const data = readBody(req);
+  const data = body0;
   send({ t: "status", d: "กำลังอ่านข้อมูลเชิงลึกจาก ESPN" });
   const deep = await espnDeep(data.lg, data.id);
   const user = `วันนี้คือ ${new Date().toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok", dateStyle: "long" })}
@@ -104,8 +131,16 @@ ${JSON.stringify(deep || "ไม่มี").slice(0, 5000)}`;
     stop: (s) => { stop = s; },
   };
   try {
-    const err = cfg.provider === "grok" ? await streamGrok(cfg, user, on) : await streamClaude(cfg, user, on);
-    if (err) { send({ t: "error", d: err }); res.end(); return; }
+    /* try each provider until one starts writing (e.g. Gemini quota used up -> Claude/Grok if configured) */
+    let err = null;
+    for (const c of list) {
+      cfg = c;
+      err = c.provider === "gemini" ? await streamGemini(c, user, on) : c.provider === "grok" ? await streamGrok(c, user, on) : c.provider === "claude" ? await streamClaude(c, user, on) : friendlyError(c, "unknown");
+      await aiStatus(!err, c, err);
+      if (!err || text) break;
+      on.status(err);
+    }
+    if (err && !text) { send({ t: "error", d: err }); res.end(); return; }
   } catch (e) {
     if (!text) { send({ t: "error", d: e?.name === "TimeoutError" ? "บอทใช้เวลานานเกินไป ลองใหม่อีกครั้ง" : `เชื่อมต่อ ${cfg.name} ไม่สำเร็จ ลองใหม่อีกครั้ง` }); res.end(); return; }
   }
@@ -163,6 +198,32 @@ async function streamClaude(cfg, user, on) {
       inSearch = false; const qq = parse(q, {})?.query; if (qq) on.status(`กำลังค้น: ${qq}`);
     } else if (ev.type === "message_delta") on.stop(ev.delta?.stop_reason);
     else if (ev.type === "error") on.status(friendlyError(cfg, ev.error?.message));
+  });
+  return null;
+}
+
+/* Gemini: streamGenerateContent with Google Search grounding (retries without search if the key cannot use it) */
+async function streamGemini(cfg, user, on) {
+  let model;
+  try { model = await geminiModel(cfg); } catch (e) { return friendlyError(cfg, e?.message); }
+  const go = (search) => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`, {
+    method: "POST", signal: AbortSignal.timeout(57000),
+    headers: { "content-type": "application/json", "x-goog-api-key": cfg.key },
+    body: JSON.stringify(geminiBody(SKILLS, user, 3000, search)),
+  });
+  let r = await go(true), search = true;
+  if (r.status === 400) { r = await go(false); search = false; }
+  if (!r.ok) { const j = await r.json().catch(() => ({})); return friendlyError(cfg, `${r.status} ${j?.error?.status || ""} ${j?.error?.message || ""}`); }
+  on.status(search ? `บอท (Gemini) ค้นข่าวด้วย Google และเขียนบท` : `บอท (Gemini) เขียนบทจากข้อมูลของแอป (คีย์นี้ใช้การค้นเว็บไม่ได้)`);
+  const said = new Set();
+  await eachEvent(r.body, (ev) => {
+    const c = ev.candidates?.[0];
+    for (const p of c?.content?.parts || []) if (p.text) on.text(p.text);
+    const gm = c?.groundingMetadata;
+    for (const q of gm?.webSearchQueries || []) if (!said.has(q)) { said.add(q); on.status(`กำลังค้น: ${q}`); }
+    for (const g of gm?.groundingChunks || []) if (g.web?.uri) on.source(g.web.uri, g.web.title);
+    if (c?.finishReason) on.stop(c.finishReason === "MAX_TOKENS" ? "max_tokens" : "end_turn");
+    if (ev.error) on.status(friendlyError(cfg, ev.error.message));
   });
   return null;
 }
