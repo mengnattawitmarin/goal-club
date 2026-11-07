@@ -1941,7 +1941,7 @@ function healthItem(){
     ["งานเรียนรู้ประจำวัน", !Shared.on?"ต้องเปิดข้อมูลร่วม":c?`${c.ok?`<span class="green">รันแล้ว</span>`:`<span style="color:var(--loss)">ล้มเหลว</span>`} ${stampTime(c.at)}${c.ok?` · ผลจบ ${c.finished??0} คู่ · เรียนรู้ใหม่ ${c.settled??0}`:""}`:"ยังไม่มีบันทึก"],
     ["สำรองข้อมูล", H?.backupAt?`สำรองล่าสุด ${stampTime(new Date(H.backupAt).toISOString())} (ทุกสัปดาห์)`:Shared.on?"ยังไม่เคยสำรอง (งานประจำวันจะสำรองให้)":"–"],
     ["การป้องกันข้อมูลปลอม", H?.guard?`<span class="green">เปิด</span> · ผลจริงและทีเด็ดตรวจกับ ESPN ก่อนบันทึก`:"–"],
-    ["AI หลังบ้าน", !H?"–":H.ai?`${H.ai.ok?`<span class="green">ใช้งานได้</span>`:`<span style="color:var(--loss)">มีปัญหา</span>`} · ${esc(H.ai.ai||"")} · ${stampTime(H.ai.at)}${!H.ai.ok&&H.ai.err?` · ${esc(H.ai.err.slice(0,90))}`:""}`:"ยังไม่ได้ใช้ (ตั้ง GEMINI_API_KEY ฟรีใน Vercel)"],
+    ["AI หลังบ้าน", !H?"–":H.ai?(H.ai.ai?[H.ai]:Object.values(H.ai)).map(r=>`${r.ok?`<span class="green">ใช้งานได้</span>`:`<span style="color:var(--loss)">มีปัญหา</span>`} · ${esc(r.ai||"")} · ${stampTime(r.at)}${!r.ok&&r.err?` · ${esc(r.err.slice(0,140))}`:""}`).join("<br>"):"ยังไม่ได้ใช้ (ตั้ง GEMINI_API_KEY ฟรีใน Vercel)"],
     ["แหล่งข่าว", H?.feeds?.health?Object.entries(H.feeds.health).map(([k,v])=>`${esc(k)} ${v?`<span class="green">${v}</span>`:`<span style="color:var(--loss)">0</span>`}`).join(" · "):"–"],
     ["ฐานข้อมูล", H?.keys?`${H.keys} รายการ`:"–"],
   ];
@@ -2385,7 +2385,7 @@ function botBody(m){
     <p class="note"><span class="green">เรียบเรียงโดยนักวิเคราะห์ AI (${esc(pl.ai||"AI")})</span> · ตรวจแล้วว่าทุกตัวเลขและชื่อมาจากข้อมูลของแอป · ${stampTime(pl.at)}</p>
     <details class="botsrc"><summary>ฉบับระบบปิด (ตัวเลขล่าสุด)</summary><div class="article bottext">${mdLite(closed)}</div></details>`
     :`<div class="article bottext">${mdLite(closed)}</div>
-    <p class="note">${pl?.pending&&S.health?.ai?.ok?`<span class="dot live pulse"></span> นักวิเคราะห์ AI กำลังเรียบเรียงบทนี้ใหม่…`:"เขียนสดจากตัวเลขล่าสุดของแอป อัปเดตเองเมื่อข้อมูลเปลี่ยน"}</p>`}
+    <p class="note">${pl?.pending&&(S.health?.ai?.ok||Object.values(S.health?.ai||{}).some(r=>r?.ok))?`<span class="dot live pulse"></span> นักวิเคราะห์ AI กำลังเรียบเรียงบทนี้ใหม่…`:"เขียนสดจากตัวเลขล่าสุดของแอป อัปเดตเองเมื่อข้อมูลเปลี่ยน"}</p>`}
     ${saved?`<details class="botsrc"><summary>ฉบับ AI ค้นเว็บ · ${stampTime(saved.at)}</summary><div class="article bottext">${mdLite(saved.text)}</div>${saved.sources?.length?`<ul>${saved.sources.map(s=>`<li><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a></li>`).join("")}</ul>`:""}</details>`:""}
     ${st?.err?`<p style="color:var(--loss);font-size:13px;margin:8px 0 0">${esc(st.err)}</p>`:""}`;
 }

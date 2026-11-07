@@ -132,15 +132,17 @@ ${JSON.stringify(deep || "ไม่มี").slice(0, 5000)}`;
   };
   try {
     /* try each provider until one starts writing (e.g. Gemini quota used up -> Claude/Grok if configured) */
-    let err = null;
+    let err = null; const errs = [];
     for (const c of list) {
       cfg = c;
-      err = c.provider === "gemini" ? await streamGemini(c, user, on) : c.provider === "grok" ? await streamGrok(c, user, on) : c.provider === "claude" ? await streamClaude(c, user, on) : friendlyError(c, "unknown");
+      try { err = c.provider === "gemini" ? await streamGemini(c, user, on) : c.provider === "grok" ? await streamGrok(c, user, on) : c.provider === "claude" ? await streamClaude(c, user, on) : friendlyError(c, "unknown"); }
+      catch (e) { err = e?.name === "TimeoutError" ? `${c.name} ใช้เวลานานเกินไป` : friendlyError(c, e?.message); }
       await aiStatus(!err, c, err);
       if (!err || text) break;
-      on.status(err);
+      errs.push(err); on.status(err);
     }
-    if (err && !text) { send({ t: "error", d: err }); res.end(); return; }
+    /* show every provider's problem, first one first (e.g. Gemini's reason, not only the fallback's) */
+    if (err && !text) { send({ t: "error", d: errs.join(" · ") }); res.end(); return; }
   } catch (e) {
     if (!text) { send({ t: "error", d: e?.name === "TimeoutError" ? "บอทใช้เวลานานเกินไป ลองใหม่อีกครั้ง" : `เชื่อมต่อ ${cfg.name} ไม่สำเร็จ ลองใหม่อีกครั้ง` }); res.end(); return; }
   }
