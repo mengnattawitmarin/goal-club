@@ -87,4 +87,6 @@ const { checkGrounded } = await import(join(root, "lib/grounded.js"));
 check("betting talk is rejected", !checkGrounded(facts, facts + "\nแทงเลย ชัวร์").ok);
 process.env.GEMINI_API_KEY = "AQ.TestNewFormatKey"; process.env.ANTHROPIC_API_KEY = "";
 check("new Google key format (AQ.) in GEMINI_API_KEY is used as Gemini", aiProviders()[0]?.provider === "gemini" && aiProviders().length === 1);
+process.env.GEMINI_API_KEY = `curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent" \\\n  -H 'Content-Type: application/json' \\\n  -H 'X-goog-api-key: AQ.Ab8TestPastedKey_abc-123456789' \\\n  -X POST`;
+check("key is pulled out of a pasted curl example", aiProviders()[0]?.key === "AQ.Ab8TestPastedKey_abc-123456789", aiProviders()[0]?.hint);
 process.exit(failed ? 1 : 0);
