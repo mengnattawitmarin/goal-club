@@ -43,6 +43,8 @@ try {
   check("closed bot lists injuries", closed.includes("Cole Palmer (Hamstring)") && closed.includes("บาดเจ็บ"), closed.match(/.*บาดเจ็บ.*/)?.[0] || "");
   const inj = await A.evaluate(() => { const m = refine({ ...S.open.raw, ds: { ...S.open.ds, lineup: null } }); const f = m.factors.find((x) => x.k === "injury"); const pal = m.scorers?.list.find((p) => p.name === "Cole Palmer"); return f ? { a: f.a, h: f.h, palmer: pal?.pGoal, v: MEDUSA.v } : null; });
   check("เมดูซ่า: injured scorer cuts his team's expected goals before line-ups", inj && inj.a < 0.95 && inj.h > 0.97 && inj.palmer < 0.05 && inj.v >= 2, JSON.stringify(inj));
+  const coh = await A.evaluate(() => getDay(S.date).matches.concat(Object.values(S.days).flatMap((d) => d.matches || [])).filter((m) => m.sum?.call).map((m) => { const r = resOf(m.sum), c = m.sum.call; const okR = r === "h" ? c.h > c.a : r === "a" ? c.a > c.h : c.h === c.a; const okO = (m.sum.over25 >= 0.5) === (c.h + c.a >= 3); const b = bestCall(m); let okP = true; if (b) { const [h, a] = b.score.split("-").map(Number); okP = b.type === "1x2" ? (b.side === "h" ? h > a : a > h) : ["win", "half"].includes(settlePick(b, h, a)); } return okR && okO && okP; }));
+  check("เมดูซ่า 3: called score never contradicts result, over/under or the pick", coh.length > 0 && coh.every(Boolean), `${coh.filter(Boolean).length}/${coh.length}`);
   const daily = await A.evaluate(() => { const d = writeDaily(getDay(S.date)); return d ? d.summary + d.notes.map((n) => n.text).join(" ") : ""; });
   check("closed daily summary", daily.length > 30 && !/undefined|NaN/.test(daily), daily.slice(0, 80));
   await A.click("#btnBot"); await A.waitForTimeout(1200);
@@ -62,7 +64,16 @@ try {
   await B.goto(BASE); await B.waitForTimeout(2500);
   check("second device sees the same picks", (await B.evaluate(() => Object.keys(Shared.picks[S.date] || {}).length)) >= 1);
 
-  for (let i = 0; i < 3; i++) await fetch(`${BASE}/step`);
+  // second half 63': red card, injured scorer substituted, injury delay
+  for (let i = 0; i < 2; i++) await fetch(`${BASE}/step`);
+  await A.evaluate(() => { for (const k in deepAt) delete deepAt[k]; return refresh(S.date, false); }); await A.waitForTimeout(2000);
+  const lc = await A.evaluate(() => document.querySelector("#view .livecard")?.innerText || "");
+  check("home shows a live analysis card with events", lc.includes("ทายจบ") && lc.includes("ใบแดง") && lc.includes("Trossard"), lc.replace(/\s+/g, " ").slice(0, 120));
+  const lv = await A.evaluate(() => { const m = getDay(S.date).matches.find((x) => x.id === "9001"); return { notes: m.live.notes.join(" | "), f: m.live.final, s: [m.h.score, m.a.score], ph: m.live.ph, pa: m.live.pa, pd: m.live.pd, more: m.live.pMore }; });
+  check("live model uses red card, substitution of a scorer and injuries", /ใบแดง.*Caicedo/.test(lv.notes) && /Saka/.test(lv.notes) && /Enzo/.test(lv.notes), lv.notes);
+  const r = lv.ph >= lv.pa && lv.ph >= lv.pd ? "h" : lv.pa >= lv.pd ? "a" : "d";
+  check("live final score agrees with live result and goal expectation", (r === "h" ? lv.f.h > lv.f.a : r === "a" ? lv.f.a > lv.f.h : lv.f.h === lv.f.a) && ((lv.more >= 0.5) === (lv.f.h + lv.f.a > lv.s[0] + lv.s[1])) && lv.f.h >= lv.s[0] && lv.f.a >= lv.s[1], JSON.stringify(lv.f));
+  await fetch(`${BASE}/step`);
   await A.evaluate(() => refresh(S.date, false)); await A.waitForTimeout(1500);
   const card = await A.evaluate(() => document.querySelector('[data-open="9001"]')?.innerText || "");
   check("full-time score shown", card.includes("2") && card.includes("1"));

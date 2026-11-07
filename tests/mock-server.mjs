@@ -55,6 +55,13 @@ function summary() {
     leaders: [{ team: { id: "359" }, leaders: [{ name: "goalsLeaders", leaders: [{ displayValue: "7", athlete: { id: "101", displayName: "Bukayo Saka" } }, { displayValue: "4", athlete: { id: "102", displayName: "Kai Havertz" } }] }] },
       { team: { id: "363" }, leaders: [{ name: "goalsLeaders", leaders: [{ displayValue: "6", athlete: { id: "201", displayName: "Cole Palmer" } }] }] }],
     rosters: [{ team: { id: "359" }, roster: Array.from({ length: 11 }, (_, i) => ({ starter: true, athlete: { id: String(i === 0 ? "101" : 300 + i) } })) }, { team: { id: "363" }, roster: Array.from({ length: 11 }, (_, i) => ({ starter: true, athlete: { id: String(400 + i) } })) }],
+    keyEvents: step >= 3 ? [
+      { type: { text: "Goal" }, scoringPlay: true, clock: { displayValue: "12'" }, team: { id: "359" }, participants: [{ athlete: { displayName: "Bukayo Saka" } }, { athlete: { displayName: "Martin Ødegaard" } }] },
+      { type: { text: "Goal - Header" }, scoringPlay: true, clock: { displayValue: "55'" }, team: { id: "359" }, participants: [{ athlete: { displayName: "Kai Havertz" } }] },
+      { type: { text: "Red Card" }, clock: { displayValue: "58'" }, team: { id: "363" }, participants: [{ athlete: { displayName: "Moisés Caicedo" } }] },
+      { type: { text: "Substitution" }, clock: { displayValue: "60'" }, team: { id: "359" }, text: "Substitution, Arsenal. Leandro Trossard replaces Bukayo Saka because of an injury.", participants: [{ athlete: { displayName: "Leandro Trossard" } }, { athlete: { displayName: "Bukayo Saka" } }] },
+    ] : [],
+    commentary: step >= 3 ? [{ time: { displayValue: "61'" }, text: "Delay in match because of an injury Enzo Fernández (Chelsea)." }] : [],
     injuries: [{ team: { id: "363" }, injuries: [{ status: "Out", athlete: { id: "201", displayName: "Cole Palmer" }, details: { type: "Hamstring" } }, { status: "Out", athlete: { id: "209", displayName: "Reece James" } }] }, { team: { id: "359" }, injuries: [{ status: "Day-To-Day", athlete: { id: "310", displayName: "Ben White" } }] }],
     gameInfo: { venue: { fullName: "Emirates Stadium", address: { city: "London" } } } };
 }

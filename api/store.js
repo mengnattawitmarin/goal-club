@@ -1,6 +1,7 @@
 // Shared data for every device: daily picks (locked at kickoff), pre-match predictions,
 // settled results, pick track record, learned calibration, news carried between days, daily brief.
 import { kv, kvPipe, kvEnabled, parse, readBody } from "../lib/kv.js";
+import { audit } from "../lib/audit.js";
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const ID = /^\d{1,12}$/;
@@ -57,6 +58,7 @@ export default async function handler(req, res) {
         pickHist: (ph || []).map((x) => parse(x)).filter(Boolean),
         calib: calib(histRows),
         histN: histRows.length,
+        audit: audit(histRows),
         newsTeam,
         weights: parse(weights),
         newsPlayer: pairs(np),
