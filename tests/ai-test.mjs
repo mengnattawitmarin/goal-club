@@ -55,7 +55,7 @@ globalThis.fetch = async (url, opts) => {
   const u = String(url); urls.push(u);
   const stream = (s) => new Response(new ReadableStream({ start(c) { const e = new TextEncoder(); for (let i = 0; i < s.length; i += 37) c.enqueue(e.encode(s.slice(i, i + 37))); c.close(); } }), { status: 200 });
   if (u.includes("generativelanguage") && u.endsWith("/models?pageSize=200")) return new Response(JSON.stringify(MODELS), { status: 200 });
-  if (u.includes("streamGenerateContent")) return gemMode === "quota" ? new Response(JSON.stringify({ error: { code: 429, status: "RESOURCE_EXHAUSTED", message: "Quota exceeded" } }), { status: 429 }) : stream(GEM_SSE);
+  if (u.includes("streamGenerateContent")) return gemMode === "quota" || (gemMode === "newOnly" && u.includes("3.8-flash:")) ? new Response(JSON.stringify({ error: { code: 429, status: "RESOURCE_EXHAUSTED", message: "Quota exceeded" } }), { status: 429 }) : stream(GEM_SSE);
   if (u.includes(":generateContent")) {
     const facts = JSON.parse(opts.body).contents[0].parts[0].text;
     const good = facts.split("\n").filter((l) => l.startsWith("##") || l.startsWith("-")).join("\n") + "\nเกมนี้น่าสนใจมาก ".repeat(10);
@@ -66,13 +66,18 @@ globalThis.fetch = async (url, opts) => {
   return new Response("{}", { status: 200 });
 };
 process.env.GEMINI_API_KEY = "AIzaTestKey123"; process.env.ANTHROPIC_API_KEY = "";
-const { aiProviders, geminiModel } = await import(join(root, "lib/ai.js"));
+const { aiProviders, geminiModel, geminiModels } = await import(join(root, "lib/ai.js"));
 check("Gemini key is picked first and the newest general flash model is chosen", aiProviders()[0].provider === "gemini" && (await geminiModel(aiProviders()[0])) === "gemini-3.8-flash");
 ev = await run();
 check("Gemini streams with Google Search grounding", urls.some((u) => u.includes("gemini-3.8-flash:streamGenerateContent")) && ev.filter((e) => e.t === "text").map((e) => e.d).join("") === "## ทัศนะบอล Gemini\nเนื้อหา" && ev.some((e) => e.t === "status" && e.d.includes("Inter team news")) && (ev.find((e) => e.t === "src")?.d || []).some((s) => s.url === "https://g.example"));
 gemMode = "quota";
 ev = await run();
 check("Gemini quota used up gives a clear Thai message", ev.some((e) => e.t === "error" && e.d.includes("โควตาฟรีของ Gemini")), ev.map((e) => e.d).join(" | "));
+gemMode = "newOnly"; urls = [];
+ev = await run();
+check("newest model out of free quota -> older flash model is used instead", urls.some((u) => u.includes("gemini-2.0-flash:streamGenerateContent")) && ev.filter((e) => e.t === "text").map((e) => e.d).join("").includes("Gemini"), urls.filter((u) => u.includes("stream")).map((u) => u.split("/models/")[1]).join(" "));
+check("model order: newest flash, older flash, lite last", JSON.stringify((await geminiModels(aiProviders()[0])).slice(0, 3)) === JSON.stringify(["gemini-3.8-flash", "gemini-2.0-flash", "gemini-3.8-flash-lite"]));
+gemMode = "quota";
 process.env.ANTHROPIC_API_KEY = "sk-ant-test";
 ev = await run();
 check("falls through to Claude when Gemini quota is used up", ev.filter((e) => e.t === "text").map((e) => e.d).join("").includes("Claude"));

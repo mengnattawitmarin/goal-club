@@ -5,7 +5,7 @@
 // ส่งผลแบบสตรีมเป็นบรรทัด JSON (NDJSON) เพื่อให้หน้าแอปแสดงระหว่างเขียน
 // ใช้ Claude หรือ Grok ตามคีย์ที่ตั้งใน Vercel (ดู lib/ai.js)
 import { kv, kvEnabled, parse, readBody } from "../lib/kv.js";
-import { aiConfig, aiProviders, friendlyError, aiText, aiStatus, geminiModel, geminiBody } from "../lib/ai.js";
+import { aiConfig, aiProviders, friendlyError, aiText, aiStatus, geminiModels, geminiResult, geminiBody } from "../lib/ai.js";
 import { ANALYST, checkGrounded, hashText } from "../lib/grounded.js";
 import { rateLimit } from "../lib/guard.js";
 
@@ -206,17 +206,28 @@ async function streamClaude(cfg, user, on) {
 
 /* Gemini: streamGenerateContent with Google Search grounding (retries without search if the key cannot use it) */
 async function streamGemini(cfg, user, on) {
-  let model;
-  try { model = await geminiModel(cfg); } catch (e) { return friendlyError(cfg, e?.message); }
-  const go = (search) => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`, {
-    method: "POST", signal: AbortSignal.timeout(57000),
+  let models;
+  try { models = (await geminiModels(cfg)).slice(0, 5); } catch (e) { return friendlyError(cfg, e?.message); }
+  const go = (model, search) => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`, {
+    method: "POST", signal: AbortSignal.timeout(50000),
     headers: { "content-type": "application/json", "x-goog-api-key": cfg.key },
     body: JSON.stringify(geminiBody(SKILLS, user, 3000, search)),
   });
-  let r = await go(true), search = true;
-  if (r.status === 400) { r = await go(false); search = false; }
-  if (!r.ok) { const j = await r.json().catch(() => ({})); return friendlyError(cfg, `${r.status} ${j?.error?.status || ""} ${j?.error?.message || ""}`); }
-  on.status(search ? `บอท (Gemini) ค้นข่าวด้วย Google และเขียนบท` : `บอท (Gemini) เขียนบทจากข้อมูลของแอป (คีย์นี้ใช้การค้นเว็บไม่ได้)`);
+  /* each model: with Google Search first, then without (search has its own, smaller free quota) */
+  let r = null, search = true, used = "", lastErr = "";
+  for (const model of models) {
+    for (const s of [true, false]) {
+      const x = await go(model, s);
+      if (x.ok) { r = x; search = s; used = model; break; }
+      const j = await x.json().catch(() => ({})); lastErr = `${x.status} ${j?.error?.status || ""} ${j?.error?.message || ""} (รุ่น ${model})`;
+      if (!(x.status === 429 || x.status === 400 || x.status === 404)) return friendlyError(cfg, lastErr);
+    }
+    if (r) break;
+    await geminiResult(model, false);
+  }
+  if (!r) return friendlyError(cfg, lastErr);
+  await geminiResult(used, true);
+  on.status(search ? `บอท (Gemini ${used}) ค้นข่าวด้วย Google และเขียนบท` : `บอท (Gemini ${used}) เขียนบทจากข้อมูลของแอป (โควตาค้นเว็บของคีย์นี้ใช้ไม่ได้ตอนนี้)`);
   const said = new Set();
   await eachEvent(r.body, (ev) => {
     const c = ev.candidates?.[0];
