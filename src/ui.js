@@ -403,7 +403,29 @@ function healthItem(){
     ["ฐานข้อมูล", H?.keys?`${H.keys} รายการ`:"–"],
   ];
   return `<div class="gitem"><div class="lbl">สถานะระบบ · ${MEDUSA.name}</div>${w?`<p class="note" style="color:var(--loss)">⚠ ${esc(w)}</p>`:""}
-    <div class="statgrid" style="grid-template-columns:auto minmax(0,1fr);font-size:13px">${rows.map(([k,v])=>`<span class="muted">${k}</span><span>${v}</span>`).join("")}</div></div>`;
+    <div class="statgrid" style="grid-template-columns:auto minmax(0,1fr);font-size:13px">${rows.map(([k,v])=>`<span class="muted">${k}</span><span>${v}</span>`).join("")}</div>
+    ${Shared.on?`<div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap"><input id="mjSecret" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="รหัส CRON_SECRET" style="flex:1;min-width:140px;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--bg2,transparent);color:inherit;font:inherit"><button class="btn" data-act="modelrun">เร่งเก็บผลย้อนหลัง</button></div>
+      <p class="note" id="mjOut">สำหรับเจ้าของแอป: ใส่รหัสแล้วกดครั้งเดียว ระบบจะเก็บผลย้อนหลังต่อเนื่องจนครบเอง รหัสไม่ถูกบันทึกไว้ในเครื่อง</p>`:""}</div>`;
+}
+/* owner tool: run the model job (backfill + backtest) repeatedly until the history is complete; the secret stays in memory */
+let modelRunning=false;
+async function runModelJob(){
+  const inp=document.getElementById("mjSecret"), sec=(inp?.value||"").trim(), out=t=>{ const el=document.getElementById("mjOut"); if(el) el.textContent=t; };
+  if(!sec) return out("ใส่รหัส CRON_SECRET ก่อน");
+  if(modelRunning) return; modelRunning=true;
+  try{
+    for(let i=1;i<=60;i++){
+      out(`รอบที่ ${i} กำลังเก็บผลย้อนหลัง… (อย่าปิดหน้านี้ ใช้เวลารอบละไม่เกิน 1 นาที)`);
+      const r=await fetch("/api/model",{headers:{authorization:`Bearer ${sec}`},cache:"no-store"}); const j=await r.json().catch(()=>({}));
+      if(r.status===401) return out(`รหัสไม่ตรงกับที่ตั้งใน Vercel${j.hint?` · ${j.hint}`:""}`);
+      if(!r.ok||j.error) return out(`หยุด: ${j.error||("HTTP "+r.status)}`);
+      const left=j.backfill?.left??0;
+      if(left===0){ out(`เสร็จแล้ว · ผลย้อนหลัง ${j.matches||0} นัด${j.backtest?` · ทดสอบย้อนหลัง: ${j.backtest.pass?"4.0 ผ่านเกณฑ์ เปิดใช้แกนใหม่":"4.0 ยังไม่ชนะ 3.3 ใช้ 3.3 ต่อ"} (log loss ดีขึ้น ${j.backtest.gain})`:j.matches>=1500?" · กดอีกครั้งเพื่อทดสอบย้อนหลัง":""}`); try{ await syncPull(S.date); render(); }catch{} return; }
+      out(`รอบที่ ${i} เสร็จ · เก็บแล้ว ${j.matches||0} นัด · เหลือ ${left} ช่วง`);
+    }
+    out("ครบ 60 รอบแล้ว กดอีกครั้งเพื่อเก็บต่อ");
+  }catch(e){ out(`เชื่อมต่อไม่ได้: ${e?.message||e}`); }
+  finally{ modelRunning=false; }
 }
 function viewMore(){
   const day=getDay(S.date);
@@ -1210,6 +1232,7 @@ document.addEventListener("click",e=>{
   if(d.tab){ e.preventDefault(); return goTab(d.tab); }
   if(d.act==="refresh"){ S.liveOk=null; return refresh(S.date,true); }
   if(d.act==="copyai") return copyAI();
+  if(d.act==="modelrun") return runModelJob();
   if(d.act==="clear"){ try{ Object.keys(localStorage).filter(k=>k.startsWith("gc:day:")||k.startsWith("gc:brief:")).forEach(k=>localStorage.removeItem(k)); }catch{} toast("ล้างข้อมูลที่เก็บไว้แล้ว ทีมโปรดยังอยู่"); S.liveOk=null; return refresh(S.date,false); }
   if(t.id==="btnBrief") return runBrief();
   if(t.id==="btnBot") return runBot();

@@ -135,6 +135,8 @@ try {
   await A.evaluate(() => { S.tab = "more"; render(); }); await A.waitForTimeout(300);
   const more = await A.evaluate(() => document.querySelector("#view")?.innerText || "");
   check("system status shows feed, learning job, backup and protection", ["สถานะระบบ", "ฟีด ESPN", "งานเรียนรู้ประจำวัน", "สำรองข้อมูล", "การป้องกันข้อมูลปลอม", "AI หลังบ้าน", "แหล่งข่าว"].every((k) => more.includes(k)), more.match(/สถานะระบบ[\s\S]{0,160}/)?.[0]?.replace(/\s+/g, " "));
+  { const mj = await A.evaluate(async () => { const inp = document.getElementById("mjSecret"); if (!inp) return null; await runModelJob(); const a = document.getElementById("mjOut").textContent; inp.value = "x"; await runModelJob(); return [a, document.getElementById("mjOut").textContent]; });
+    check("owner button runs the model job from the app (asks for the secret first)", mj && mj[0].includes("ใส่รหัส") && mj[1].length > 0, JSON.stringify(mj)); }
   check("no page errors", errors.length === 0, errors.join(" | "));
 } finally {
   await browser.close(); server.kill();
