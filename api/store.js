@@ -1,7 +1,7 @@
 // Shared data for every device: daily picks (locked at kickoff), pre-match predictions,
 // settled results, pick track record, learned calibration, news carried between days, daily brief.
 import { kv, kvPipe, kvEnabled, parse, readBody } from "../lib/kv.js";
-import { audit } from "../lib/audit.js";
+import { audit, evalsFromHist, finalCalib, picksAudit } from "../lib/audit.js";
 import { rateLimit, espnEvent, validPick } from "../lib/guard.js";
 import { LEAGUES } from "../lib/leagues.js";
 
@@ -42,29 +42,42 @@ export default async function handler(req, res) {
       if (!DAY.test(date)) { res.status(400).json({ error: "bad date" }); return; }
       const teams = String(req.query.teams || "").split(",").filter((x) => ID.test(x)).slice(0, 200);
       const players = String(req.query.players || "").split(",").filter((x) => ID.test(x)).slice(0, 60);
-      const [picks, brief, ph, hist, news, weights, evals, lgavg, np, lessons, rat, pl, cronlog, bakAt, dbsize, reviews, rotation, aist, feeds] = await kvPipe([
-        ["GET", `picks:${date}`], ["GET", `brief:${date}`], ["LRANGE", "pickhist", "0", "299"], ["LRANGE", "hist", "0", "1999"], ["HGETALL", "newsteam"],
+      const [picks, brief, ph, hist, news, weights, evals, lgavg, np, lessons, rat, pl, cronlog, bakAt, dbsize, reviews, rotation, aist, feeds, dct, dcl, bt, mlog] = await kvPipe([
+        ["GET", `picks:${date}`], ["GET", `brief:${date}`], ["LRANGE", "pickhist", "0", "299"], ["GET", "agg"], ["HGETALL", "newsteam"],
         ["GET", "weights"], ["HGETALL", "evals"], ["HGETALL", "lgavg"], ["HGETALL", "newsplayer"], ["GET", "lessons"],
         teams.length ? ["HMGET", "ratings", ...teams] : ["GET", "__none"], players.length ? ["HMGET", "players", ...players] : ["GET", "__none"],
         ["GET", "cronlog"], ["GET", "bak:at"], ["DBSIZE"], ["HGETALL", "reviews"], ["HGETALL", "rotation"], ["GET", "ai:status"], ["GET", "newsfeeds"],
+        teams.length ? ["HMGET", "dct", ...teams] : ["GET", "__none"], ["GET", "dcl"], ["GET", "backtest"], ["GET", "modellog"],
       ]);
       const pairs = (arr) => { const o = {}; for (let i = 0; Array.isArray(arr) && i < arr.length; i += 2) o[arr[i]] = parse(arr[i + 1]); return o; };
       const pick = (keys, vals) => { const o = {}; keys.forEach((k, i) => { const v = parse(Array.isArray(vals) ? vals[i] : null); if (v) o[k] = v; }); return o; };
-      const ev = pairs(evals); const evalDays = Object.keys(ev).sort().slice(-21);
+      /* aggregates over the whole history (up to 5,000 matches), cached 10 minutes so each app poll stays small */
+      let agg = parse(hist);
+      if (!agg) {
+        const rows = ((await kv("LRANGE", "hist", "0", "4999")) || []).map((x) => parse(x)).filter(Boolean);
+        agg = { calib: calib(rows), audit: audit(rows), evals: evalsFromHist(rows), finalCal: finalCalib(rows), histN: rows.length };
+        await kv("SET", "agg", JSON.stringify(agg), "EX", "600");
+      }
+      const ev = { ...pairs(evals), ...agg.evals }; const evalDays = Object.keys(ev).sort().slice(-21);
       const newsTeam = {};
       for (let i = 0; Array.isArray(news) && i < news.length; i += 2) newsTeam[news[i]] = parse(news[i + 1]);
-      const histRows = (hist || []).map((x) => parse(x)).filter(Boolean);
       res.status(200).json({
         enabled: true,
         picks: parse(picks, {}),
         brief: parse(brief),
         pickHist: (ph || []).map((x) => parse(x)).filter(Boolean),
-        calib: calib(histRows),
-        histN: histRows.length,
-        audit: audit(histRows),
+        calib: agg.calib,
+        histN: agg.histN,
+        audit: agg.audit,
+        finalCal: agg.finalCal || null,
+        picksAudit: picksAudit((ph || []).map((x) => parse(x))),
         health: { cron: parse(cronlog), backupAt: Number(bakAt) || null, keys: Number(dbsize) || null, guard: true, ai: parse(aist), feeds: parse(feeds) },
         reviews: Object.fromEntries(Object.entries(pairs(reviews)).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 3)),
         rotation: pairs(rotation),
+        /* เมดูซ่า 4.0 core: team strengths for today's teams, league levels, and the backtest that gates them */
+        dc: (() => { const L = parse(dcl); if (!L) return null; const t = {}; teams.forEach((id, i) => { const v = parse(Array.isArray(dct) ? dct[i] : null); if (v) t[id] = { att: v[0], def: v[1], n: v[2], lg: v[3] }; }); return { ...L, teams: t }; })(),
+        backtest: (() => { const b = parse(bt); if (!b) return null; const { leagues, configs, ...rest } = b; return { ...rest, leagues: Object.fromEntries(Object.entries(leagues || {}).slice(0, 30)) }; })(),
+        modelLog: parse(mlog),
         newsTeam,
         weights: parse(weights),
         newsPlayer: pairs(np),
@@ -98,7 +111,8 @@ export default async function handler(req, res) {
         p.ko = e.ko;
         next[p.id] = { id: String(p.id), lg: p.lg, type: p.type, side: String(p.side).slice(0, 1), line: +p.line, prob: +(+p.prob).toFixed(4),
           label: String(p.label || "").slice(0, 60), phrase: String(p.phrase || "").slice(0, 80), score: String(p.score || "").slice(0, 7),
-          ko: p.ko, match: String(p.match || "").slice(0, 80) };
+          ko: p.ko, match: String(p.match || "").slice(0, 80),
+          kind: /^(dog|fav|level|over|under|home|away)$/.test(p.kind) ? p.kind : undefined, fair: Number.isFinite(+p.fair) && +p.fair > 0 && +p.fair < 1 ? +(+p.fair).toFixed(4) : undefined };
       }
       if (remember.length) await kvPipe(remember);
       await kv("SET", `picks:${date}`, JSON.stringify(next), "EX", String(40 * 86400));
@@ -111,7 +125,7 @@ export default async function handler(req, res) {
       const num = (x) => (Number.isFinite(+x) && +x > 0 ? +(+x).toFixed(4) : undefined);
       const row = { id: String(p.id), d: date, lg: String(p.lg || "").slice(0, 24), lh0: +p.lh0, la0: +p.la0, ph: +p.ph, pa: +p.pa, ko: p.ko,
         pH: num(p.pH), pA: num(p.pA), bH: num(p.bH), bA: num(p.bA),
-        fr: p.fr && typeof p.fr === "object" ? Object.fromEntries(Object.entries(p.fr).filter(([k, v]) => /^[a-zA-Z]{2,12}$/.test(k) && Array.isArray(v) && v.length === 2 && v.every((x) => Number.isFinite(+x) && Math.abs(+x) < 2)).slice(0, 16).map(([k, v]) => [k, [+v[0], +v[1]]])) : undefined, mv: num(p.mv), mkH: num(p.mkH), mkA: num(p.mkA), mh: num(p.mh), md: num(p.md), ma: num(p.ma), hid: String(p.hid || ""), aid: String(p.aid || "") };
+        fr: p.fr && typeof p.fr === "object" ? Object.fromEntries(Object.entries(p.fr).filter(([k, v]) => /^[a-zA-Z]{2,12}$/.test(k) && Array.isArray(v) && v.length === 2 && v.every((x) => Number.isFinite(+x) && Math.abs(+x) < 2)).slice(0, 16).map(([k, v]) => [k, [+v[0], +v[1]]])) : undefined, mv: num(p.mv), lhF: num(p.lhF), laF: num(p.laF), o25: num(p.o25), dc: num(p.dc), mkH: num(p.mkH), mkA: num(p.mkA), mh: num(p.mh), md: num(p.md), ma: num(p.ma), hid: String(p.hid || ""), aid: String(p.aid || "") };
       if (!(row.lh0 >= 0.1 && row.lh0 <= 5 && row.la0 >= 0.1 && row.la0 <= 5) || !LEAGUES.includes(row.lg)) continue;
       if (row.ph != null && row.pa != null && row.ph + row.pa > 1.001) continue;
       cmds.push(["SET", `pred:${row.id}`, JSON.stringify(row), "EX", String(14 * 86400)]);
@@ -143,10 +157,10 @@ export default async function handler(req, res) {
         else if (!pred && newHist) w.push(["SREM", "histdone", String(r.id)]);
         const p = picks[r.id];
         if (p && newPick && Date.parse(p.ko) < now) {
-          w.push(["LPUSH", "pickhist", JSON.stringify({ d: date, id: p.id, label: p.label, type: p.type, prob: p.prob, match: (r.match || p.match || "").slice(0, 80), res: settle(p, r.hs, r.as) })]);
+          w.push(["LPUSH", "pickhist", JSON.stringify({ d: date, id: p.id, label: p.label, type: p.type, prob: p.prob, kind: p.kind, fair: p.fair, line: p.line, match: (r.match || p.match || "").slice(0, 80), res: settle(p, r.hs, r.as) })]);
         } else if (newPick) w.push(["SREM", "pickdone", String(r.id)]);
       });
-      if (w.length) await kvPipe([...w, ["LTRIM", "hist", "0", "1999"], ["LTRIM", "pickhist", "0", "999"]]);
+      if (w.length) await kvPipe([...w, ["LTRIM", "hist", "0", "4999"], ["DEL", "agg"], ["LTRIM", "pickhist", "0", "999"]]);
     }
     res.status(200).json({ ok: true });
   } catch (e) {

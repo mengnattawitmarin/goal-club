@@ -52,11 +52,11 @@ function baseLambdas(h, a, avg){
   return {lh:clamp(hf.score*(af.concede/1.28)*1.1,0.15,4.2), la:clamp(af.score*(hf.concede/1.28)*0.92,0.15,4.2), basis:"form"};
 }
 function pmf(k,l){ let p=Math.exp(-l); for(let i=1;i<=k;i++) p*=l/i; return p; }
-function grid(lh,la){
+function grid(lh,la,rho=RHO){
   const g=[]; let s=0;
   for(let h=0;h<=MAXG;h++){ g[h]=[]; for(let a=0;a<=MAXG;a++){
     let p=pmf(h,lh)*pmf(a,la);
-    if(h===0&&a===0) p*=1-lh*la*RHO; else if(h===0&&a===1) p*=1+lh*RHO; else if(h===1&&a===0) p*=1+la*RHO; else if(h===1&&a===1) p*=1-RHO;
+    if(h===0&&a===0) p*=1-lh*la*rho; else if(h===0&&a===1) p*=1+lh*rho; else if(h===1&&a===0) p*=1+la*rho; else if(h===1&&a===1) p*=1-rho;
     g[h][a]=Math.max(0,p); s+=g[h][a]; } }
   for(const r of g) for(let a=0;a<r.length;a++) r[a]/=s;
   return g;
@@ -88,8 +88,10 @@ function resCall(sum){
 }
 function mainPreds(sum){
   const r=resCall(sum), ps=[(h,a)=>r==="h"?h>a:r==="a"?a>h:r==="hd"?h>=a:r==="ad"?a>=h:h===a];
-  ps.push(sum.over25>=.5?(h,a)=>h+a>=3:(h,a)=>h+a<=2);
-  if(Math.abs(sum.btts-.5)>=.06) ps.push(sum.btts>=.5?(h,a)=>h>0&&a>0:(h,a)=>h===0||a===0);
+  /* เมดูซ่า 4.0 (item 21): 3.3 forced every score to agree with a 51% over/under call, so 77% of calls became 2-1 or 1-2;
+     only a confident call (58%+) shapes the score now */
+  if(Math.abs(sum.over25-.5)>=.08) ps.push(sum.over25>=.5?(h,a)=>h+a>=3:(h,a)=>h+a<=2);
+  if(Math.abs(sum.btts-.5)>=.08) ps.push(sum.btts>=.5?(h,a)=>h>0&&a>0:(h,a)=>h===0||a===0);
   return ps;
 }
 function atomic(line){ const t=Math.round(line*4); const s=t/4; return t%2===0 ? [{line:s,w:1}] : [{line:(t-1)/4,w:.5},{line:(t+1)/4,w:.5}]; }
@@ -104,7 +106,13 @@ function totSplit(g, line){
   return {over:{win:over,push,lose:under}, under:{win:under,push,lose:over}};
 }
 const cover = s => (s.win+s.lose)>0 ? s.win/(s.win+s.lose) : .5;
-function devig(ds){ if(ds.some(d=>!(d>1.01))) return null; const imp=ds.map(d=>1/d), s=imp.reduce((x,y)=>x+y,0); return imp.map(v=>v/s); }
+/* เมดูซ่า 4.0 (item 14): "power" margin removal. Bookmakers load more of their margin onto long shots, so dividing
+   evenly overrates underdogs; raising each implied probability to the same power k (sum = 1) corrects for that. */
+function devig(ds){
+  if(ds.some(d=>!(d>1.01))) return null; const imp=ds.map(d=>1/d);
+  let lo=1, hi=3; for(let i=0;i<40;i++){ const k=(lo+hi)/2, s=imp.reduce((x,v)=>x+v**k,0); if(s>1) lo=k; else hi=k; }
+  const k=(lo+hi)/2, p=imp.map(v=>v**k), s=p.reduce((x,y)=>x+y,0); return p.map(v=>v/s);
+}
 const VALUE_EDGE = 0.04;
 
 /* Thai handicap wording */
@@ -147,7 +155,17 @@ function meetingsFor(m){
   }).filter(Boolean);
 }
 /* เมดูซ่า: ชื่อของอัลกอริทึมวิเคราะห์ เพิ่มเลขทุกครั้งที่ปรับวิธีคำนวณ (ดู MEDUSA.md) */
-const MEDUSA={v:3.3, name:"เมดูซ่า 3.3", date:"2026-11-07"};
+const MEDUSA={v:4.0, name:"เมดูซ่า 4.0", date:"2026-11-11"};
+/* the 4.0 core is used only when the server's walk-forward backtest has shown it beats the 3.3 base (backtest.pass)
+   and both teams have enough matches in the fit; otherwise the match runs on the 3.3 base */
+function dc4On(){ return !!(S?.backtest?.pass&&S?.dc?.leagues); }
+function dc4For(m){
+  if(!dc4On()) return null;
+  const T=S.dc.teams||{}, H=T[m.h.id], A=T[m.a.id], L=S.dc.leagues[m.lg]||(H&&S.dc.leagues[H.lg]);
+  if(!H||!A||!L||H.n<3||A.n<3) return null;
+  const hm=m.neutral?1:L.home;
+  return {lh:clamp(L.mu*hm*H.att*A.def,0.15,4.2), la:clamp(L.mu*A.att*H.def,0.15,4.2), rho:L.rho??RHO};
+}
 /* เส้นทางเกม: chance to win after scoring first / conceding first (first goal time ~ exponential) */
 function pathOdds(m){
   const L=m.lh+m.la; if(!(L>0)) return null;
@@ -173,29 +191,35 @@ function refine(m){
   const steps=[], factors=[];
   let lh=m.lh, la=m.la, basis=m.basis;
   if(lh==null||la==null){ const b=baseLambdas(m.h,m.a,null); lh=b.lh; la=b.la; basis=b.basis; }
+  /* item 10: neutral ground -> no home edge in the 3.3 base either */
+  if(m.neutral&&basis!=="dc"){ const k=Math.sqrt(1.18*0.9); lh=clamp(lh/1.18*k,0.15,4.2); la=clamp(la/0.9*k,0.15,4.2); }
+  /* เมดูซ่า 4.0 core: Dixon-Coles strengths fitted on two seasons of every competition, used once the backtest has passed */
+  let rho=RHO; const D=dc4For(m);
+  if(D){ lh=D.lh; la=D.la; rho=D.rho; basis="dc"; }
+  const dc=basis==="dc";
   /* every factor's push can be strengthened or weakened by the daily job (weights.factors[k]); raw ratios are kept so the job can re-tune */
   const push=(k,label,text,bh,ba)=>{
     const fh=lh/bh, fa=la/ba, st=k==="market"?1:(S?.weights?.factors?.[k]??1);
     if(st!==1){ lh=clamp(bh*fh**st,0.15,4.2); la=clamp(ba*fa**st,0.15,4.2); }
     factors.push({k,label,text:st!==1?`${text} · น้ำหนักปรับเอง ×${st}`:text,h:lh/bh,a:la/ba,rh:fh,ra:fa,st}); steps.push({k,text:`${label}: ${text}`,lh,la}); };
-  steps.push({k:"base", text: basis==="table"?"ตารางคะแนน: อัตรายิง/เสียหดเข้าค่าเฉลี่ยลีกด้วย prior 8 นัด แล้วขยับด้วยฟอร์มล่าสุด":basis==="blend"?"ตารางคะแนน: มีครบทีมเดียว อีกทีมใช้ฟอร์ม 5 นัด":"ฟอร์ม: ตารางยังไม่พอ ใช้ผล 5 นัดหลัง", lh, la});
-  factors.push({k:"base",label:basis==="form"?"ฟอร์ม 5 นัด":"ตารางคะแนนและฟอร์ม",text:`เริ่มที่ ${lh.toFixed(2)} – ${la.toFixed(2)} ประตูที่คาด`,h:1,a:1,base:true});
+  steps.push({k:"base", text: dc?`โมเดลความแข็งทีม (ดิกสัน-โคลส์) จากผลย้อนหลัง ${S.dc.rows||""} นัด ถ่วงนัดล่าสุดมากกว่า คิดความแข็งคู่แข่ง ค่าเจ้าบ้านและค่าเสมอของ${LEAGUE_NAME[m.lg]||"รายการนี้"}`:basis==="table"?"ตารางคะแนน: อัตรายิง/เสียหดเข้าค่าเฉลี่ยลีกด้วย prior 8 นัด แล้วขยับด้วยฟอร์มล่าสุด":basis==="blend"?"ตารางคะแนน: มีครบทีมเดียว อีกทีมใช้ฟอร์ม 5 นัด":"ฟอร์ม: ตารางยังไม่พอ ใช้ผล 5 นัดหลัง", lh, la});
+  factors.push({k:"base",label:dc?"ความแข็งทีม เมดูซ่า 4.0":basis==="form"?"ฟอร์ม 5 นัด":"ตารางคะแนนและฟอร์ม",text:`เริ่มที่ ${lh.toFixed(2)} – ${la.toFixed(2)} ประตูที่คาด`,h:1,a:1,base:true});
   const bH=lh, bA=la;
   const meets=meetingsFor(m);
-  if(meets.length>=3){
+  if(!dc&&meets.length>=3){
     const bh=lh, ba=la, hf=meets.reduce((s,x)=>s+x.f,0)/meets.length, af=meets.reduce((s,x)=>s+x.a,0)/meets.length;
     lh=clamp(lh*.82+hf*.18,0.15,4.2); la=clamp(la*.82+af*.18,0.15,4.2); basis="h2h";
     push("h2h","ผลที่เคยเจอกัน",`${meets.length} นัด ยิงเฉลี่ย ${hf.toFixed(1)}–${af.toFixed(1)} ผสม 18%`,bh,ba);
   }
   const hs=linesStats(m.ds?.hf?.lines), as=linesStats(m.ds?.af?.lines);
-  if(hs&&as&&hs.n>=3&&as.n>=3){
+  if(!dc&&hs&&as&&hs.n>=3&&as.n>=3){
     const bh=lh, ba=la, tH=(hs.gf/hs.n + as.ga/as.n)/2, tA=(as.gf/as.n + hs.ga/hs.n)/2;
     lh=clamp(lh*.7+tH*.3,0.15,4.2); la=clamp(la*.7+tA*.3,0.15,4.2);
     push("pace","เกมรุก-รับ 5 นัดหลัง",`${m.h.short} ยิง ${(hs.gf/hs.n).toFixed(1)} เสีย ${(hs.ga/hs.n).toFixed(1)} · ${m.a.short} ยิง ${(as.gf/as.n).toFixed(1)} เสีย ${(as.ga/as.n).toFixed(1)} ต่อเกม ผสม 30%`,bh,ba);
   }
   /* home form at home, away form on the road */
   const hv=venueSplit(m.ds?.hf,"H"), av=venueSplit(m.ds?.af,"A");
-  if(hv&&av){
+  if(!dc&&hv&&av){
     const bh=lh, ba=la;
     lh=clamp(lh*.88+((hv.gf/hv.n+av.ga/av.n)/2)*.12,0.15,4.2); la=clamp(la*.88+((av.gf/av.n+hv.ga/hv.n)/2)*.12,0.15,4.2);
     push("venue","ฟอร์มในบ้าน/นอกบ้าน",`${m.h.short} ในบ้าน ${hv.n} นัด ยิง ${(hv.gf/hv.n).toFixed(1)} · ${m.a.short} นอกบ้าน ${av.n} นัด ยิง ${(av.gf/av.n).toFixed(1)} ผสม 12%`,bh,ba);
@@ -268,14 +292,14 @@ function refine(m){
   }
   /* league trend: goals per game over the last 14 days vs the season so far */
   const tr=S?.trends?.[m.lg];
-  if(tr?.gpg&&tr.n>=8&&m.lgAvg){
+  if(!dc&&tr?.gpg&&tr.n>=8&&m.lgAvg){
     const bh=lh, ba=la, ratio=tr.gpg/(m.lgAvg*2), k=clamp(1+(ratio-1)*.5*tr.n/(tr.n+20),.92,1.08);
     lh=clamp(lh*k,0.15,4.2); la=clamp(la*k,0.15,4.2);
     push("trend","แนวโน้มลีก 14 วัน",`${tr.n} นัดหลังสุดเฉลี่ย ${tr.gpg.toFixed(2)} ประตู เทียบทั้งฤดูกาล ${(m.lgAvg*2).toFixed(2)}`,bh,ba);
   }
   /* team strength learned from every finished match (daily job): attack/defence ratings */
   const RH=S?.ratings?.[m.h.id], RA=S?.ratings?.[m.a.id], avg=S?.lgavg?.[m.lg];
-  if(RH&&RA&&RH.n>=6&&RA.n>=6){
+  if(!dc&&RH&&RA&&RH.n>=6&&RA.n>=6){
     const mu=avg>0.4?avg:1.35, rlh=mu*1.12*RH.att*RA.def, rla=mu/1.12*RA.att*RH.def, W=Math.min(.3,.12+(Math.min(RH.n,RA.n)-6)*.01);
     const bh=lh, ba=la; lh=clamp(Math.exp(Math.log(lh)*(1-W)+Math.log(rlh)*W),0.15,4.2); la=clamp(Math.exp(Math.log(la)*(1-W)+Math.log(rla)*W),0.15,4.2);
     push("rating","ความแข็งของทีม (เรียนรู้ทุกวัน)",`เกมรุก/รับ ${m.h.short} ${RH.att.toFixed(2)}/${RH.def.toFixed(2)} · ${m.a.short} ${RA.att.toFixed(2)}/${RA.def.toFixed(2)} จาก ${RH.n}/${RA.n} นัดที่บันทึก → ${rlh.toFixed(2)}–${rla.toFixed(2)} ผสม ${Math.round(W*100)}%`,bh,ba);
@@ -291,7 +315,7 @@ function refine(m){
   }
   /* learned from this app's own past predictions vs real scores */
   const lh0=lh, la0=la;
-  const cal=S?.calib?.[m.lg]?.n>=10?S.calib[m.lg]:S?.calib?._all?.n>=30?S.calib._all:null;
+  const cal=dc?null:S?.calib?.[m.lg]?.n>=10?S.calib[m.lg]:S?.calib?._all?.n>=30?S.calib._all:null;
   if(cal){
     const bh=lh, ba=la; lh=clamp(lh*cal.hAdj,0.15,4.2); la=clamp(la*cal.aAdj,0.15,4.2);
     push("calib","เรียนรู้จากผลที่ผ่านมา",`เทียบที่ทำนายไว้กับสกอร์จริง ${cal.n} นัด${cal===S.calib._all?" (รวมทุกลีก)":` ใน${LEAGUE_NAME[m.lg]||"ลีกนี้"}`} เจ้าบ้านยิงจริง ${Math.round((cal.hs/cal.lh)*100)}% ของที่คาด ทีมเยือน ${Math.round((cal.as/cal.la)*100)}%`,bh,ba);
@@ -305,7 +329,12 @@ function refine(m){
     lh=clamp(Math.exp(Math.log(lh)*(1-W)+Math.log(mkt.lh)*W),0.15,4.2); la=clamp(Math.exp(Math.log(la)*(1-W)+Math.log(mkt.la)*W),0.15,4.2);
     push("market","ราคาตลาด",`ราคา ${m.mk.book} บอกประตูที่คาด ${mkt.lh.toFixed(2)} – ${mkt.la.toFixed(2)}${mkt.fromTotal?"":" (ไม่มีเส้นสูงต่ำ ใช้ผลรวมจากโมเดล)"} ผสม ${Math.round(W*100)}%${S?.weights?.n?` (ปรับเองจากผลจริง ${S.weights.n} นัด)`:""}`,bh,ba);
   }
-  const g=grid(lh,la), sum=summarize(g); sum.call=callScore(g,mainPreds(sum));
+  /* เมดูซ่า 4.0 (items 11, 13): calibration last, after the market — total goals scaled by what the final numbers
+     actually produced (needs 200+ settled 4.0 predictions), so over/under is checked on its own */
+  const fc=S?.finalCal; if(fc?.goals&&fc.n>=200&&Math.abs(fc.goals-1)>.02){ const bh=lh, ba=la, k=clamp(fc.goals,.9,1.1); lh=clamp(lh*k,0.15,4.2); la=clamp(la*k,0.15,4.2); push("final","ปรับเทียบขั้นสุดท้าย",`ประตูรวมจริง ${Math.round(k*100)}% ของที่คาดไว้ จาก ${fc.n} นัด`,bh,ba); }
+  const g=grid(lh,la,rho), sum=summarize(g);
+  if(fc?.temp&&fc.nT>=300&&Math.abs(fc.temp-1)>.03){ sum.rawH=sum.home; sum.rawA=sum.away; const t=clamp(fc.temp,.8,1.25), q=[sum.home,sum.draw,sum.away].map(x=>Math.max(1e-6,x)**(1/t)), z=q[0]+q[1]+q[2]; sum.home=q[0]/z; sum.draw=q[1]/z; sum.away=q[2]/z; sum.temp=t; }
+  sum.call=callScore(g,mainPreds(sum));
   const out={...m, raw:m.raw||m, lh, la, lh0, la0, pH, pA, bH, bA, mkt, basis, g, sum, steps, factors, hs, as, meets};
   /* one called score per match: when there is a pick, the score is the pick's (it also agrees with the other calls where it can) */
   const bc=bestCall(out); if(bc?.score){ const [ch,ca]=bc.score.split("-").map(Number); if(Number.isInteger(ch)&&Number.isInteger(ca)) out.sum.call={h:ch,a:ca,p:out.g[ch]?.[ca]??0}; }
@@ -525,7 +554,7 @@ async function syncPull(date){
     const j=await getJson(`/api/store?date=${date}${teams?`&teams=${teams}`:""}`,8000);
     if(!j?.enabled) return false;
     Shared.on=true; Shared.picks[date]=j.picks||{}; Shared.pickHist=j.pickHist||[]; Shared.histN=j.histN||0; Shared.pulled[date]=Date.now();
-    if(j.calib) S.calib=j.calib; if(j.audit) S.audit=j.audit; if(j.health) S.health=j.health; if(j.reviews) S.reviews=j.reviews; if(j.rotation) S.rotation=j.rotation;
+    if(j.calib) S.calib=j.calib; if(j.audit) S.audit=j.audit; if(j.health) S.health=j.health; if(j.reviews) S.reviews=j.reviews; if(j.rotation) S.rotation=j.rotation; if(j.dc) S.dc=j.dc; if(j.finalCal) S.finalCal=j.finalCal; if("backtest" in j) S.backtest=j.backtest; if(j.modelLog) S.modelLog=j.modelLog;
     if(j.newsPlayer) S.newsPlayer=j.newsPlayer; if(j.lessons) S.lessons=j.lessons;
     S.ratings={...(S.ratings||{}),...(j.ratings||{})}; S.lgavg={...(S.lgavg||{}),...(j.lgavg||{})}; if(j.weights) S.weights=j.weights; if(j.evals) S.evals=j.evals;
     if(day?.matches?.length) S.days[date]=prepare({...day,matches:day.matches.map(x=>x.raw||x)});
@@ -582,7 +611,12 @@ function picksFor(date){
      ranked by calibrated probability plus half the edge over the market; fewer picks on a weak day */
   const fresh=ms.map(bestCall).filter(Boolean).map(p=>{ const c=cal[p.type]; const prob=c?Math.min(.95,p.prob*c):p.prob; return {...p,raw:c?p.prob:undefined,prob,rank:prob+.5*Math.max(-.05,p.edge??0)}; })
     .filter(p=>p.prob>=.55&&(p.dq??100)>=45&&(p.edge==null||p.edge>=-.01)&&!frozen.some(z=>z.id===p.id)).sort((a,b)=>b.rank-a.rank);
-  const list=[...frozen,...fresh.slice(0,Math.max(0,limit-frozen.length))].sort((a,b)=>b.prob-a.prob);
+  /* เมดูซ่า 4.0 (item 24): no more than 60% of the day's picks of one kind (underdog with a start, favourite giving one,
+     over, under), so one bad pattern cannot sink the whole day */
+  const kindOf=p=>p.type==="ou"?(p.side==="o"?"over":"under"):p.type==="ah"?(p.line>0?"dog":p.line<0?"fav":"level"):(p.side==="h"?"home":"away");
+  const room=Math.max(0,limit-frozen.length), cap=Math.max(2,Math.ceil(limit*.6)), seen={}; frozen.forEach(p=>{ const k=kindOf(p); seen[k]=(seen[k]||0)+1; });
+  const chosen=[]; for(const p of fresh){ if(chosen.length>=room) break; const k=kindOf(p); if((seen[k]||0)>=cap) continue; seen[k]=(seen[k]||0)+1; chosen.push({...p,kind:k,fair:p.edge!=null?+(p.prob-p.edge).toFixed(4):null}); }
+  const list=[...frozen,...chosen].sort((a,b)=>b.prob-a.prob);
   if(date>=shiftDate(bkkToday(),-1) && day.source!=="snapshot"){
     store.set("picks:"+date, list);
     if(Shared.on){
@@ -643,9 +677,10 @@ function recordDay(date){
     const now=Date.now(), preds=[], results=[];
     for(const m of day.matches){
       if(m.st==="pre" && m.lh0!=null && (!sentPred[m.id] || now-sentPred[m.id]>30*60e3)){ sentPred[m.id]=now; const mk=m.mk?.home&&m.mk.draw&&m.mk.away?devig([m.mk.home.decimal,m.mk.draw.decimal,m.mk.away.decimal]):null;
-        preds.push({id:m.id,lg:m.lg,lh0:+m.lh0.toFixed(3),la0:+m.la0.toFixed(3),ph:+m.sum.home.toFixed(3),pa:+m.sum.away.toFixed(3),ko:m.ko,hid:m.h.id,aid:m.a.id,
+        /* raw (before the 1X2 temperature) so the temperature is always learned from the same footing */
+        preds.push({id:m.id,lg:m.lg,lh0:+m.lh0.toFixed(3),la0:+m.la0.toFixed(3),ph:+(m.sum.rawH??m.sum.home).toFixed(3),pa:+(m.sum.rawA??m.sum.away).toFixed(3),ko:m.ko,hid:m.h.id,aid:m.a.id,
           pH:+m.pH.toFixed(3),pA:+m.pA.toFixed(3),bH:+m.bH.toFixed(3),bA:+m.bA.toFixed(3),
-          mv:MEDUSA.v,fr:Object.fromEntries((m.factors||[]).filter(f=>!f.base&&f.k!=="market"&&f.rh>0&&f.ra>0).map(f=>[f.k,[+Math.log(f.rh).toFixed(4),+Math.log(f.ra).toFixed(4)]])),mkH:m.mkt?+m.mkt.lh.toFixed(3):undefined,mkA:m.mkt?+m.mkt.la.toFixed(3):undefined,mh:mk?.[0],md:mk?.[1],ma:mk?.[2]}); }
+          mv:MEDUSA.v,lhF:+m.lh.toFixed(3),laF:+m.la.toFixed(3),o25:+m.sum.over25.toFixed(4),dc:m.basis==="dc"?1:0,fr:Object.fromEntries((m.factors||[]).filter(f=>!f.base&&f.k!=="market"&&f.rh>0&&f.ra>0).map(f=>[f.k,[+Math.log(f.rh).toFixed(4),+Math.log(f.ra).toFixed(4)]])),mkH:m.mkt?+m.mkt.lh.toFixed(3):undefined,mkA:m.mkt?+m.mkt.la.toFixed(3):undefined,mh:mk?.[0],md:mk?.[1],ma:mk?.[2]}); }
       if(m.st==="post" && m.h.score!=null && !sentRes[m.id]){ sentRes[m.id]=1; results.push({id:m.id,hs:m.h.score,as:m.a.score,match:`${m.h.short} ${m.h.score}–${m.a.score} ${m.a.short}`}); }
     }
     if(preds.length||results.length) syncPush({date,preds,results}).then(()=>{ if(results.length) syncPull(date).then(ok=>{ if(ok&&!S.open) render(); }); });
@@ -773,7 +808,7 @@ async function loadLiveDay(date, onlySlugs){
         const h=side(H), a=side(A), base=baseLambdas(h,a,tbl?.avg??null);
         const name=c?.status?.type?.name||"", state=c?.status?.type?.state||"pre";
         const clock = state!=="in" ? null : name.includes("HALFTIME") ? "พักครึ่ง" : name.includes("PENALT") ? "ยิงจุดโทษ" : (c?.status?.displayClock||"สด");
-        return {id:ev.id,lg:slug,ko:ev.date,st:name.includes("POSTPONED")?"pp":name.includes("CANCEL")?"pp":state,clock,h,a,lh:base.lh,la:base.la,basis:base.basis,mk:parseMarket(c?.odds?.[0]),ds:null,live:true,lgAvg:tbl?.avg??null,
+        return {id:ev.id,lg:slug,ko:ev.date,st:name.includes("POSTPONED")?"pp":name.includes("CANCEL")?"pp":state,clock,h,a,lh:base.lh,la:base.la,basis:base.basis,mk:parseMarket(c?.odds?.[0]),ds:null,live:true,neutral:!!c?.neutralSite,lgAvg:tbl?.avg??null,
           ls:state==="pre"?null:liveStatsOf(c?.competitors||[],c?.details||[],H,A)};
       }).filter(Boolean);
     }catch{ feed.failed++; return null; }

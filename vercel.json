@@ -31,12 +31,19 @@
     },
     "api/cron.js": {
       "maxDuration": 60
+    },
+    "api/model.js": {
+      "maxDuration": 60
     }
   },
   "crons": [
     {
       "path": "/api/cron",
       "schedule": "30 5 * * *"
+    },
+    {
+      "path": "/api/model",
+      "schedule": "40 21 * * *"
     }
   ]
 }

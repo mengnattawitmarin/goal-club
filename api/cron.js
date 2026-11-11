@@ -9,11 +9,12 @@ import { kv, kvPipe, kvEnabled, parse } from "../lib/kv.js";
 import { aiConfig, aiText, aiParse } from "../lib/ai.js";
 import { headlines } from "../lib/news.js";
 import { ruleReview } from "../lib/review.js";
+import { backfillAdd } from "../lib/backfill.js";
 import { updateRatings, probs, logLoss, brier, outcome, blend, tune, totalLoss, predictRow, PICK_VALUE } from "../lib/learn.js";
 
 import { LEAGUES } from "../lib/leagues.js";
 /* keys that hold everything the app has learned; copied to bak:* once a week (เมดูซ่า 3.1) */
-export const BACKUP_KEYS = ["hist", "pickhist", "ratings", "lgavg", "players", "weights", "lessons", "evals", "newsplayer", "histdone", "pickdone", "learned"];
+export const BACKUP_KEYS = ["hist", "pickhist", "ratings", "lgavg", "players", "weights", "lessons", "evals", "newsplayer", "histdone", "pickdone", "learned", "dcl", "backtest", ...LEAGUES.map((lg) => `bf:${lg}`)];
 const nyDate = (d) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 const shift = (iso, n) => { const [y, m, d] = iso.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
 async function getJson(url) { const r = await fetch(url, { signal: AbortSignal.timeout(7000) }); if (!r.ok) throw new Error(r.status); return r.json(); }
@@ -61,7 +62,7 @@ async function run(req, res, t0) {
       const c = c0; if (c?.status?.type?.state !== "post") continue;
       const H = c.competitors?.find((x) => x.homeAway === "home"), A = c.competitors?.find((x) => x.homeAway === "away");
       const hs = Number(H?.score), as = Number(A?.score); if (!Number.isInteger(hs) || !Number.isInteger(as)) continue;
-      games.push({ id: String(ev.id), lg, d, hs, as, hid: String(H.team?.id), aid: String(A.team?.id), hn: H.team?.shortDisplayName || H.team?.displayName, an: A.team?.shortDisplayName || A.team?.displayName });
+      games.push({ id: String(ev.id), lg, d, hs, as, hid: String(H.team?.id), aid: String(A.team?.id), hn: H.team?.shortDisplayName || H.team?.displayName, an: A.team?.shortDisplayName || A.team?.displayName, neutral: !!c.neutralSite });
     }
   });
   report.finished = games.length; report.feed = feed;
@@ -87,7 +88,7 @@ async function run(req, res, t0) {
     }
     for (const d of days) {
       const pk = picksByDay[d][g.id];
-      if (pk) { w.push(["SADD", "pickdone", g.id]); w.push(["LPUSH", "pickhist", JSON.stringify({ d, id: g.id, label: pk.label, type: pk.type, prob: pk.prob, match: `${g.hn} ${g.hs}–${g.as} ${g.an}`, res: settle(pk, g.hs, g.as) })]); report.picks++; }
+      if (pk) { w.push(["SADD", "pickdone", g.id]); w.push(["LPUSH", "pickhist", JSON.stringify({ d, id: g.id, label: pk.label, type: pk.type, prob: pk.prob, kind: pk.kind, fair: pk.fair, line: pk.line, match: `${g.hn} ${g.hs}–${g.as} ${g.an}`, res: settle(pk, g.hs, g.as) })]); report.picks++; }
     }
   });
   /* client may already have settled some picks: drop duplicates by checking pickdone first */
@@ -146,7 +147,9 @@ async function run(req, res, t0) {
     const sum = Object.fromEntries(Object.keys(old).map((k) => [k, (old[k] || 0) + (e[k] || 0)]));
     await kv("HSET", "evals", d, JSON.stringify(sum)); report.evaluated.push(d);
   }
-  await kvPipe(fresh.map((g) => ["SADD", "learned", g.id]));
+  await kvPipe([...fresh.map((g) => ["SADD", "learned", g.id]), ["DEL", "agg"]]);
+  /* เมดูซ่า 4.0: keep the long history growing (shots on target go in for the shot-based expected goals) */
+  try { await backfillAdd(fresh.map((g) => ({ ...g, ...(facts[g.id] || {}) }))); } catch {}
 
   /* 5b. post-match review (เมดูซ่า 3.2): why each clear miss went wrong; rule-based, reworded by AI when available */
   const missed = fresh.map((g, i) => ({ g, p: parse(preds[i]) })).filter(({ g, p }) => p && p.ph != null && outcome(g.hs, g.as) !== [p.ph, 1 - p.ph - p.pa, p.pa].indexOf(Math.max(p.ph, 1 - p.ph - p.pa, p.pa)))

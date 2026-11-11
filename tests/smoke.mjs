@@ -49,6 +49,17 @@ try {
   check("copy-to-AI button present", await A.evaluate(() => !!document.querySelector('[data-act="copyai"]') && aiPrompt(S.open).includes("ไม่ใช่คำแนะนำให้เดิมพัน")));
   const rot = await A.evaluate(() => { S.rotation = { arsenal: { team: "Arsenal", signal: "rotation", reason: "โค้ชเตรียมพักตัวหลัก", d: new Date().toISOString().slice(0, 10) } }; const m = refine({ ...S.open.raw }); S.rotation = {}; const f = m.factors.find((x) => x.k === "rotation"); return f ? { h: f.h, a: f.a } : null; });
   check("rotation news lowers the resting side's expected goals", rot && rot.h < 0.95 && rot.a > 1, JSON.stringify(rot));
+  const dc4 = await A.evaluate(() => {
+    const raw = S.open.raw, keep = [S.backtest, S.dc];
+    S.dc = { leagues: { "eng.1": { mu: 1.4, home: 1.25, rho: -0.06 } }, teams: { 359: { att: 1.4, def: 0.8, n: 30, lg: "eng.1" }, 363: { att: 1.1, def: 1, n: 30, lg: "eng.1" } }, rows: 9000 };
+    S.backtest = { pass: false }; const off = refine({ ...raw });
+    S.backtest = { pass: true }; const on = refine({ ...raw }); const neu = refine({ ...raw, neutral: true });
+    [S.backtest, S.dc] = keep;
+    const p = devig([1.5, 4.2, 6.5]), prop = [1 / 1.5, 1 / 4.2, 1 / 6.5], s = prop.reduce((a, b) => a + b);
+    return { off: off.basis, on: on.basis, noPace: !on.factors.some((f) => ["pace", "h2h", "venue", "rating", "calib"].includes(f.k)), base: on.factors[0].label, neutralLower: neu.lh0 < on.lh0, fav: p[0] > prop[0] / s, sum: p.reduce((a, b) => a + b) };
+  });
+  check("เมดูซ่า 4.0: core used only after the backtest passes, replaces the old layers", dc4.off !== "dc" && dc4.on === "dc" && dc4.noPace && dc4.base.includes("4.0"), JSON.stringify(dc4));
+  check("4.0: neutral ground and power margin removal (favourite not under-rated)", dc4.neutralLower && dc4.fav && Math.abs(dc4.sum - 1) < 1e-9);
   const daily = await A.evaluate(() => { const d = writeDaily(getDay(S.date)); return d ? d.summary + d.notes.map((n) => n.text).join(" ") : ""; });
   check("closed daily summary", daily.length > 30 && !/undefined|NaN/.test(daily), daily.slice(0, 80));
   check("Google AI and Google news links for the match", await A.evaluate(() => { const a = [...document.querySelectorAll("#botBody ~ .row a")].map((x) => x.href); return a.some((h) => h.includes("google.com/search?udm=50")) && a.some((h) => h.includes("tbm=nws")) && !document.querySelector("#btnBot"); }));
