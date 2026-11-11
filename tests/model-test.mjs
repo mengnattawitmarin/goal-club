@@ -93,7 +93,8 @@ process.env.CRON_SECRET = "s3";
 const job = (await import(join(root, "api/model.js"))).default;
 const call = async (q, h = {}) => { let out, code = 200; await job({ query: q, headers: h }, { setHeader() {}, status(c) { code = c; return this; }, json(o) { out = { ...o, _code: code }; } }); return out; };
 check("model job refuses without the secret", (await call({}))._code === 401);
-let rep; for (let i = 0; i < 6; i++) { rep = await call({ secret: "s3" }); if (!rep.backfill?.left) break; }
+{ const w = await call({ secret: "wrong" }); check("wrong secret: refused with a Thai hint (length of what was sent only)", w._code === 401 && /ยาว 5 ตัว/.test(w.hint)); }
+let rep; for (let i = 0; i < 6; i++) { rep = await call({ secret: i ? "s3" : " <s3> \n" }); if (!rep.backfill?.left) break; }
 check("backfill fills the history over several runs", rep.backfill.left === 0 && rep.matches > 2000, JSON.stringify(rep.backfill) + " " + rep.matches);
 const bt = JSON.parse(db.get("backtest") || "null");
 check("model job stores a backtest with a pass/fail gate and measured context (rest, motivation)", bt && typeof bt.pass === "boolean" && bt.best && bt.base33 && bt.context?.shortRest && "deadFor" in bt.context, bt ? `gain ${bt.gain} pass ${bt.pass}` : "none");

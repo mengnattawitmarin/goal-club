@@ -18,10 +18,12 @@ export const CONFIGS = [
 
 export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
-  const secret = process.env.CRON_SECRET;
-  const given = req.headers?.authorization === `Bearer ${secret}` || String(req.query?.secret || "") === secret;
+  /* forgiving about what a phone copy-paste adds: spaces, line breaks, quotes, the <> of the example */
+  const clean = (x) => String(x ?? "").trim().replace(/^["'<]+|["'>]+$/g, "").trim();
+  const secret = clean(process.env.CRON_SECRET), q = clean(req.query?.secret);
+  const given = !!secret && (clean(String(req.headers?.authorization || "").replace(/^Bearer\s+/i, "")) === secret || q === secret);
   if (!secret) { res.status(403).json({ error: "ตั้ง CRON_SECRET ใน Vercel ก่อน" }); return; }
-  if (!given) { res.status(401).json({ error: "unauthorized" }); return; }
+  if (!given) { res.status(401).json({ error: "unauthorized", hint: q ? `รหัสที่ส่งมายาว ${q.length} ตัว แต่ไม่ตรงกับ CRON_SECRET ของ deploy นี้ (ถ้าเพิ่งแก้ใน Vercel ต้อง Redeploy ก่อน)` : "ยังไม่ได้ใส่รหัสต่อท้าย ?secret=" }); return; }
   if (!kvEnabled) { res.status(200).json({ error: "no database" }); return; }
   const t0 = Date.now(), report = { at: new Date().toISOString() };
   try {
