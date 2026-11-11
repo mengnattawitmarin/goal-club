@@ -60,6 +60,14 @@ try {
   });
   check("เมดูซ่า 4.0: core used only after the backtest passes, replaces the old layers", dc4.off !== "dc" && dc4.on === "dc" && dc4.noPace && dc4.base.includes("4.0"), JSON.stringify(dc4));
   check("4.0: neutral ground and power margin removal (favourite not under-rated)", dc4.neutralLower && dc4.fav && Math.abs(dc4.sum - 1) < 1e-9);
+  const acc4 = await A.evaluate(() => {
+    const keep = [S.backtest, S.picksAudit, S.liveAudit, S.dc];
+    const mt = (ll) => ({ n: 900, logloss: ll, hit: 0.5, loglossOU: 0.68, draw: [0.25, 0.24], home: [0.45, 0.46], goals: [2.7, 2.75] });
+    S.backtest = { ok: true, pass: true, at: new Date().toISOString(), matches: 9000, base33: mt(1.01), best: mt(0.99), leagues: { "eng.1": { base33: mt(1.0), v40: mt(0.98) } }, context: { shortRest: { n: 400, ratio: 0.95 } } };
+    S.picksAudit = { dog: { n: 40, prob: 0.64, hit: 0.6, fair: 0.58, nF: 40 } }; S.liveAudit = { n: 50, hit: 0.7, exact: 0.3, logloss: 0.7 };
+    const html = medusa4Block(); [S.backtest, S.picksAudit, S.liveAudit, S.dc] = keep; return html.replace(/<[^>]+>/g, " ");
+  });
+  check("4.0 accuracy page: backtest 3.3 vs 4.0, picks vs market by kind, live model", acc4.includes("ทดสอบย้อนหลัง") && acc4.includes("ผ่านเกณฑ์") && acc4.includes("ตลาดให้") && acc4.includes("นาที 55–75") && acc4.includes("ไม่ใช่คำแนะนำให้เดิมพัน"), acc4.slice(0, 160));
   const daily = await A.evaluate(() => { const d = writeDaily(getDay(S.date)); return d ? d.summary + d.notes.map((n) => n.text).join(" ") : ""; });
   check("closed daily summary", daily.length > 30 && !/undefined|NaN/.test(daily), daily.slice(0, 80));
   check("Google AI and Google news links for the match", await A.evaluate(() => { const a = [...document.querySelectorAll("#botBody ~ .row a")].map((x) => x.href); return a.some((h) => h.includes("google.com/search?udm=50")) && a.some((h) => h.includes("tbm=nws")) && !document.querySelector("#btnBot"); }));

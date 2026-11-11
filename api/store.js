@@ -1,7 +1,7 @@
 // Shared data for every device: daily picks (locked at kickoff), pre-match predictions,
 // settled results, pick track record, learned calibration, news carried between days, daily brief.
 import { kv, kvPipe, kvEnabled, parse, readBody } from "../lib/kv.js";
-import { audit, evalsFromHist, finalCalib, picksAudit } from "../lib/audit.js";
+import { audit, evalsFromHist, finalCalib, picksAudit, liveAudit } from "../lib/audit.js";
 import { rateLimit, espnEvent, validPick } from "../lib/guard.js";
 import { LEAGUES } from "../lib/leagues.js";
 
@@ -55,7 +55,8 @@ export default async function handler(req, res) {
       let agg = parse(hist);
       if (!agg) {
         const rows = ((await kv("LRANGE", "hist", "0", "4999")) || []).map((x) => parse(x)).filter(Boolean);
-        agg = { calib: calib(rows), audit: audit(rows), evals: evalsFromHist(rows), finalCal: finalCalib(rows), histN: rows.length };
+        const lrows = ((await kv("LRANGE", "livehist", "0", "1999")) || []).map((x) => parse(x)).filter(Boolean);
+        agg = { calib: calib(rows), audit: audit(rows), evals: evalsFromHist(rows), finalCal: finalCalib(rows), live: liveAudit(lrows), histN: rows.length };
         await kv("SET", "agg", JSON.stringify(agg), "EX", "600");
       }
       const ev = { ...pairs(evals), ...agg.evals }; const evalDays = Object.keys(ev).sort().slice(-21);
@@ -70,6 +71,7 @@ export default async function handler(req, res) {
         histN: agg.histN,
         audit: agg.audit,
         finalCal: agg.finalCal || null,
+        liveAudit: agg.live || null,
         picksAudit: picksAudit((ph || []).map((x) => parse(x))),
         health: { cron: parse(cronlog), backupAt: Number(bakAt) || null, keys: Number(dbsize) || null, guard: true, ai: parse(aist), feeds: parse(feeds) },
         reviews: Object.fromEntries(Object.entries(pairs(reviews)).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 3)),
@@ -133,6 +135,9 @@ export default async function handler(req, res) {
     if (cmds.length) await kvPipe(cmds);
 
     /* full-time scores: settle predictions and picks once */
+    /* เมดูซ่า 4.0 (item 18): first in-play snapshot per match (55'-75'), settled by the daily job into livehist */
+    const live = (Array.isArray(b.live) ? b.live : []).filter((x) => x && ID.test(String(x.id)) && LEAGUES.includes(x.lg) && x.min >= 50 && x.min <= 80 && [x.ph, x.pd, x.pa].every((v) => Number.isFinite(+v) && +v >= 0 && +v <= 1) && Math.abs(+x.ph + +x.pd + +x.pa - 1) < 0.02 && [x.fh, x.fa, x.sh, x.sa].every((v) => Number.isInteger(v) && v >= 0 && v < 20)).slice(0, 20);
+    if (live.length) await kvPipe(live.map((x) => ["SET", `live:${x.id}`, JSON.stringify({ id: String(x.id), lg: x.lg, min: +x.min, ph: +x.ph, pd: +x.pd, pa: +x.pa, fh: x.fh, fa: x.fa, sh: x.sh, sa: x.sa, o25: Number.isFinite(+x.o25) ? +x.o25 : null }), "NX", "EX", String(3 * 86400)]));
     let results = (Array.isArray(b.results) ? b.results : []).filter((r) => r && ID.test(String(r.id)) && Number.isInteger(r.hs) && Number.isInteger(r.as) && r.hs >= 0 && r.as >= 0 && r.hs < 20 && r.as < 20).slice(0, 80);
     let got = [];
     if (results.length) {

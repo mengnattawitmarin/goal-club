@@ -28,6 +28,11 @@ api/store.js       ข้อมูลร่วมทุกเครื่อง 
 api/brief.js       บทวิเคราะห์ประจำวัน: อ่าน RSS BBC/Guardian + ESPN news แล้วเรียก Claude
 api/cron.js        งานประจำวัน (Vercel Cron 05:30 UTC): เก็บผล, ตัดสิน, เรียนรู้ ratings/players, วัดผลเทียบตลาด, ปรับน้ำหนัก ตั้ง CRON_SECRET ได้ถ้าต้องการกันคนอื่นเรียก
 lib/learn.js       สูตรเรียนรู้ของงานประจำวัน (rating, log loss, Brier)
+api/model.js       งานโมเดล เมดูซ่า 4.0 (Vercel Cron 21:40 UTC, ต้องมี CRON_SECRET): เก็บผลย้อนหลัง 2 ฤดูกาลทีละช่วง, ทดสอบย้อนหลัง (walk-forward) 4.0 เทียบ 3.3, fit Dixon-Coles ทุกทีม เรียกเองได้ `/api/model?secret=<CRON_SECRET>` (เรียกซ้ำเพื่อเร่งเก็บย้อนหลัง)
+lib/dc.js          แกน 4.0: Dixon-Coles รวมทุกลีก ถ่วงเวลา หดเข้าค่ากลาง home/rho รายลีก สนามกลาง xG จากการยิง
+lib/backtest.js    walk-forward backtest + เกณฑ์ผ่าน (n≥300, log loss ดีกว่า 3.3 ≥0.005) + ผลของวันพักที่วัดได้
+lib/backfill.js    เก็บผลย้อนหลังจาก ESPN scoreboard รายเดือน (bf:todo, bf:<lg>)
+lib/audit.js       ตรวจจุดพลาด, evalsFromHist (วัดผลจากทุกนัด), finalCalib, picksAudit (เทียบราคาตลาดแยกแบบ), liveAudit
 api/analysis.js    (ทางเลือก ต้องมีคีย์) บอท AI + โหมด polish (นักวิเคราะห์ AI เรียบเรียง ตรวจด้วย lib/grounded.js): ค้นเว็บ (web_search) + ข้อมูล ESPN + ตัวเลขทั้งหมดของแอป แล้วเขียนทัศนะบอล สตรีมเป็น NDJSON (แคช ana2:<id>)
 lib/kv.js          Upstash REST client (หา env ได้ทุก prefix)
 lib/ai.js          เลือก Claude หรือ Grok ตามคีย์ + aiText() สำหรับคำตอบสั้น
@@ -91,6 +96,13 @@ npm test           # build + ทดสอบงานประจำวัน + 
 | `evals` | hash YYYY-MM-DD → JSON | ผลวัดรายวัน `{n, llM, llK, nK, brM, brK, hitM, hitK}` (M=โมเดล K=ตลาด) |
 | `weights` | string JSON | `{market, marketLg{}, factors{k: 0|0.5|1|1.5}, pickCal{ah,ou,1x2}, n, loss, at}` ที่ระบบปรับเอง |
 | `learned` | set | นัดที่งานประจำวันเรียนรู้แล้ว (กันซ้ำ) |
+| `agg` | string JSON, หมดอายุ 10 นาที | แคชผลรวมจาก hist (calib, audit, evals, finalCal, live) ล้างทุกครั้งที่มีผลใหม่ |
+| `dct` | hash teamId → JSON | `[att, def, n, lg]` ความแข็งทีมจาก Dixon-Coles (เมดูซ่า 4.0) |
+| `dcl` | string JSON | `{leagues{mu,home,rho,n}, asOf, cfg, rows}` |
+| `backtest` | string JSON | ผล walk-forward ล่าสุด `{base33, best, configs, gain, pass, leagues, context}` แอปใช้แกน 4.0 เมื่อ `pass` เท่านั้น |
+| `modellog` | string JSON | ผลการรันงานโมเดลล่าสุด |
+| `bf:todo`, `bf:<lg>` | string JSON / hash YYYYMM → rows | งานค้างและผลย้อนหลังที่เก็บแล้ว |
+| `live:<matchId>` → `livehist` | string (3 วัน) → list (2000) | ภาพนิ่งโมเดลสดครั้งแรกช่วงนาที 55–75 ตัดสินโดยงานประจำวัน |
 | `ana2:<matchId>` | string JSON, หมดอายุ 5 วัน | ทัศนะบอลจากบอท `{at, text, sources, bot}` |
 ถ้าไม่ได้ต่อ Redis แอปยังทำงานได้ โดยเก็บข้อมูลเหล่านี้ใน localStorage ของแต่ละเครื่อง (prefix `gc:`)
 

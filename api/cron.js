@@ -68,6 +68,10 @@ async function run(req, res, t0) {
   report.finished = games.length; report.feed = feed;
   if (!games.length) return finish(res, report, t0);
 
+  /* เมดูซ่า 4.0 (item 18): settle in-play snapshots (even for games already learned from) */
+  { const lv = await kvPipe(games.map((g) => ["GET", `live:${g.id}`])); const cmds = [];
+    games.forEach((g, i) => { const x = parse(lv[i]); if (x) cmds.push(["LPUSH", "livehist", JSON.stringify({ ...x, d: g.d, hs: g.hs, as: g.as })], ["DEL", `live:${g.id}`]); });
+    if (cmds.length) { await kvPipe([...cmds, ["LTRIM", "livehist", "0", "1999"]]); report.live = cmds.length / 2; } }
   /* skip games already learned */
   const seen = await kvPipe(games.map((g) => ["SISMEMBER", "learned", g.id]));
   const fresh = games.filter((_, i) => seen[i] !== 1);
@@ -152,7 +156,8 @@ async function run(req, res, t0) {
   try { await backfillAdd(fresh.map((g) => ({ ...g, ...(facts[g.id] || {}) }))); } catch {}
 
   /* 5b. post-match review (เมดูซ่า 3.2): why each clear miss went wrong; rule-based, reworded by AI when available */
-  const missed = fresh.map((g, i) => ({ g, p: parse(preds[i]) })).filter(({ g, p }) => p && p.ph != null && outcome(g.hs, g.as) !== [p.ph, 1 - p.ph - p.pa, p.pa].indexOf(Math.max(p.ph, 1 - p.ph - p.pa, p.pa)))
+  /* เมดูซ่า 4.0 (item 25): only confident calls (50%+) count as clear misses */
+  const missed = fresh.map((g, i) => ({ g, p: parse(preds[i]) })).filter(({ g, p }) => p && p.ph != null && Math.max(p.ph, 1 - p.ph - p.pa, p.pa) >= 0.5 && outcome(g.hs, g.as) !== [p.ph, 1 - p.ph - p.pa, p.pa].indexOf(Math.max(p.ph, 1 - p.ph - p.pa, p.pa)))
     .map(({ g, p }) => ruleReview(g, p, facts[g.id])).sort((a, b) => b.surprise - a.surprise).slice(0, 10);
   if (missed.length) {
     if (aiConfig() && Date.now() - t0 < 30000) {

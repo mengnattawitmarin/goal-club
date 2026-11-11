@@ -65,10 +65,12 @@ await kv("SET", "pred:7001", JSON.stringify({ id: "7001", d: yday, lg: "eng.1", 
 await kv("SET", "pred:7002", JSON.stringify({ id: "7002", d: yday, lg: "eng.1", lh0: 1.9, la0: 0.8, ph: 0.62, pa: 0.15, pH: 1.9, pA: 0.8 }));
 await kv("SET", `picks:${yday}`, JSON.stringify({ 7001: { id: "7001", type: "ah", side: "h", line: -0.5, prob: 0.6, label: "Alpha -0.5", ko: new Date(Date.now() - 864e5).toISOString() } }));
 
+await kv("SET", "live:7001", JSON.stringify({ id: "7001", lg: "eng.1", min: 62, ph: 0.7, pd: 0.2, pa: 0.1, fh: 3, fa: 1, sh: 2, sa: 1, o25: 0.8 }));
 let failed = 0; const check = (n, ok, x = "") => { console.log(`${ok ? "✓" : "✗"} cron: ${n}${x ? "  " + x : ""}`); if (!ok) failed++; };
 const r1 = await run();
 check("collects finished matches", r1.finished === 2, JSON.stringify(r1));
 check("settles stored predictions", r1.settled === 2);
+{ const lh = (await kv("LRANGE", "livehist", "0", "9")).map((x) => JSON.parse(x)); check("item 18: in-play snapshot settled with the final score", r1.live === 1 && lh.length === 1 && lh[0].hs === 3 && !(await kv("GET", "live:7001")), JSON.stringify(lh[0] || null)); }
 check("settles pick", r1.picks === 1 && JSON.parse((await kv("LRANGE", "pickhist", "0", "0"))[0]).res === "win");
 const ratings = await kv("HMGET", "ratings", "1", "2");
 const a = JSON.parse(ratings[0]), b = JSON.parse(ratings[1]);

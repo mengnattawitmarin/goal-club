@@ -304,6 +304,34 @@ function learningBlock(){
     </div>
     ${L?.items?.length?`${sec("บทเรียนล่าสุด",stampTime(L.at))}<div class="card"><ul style="margin:0;padding-left:18px;font-size:13.5px;line-height:1.6">${L.items.map(x=>`<li>${esc(x.replace(/\b([a-z]{3}\.[a-z0-9._]+)\b/g,(m0)=>LEAGUE_NAME[m0]||m0))}</li>`).join("")}</ul></div>`:""}`;
 }
+/* เมดูซ่า 4.0: walk-forward backtest (4.0 core vs the 3.3 base), picks against the market by kind, live model */
+const PICK_KIND={dog:"ต่อ/รอง (ฝั่งรอง)",fav:"ฝั่งต่อ",level:"เสมอ/ปล่อยบอลเสมอ",over:"สูง",under:"ต่ำ",home:"เจ้าบ้านชนะ",away:"ทีมเยือนชนะ",all:"รวมทุกแบบ"};
+function medusa4Block(){
+  const B=S.backtest, P=S.picksAudit, LV=S.liveAudit, f3=x=>x==null?"–":(+x).toFixed(3), out=[];
+  if(B&&B.ok){
+    const on=dc4On(), lgs=Object.entries(B.leagues||{}).sort((a,b)=>b[1].v40.n-a[1].v40.n).slice(0,12), sr=B.context?.shortRest;
+    out.push(`${sec("ทดสอบย้อนหลัง "+MEDUSA.name,`${B.matches} นัด · ${stampTime(B.at)}`)}<div class="card">
+      <div class="row"><b>${on?"แกนใหม่เปิดใช้งานแล้ว":"ยังใช้แกน 3.3 อยู่"}</b><span class="spacer"></span><span class="tag ${B.pass?"value":""}">${B.pass?"ผ่านเกณฑ์":"ยังไม่ผ่าน"}</span></div>
+      <div class="statgrid" style="margin-top:8px"><span class="h">ตัวชี้วัด (${B.best.n} นัด)</span><span class="h">3.3</span><span class="h">4.0</span>
+        <span>log loss</span><span class="num">${f3(B.base33.logloss)}</span><span class="num">${f3(B.best.logloss)}</span>
+        <span>ทายผลถูก</span><span class="num">${pct(B.base33.hit)}</span><span class="num">${pct(B.best.hit)}</span>
+        <span>log loss สูง/ต่ำ 2.5</span><span class="num">${f3(B.base33.loglossOU)}</span><span class="num">${f3(B.best.loglossOU)}</span>
+        <span>เสมอ คาด/จริง</span><span class="num">${pct(B.base33.draw[0])}/${pct(B.base33.draw[1])}</span><span class="num">${pct(B.best.draw[0])}/${pct(B.best.draw[1])}</span>
+        <span>ประตู คาด/จริง</span><span class="num">${B.base33.goals[0]}/${B.base33.goals[1]}</span><span class="num">${B.best.goals[0]}/${B.best.goals[1]}</span></div>
+      ${lgs.length?`<div class="statgrid" style="margin-top:10px;grid-template-columns:minmax(0,1fr) auto auto auto"><span class="h">ลีก</span><span class="h">นัด</span><span class="h">3.3</span><span class="h">4.0</span>
+        ${lgs.map(([lg,v])=>`<span>${esc(LEAGUE_NAME[lg]||lg)}</span><span class="num">${v.v40.n}</span><span class="num">${f3(v.base33.logloss)}</span><span class="num ${v.v40.logloss<v.base33.logloss?"green":"lossc"}">${f3(v.v40.logloss)}</span>`).join("")}</div>`:""}
+      <p class="note">ทายทีละ 2 สัปดาห์โดยใช้เฉพาะผลก่อนวันนั้น · ผ่านเกณฑ์เมื่อ log loss ดีกว่า 3.3 อย่างน้อย 0.005 จาก 300 นัดขึ้นไป แอปจึงสลับมาใช้แกนใหม่เอง${sr?.n?` · ทีมที่พักไม่เกิน 3 วันยิงได้ ${Math.round(sr.ratio*100)}% ของที่คาด (${sr.n} ครั้ง)`:""}${B.partial?" · รอบนี้ทดสอบไม่ครบทุกช่วงเพราะเวลาหมด":""}</p></div>`);
+  } else if(S.modelLog){
+    out.push(`${sec("ทดสอบย้อนหลัง "+MEDUSA.name)}<div class="card muted">กำลังเก็บผลย้อนหลัง 2 ฤดูกาล${S.modelLog.backfill?` · เหลืออีก ${S.modelLog.backfill.left} ช่วง`:""} · ระหว่างนี้แอปใช้แกน 3.3 ไปก่อน</div>`);
+  }
+  const kinds=P?Object.entries(P).filter(([k,v])=>v&&v.n>=5):[];
+  if(kinds.length) out.push(`${sec("ฟันธงเทียบราคาตลาด","แยกตามแบบ")}<div class="card"><div class="statgrid" style="grid-template-columns:minmax(0,1fr) auto auto auto auto"><span class="h">แบบ</span><span class="h">นัด</span><span class="h">โมเดลให้</span><span class="h">ตลาดให้</span><span class="h">เข้าจริง</span>
+    ${kinds.map(([k,v])=>`<span>${esc(PICK_KIND[k]||k)}</span><span class="num">${v.n}</span><span class="num">${pct(v.prob)}</span><span class="num">${v.fair!=null?pct(v.fair):"–"}</span><span class="num ${v.fair!=null?(v.hit>v.fair?"green":"lossc"):""}">${pct(v.hit)}</span>`).join("")}</div>
+    <p class="note">ถ้า "เข้าจริง" สูงกว่า "ตลาดให้" ต่อเนื่องจากหลายร้อยนัด จึงพอบอกได้ว่าโมเดลเห็นอะไรที่ตลาดไม่เห็น · ไม่ใช่คำแนะนำให้เดิมพัน</p></div>`);
+  if(LV&&LV.n>=20) out.push(`${sec("วิเคราะห์สด นาที 55–75",`${LV.n} นัด`)}<div class="card"><div class="statgrid"><span class="h">ตัวชี้วัด</span><span class="h">ค่า</span><span class="h"></span>
+    <span>ทายผลถูก</span><span class="num">${pct(LV.hit)}</span><span></span><span>สกอร์จบตรง</span><span class="num">${pct(LV.exact)}</span><span></span><span>log loss</span><span class="num">${f3(LV.logloss)}</span><span></span></div></div>`);
+  return out.join("");
+}
 function accuracyView(){
   const E=S.evals||{}, days=Object.keys(E).sort().reverse(), R=pickRecord(30);
   const tot=days.reduce((a,d)=>{ const e=E[d]; for(const k in e) a[k]=(a[k]||0)+(e[k]||0); return a; },{});
@@ -326,6 +354,7 @@ function accuracyView(){
         <span>Brier score เฉลี่ย</span><span class="num">${f2(avg(tot.brM,tot.n))}</span><span class="num">${f2(avg(tot.brK,tot.nK))}</span>
         <span>ทายผลถูก (เลือกฝั่งที่ % สูงสุด)</span><span class="num">${tot.n?pct(tot.hitM/tot.n):"–"}</span><span class="num">${tot.nK?pct(tot.hitK/tot.nK):"–"}</span></div>
       <p class="note">น้ำหนักราคาตลาดในโมเดลตอนนี้ ${Math.round((S.weights?.market??.35)*100)}%${S.weights?.n?` ปรับเองล่าสุด ${stampTime(S.weights.at)} จากผลจริง ${S.weights.n} นัด`:" (ค่าเริ่มต้น ระบบจะปรับเองเมื่อสะสมครบ 120 นัด)"}</p></div>
+    ${medusa4Block()}
     ${reviewBlock()}
     ${auditBlock()}
     ${learningBlock()}
@@ -362,6 +391,7 @@ function healthItem(){
   const rows=[
     ["ฟีด ESPN", F?(F.ok?`<span class="green">ปกติ</span> · ${F.events} คู่${F.bad?` · ผิดรูปแบบ ${F.bad}`:""}${F.failed?` · ดึงไม่ได้ ${F.failed}/${F.leagues} ลีก`:""}`:`<span style="color:var(--loss)">ผิดปกติ</span> · ดึงไม่ได้ ${F.failed}/${F.leagues} ลีก · ผิดรูปแบบ ${F.bad}`):"ยังไม่ได้ดึง"],
     ["งานเรียนรู้ประจำวัน", !Shared.on?"ต้องเปิดข้อมูลร่วม":c?`${c.ok?`<span class="green">รันแล้ว</span>`:`<span style="color:var(--loss)">ล้มเหลว</span>`} ${stampTime(c.at)}${c.ok?` · ผลจบ ${c.finished??0} คู่ · เรียนรู้ใหม่ ${c.settled??0}`:""}`:"ยังไม่มีบันทึก"],
+    ["งานโมเดล 4.0", !Shared.on?"ต้องเปิดข้อมูลร่วม":S.modelLog?`${S.modelLog.error?`<span style="color:var(--loss)">ล้มเหลว</span> · ${esc(S.modelLog.error)}`:`<span class="green">รันแล้ว</span>`} ${stampTime(S.modelLog.at)} · ผลย้อนหลัง ${S.modelLog.matches||0} นัด${S.modelLog.backfill?.left?` · เก็บย้อนหลังเหลือ ${S.modelLog.backfill.left} ช่วง`:""} · ${dc4On()?"ใช้แกน 4.0":"ใช้แกน 3.3 (รอผลทดสอบย้อนหลังผ่าน)"}`:"ยังไม่เคยรัน"],
     ["สำรองข้อมูล", H?.backupAt?`สำรองล่าสุด ${stampTime(new Date(H.backupAt).toISOString())} (ทุกสัปดาห์)`:Shared.on?"ยังไม่เคยสำรอง (งานประจำวันจะสำรองให้)":"–"],
     ["การป้องกันข้อมูลปลอม", H?.guard?`<span class="green">เปิด</span> · ผลจริงและทีเด็ดตรวจกับ ESPN ก่อนบันทึก`:"–"],
     ["AI หลังบ้าน", !H?"–":H.ai?(H.ai.ai?[H.ai]:Object.values(H.ai)).map(r=>`${r.ok?`<span class="green">ใช้งานได้</span>`:`<span style="color:var(--loss)">มีปัญหา</span>`} · ${esc(r.ai||"")} · ${stampTime(r.at)}${!r.ok&&r.err?` · ${esc(r.err.slice(0,140))}`:""}`).join("<br>"):"ยังไม่ได้ใช้ (ตั้ง GEMINI_API_KEY ฟรีใน Vercel)"],

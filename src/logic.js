@@ -228,9 +228,13 @@ function refine(m){
   const rh=restDays(m.ds?.hf,m.ko), ra=restDays(m.ds?.af,m.ko);
   if(rh!=null&&ra!=null){
     const bh=lh, ba=la;
-    if(rh<=3&&ra>=5){ lh=clamp(lh*.95,0.15,4.2); la=clamp(la*1.03,0.15,4.2); }
+    /* เมดูซ่า 4.0 (item 17): with the backtest's measured effect of a short rest (300+ cases, 3%+ away from even) use that;
+       otherwise the 3.3 rule, whose learned weight is currently off */
+    const sr=S?.backtest?.context?.shortRest, eff=sr?.n>=300&&sr.ratio&&Math.abs(sr.ratio-1)>=.03?clamp(sr.ratio,.85,1.1):null;
+    if(eff){ if(rh<=3) lh=clamp(lh*eff,0.15,4.2); if(ra<=3) la=clamp(la*eff,0.15,4.2); }
+    else if(rh<=3&&ra>=5){ lh=clamp(lh*.95,0.15,4.2); la=clamp(la*1.03,0.15,4.2); }
     else if(ra<=3&&rh>=5){ la=clamp(la*.95,0.15,4.2); lh=clamp(lh*1.03,0.15,4.2); }
-    push("rest","วันพักและความล้า",`${m.h.short} พัก ${rh} วัน · ${m.a.short} พัก ${ra} วัน${(rh<=3&&ra>=5)||(ra<=3&&rh>=5)?" ทีมที่พักน้อยถูกลดประตูที่คาด":" ไม่ต่างพอให้ปรับ"}`,bh,ba);
+    push(eff?"rest4":"rest","วันพักและความล้า",`${m.h.short} พัก ${rh} วัน · ${m.a.short} พัก ${ra} วัน${eff?` · จากผลย้อนหลัง ${sr.n} ครั้ง ทีมที่พัก 3 วันหรือน้อยกว่ายิงได้ ${Math.round(eff*100)}% ของที่คาด`:(rh<=3&&ra>=5)||(ra<=3&&rh>=5)?" ทีมที่พักน้อยถูกลดประตูที่คาด":" ไม่ต่างพอให้ปรับ"}`,bh,ba);
   }
   /* confirmed line-ups: a leading scorer missing from the XI */
   const lu=m.ds?.lineup;
@@ -554,7 +558,7 @@ async function syncPull(date){
     const j=await getJson(`/api/store?date=${date}${teams?`&teams=${teams}`:""}`,8000);
     if(!j?.enabled) return false;
     Shared.on=true; Shared.picks[date]=j.picks||{}; Shared.pickHist=j.pickHist||[]; Shared.histN=j.histN||0; Shared.pulled[date]=Date.now();
-    if(j.calib) S.calib=j.calib; if(j.audit) S.audit=j.audit; if(j.health) S.health=j.health; if(j.reviews) S.reviews=j.reviews; if(j.rotation) S.rotation=j.rotation; if(j.dc) S.dc=j.dc; if(j.finalCal) S.finalCal=j.finalCal; if("backtest" in j) S.backtest=j.backtest; if(j.modelLog) S.modelLog=j.modelLog;
+    if(j.calib) S.calib=j.calib; if(j.audit) S.audit=j.audit; if(j.health) S.health=j.health; if(j.reviews) S.reviews=j.reviews; if(j.rotation) S.rotation=j.rotation; if(j.dc) S.dc=j.dc; if(j.finalCal) S.finalCal=j.finalCal; if("backtest" in j) S.backtest=j.backtest; if(j.modelLog) S.modelLog=j.modelLog; if(j.picksAudit) S.picksAudit=j.picksAudit; if(j.liveAudit) S.liveAudit=j.liveAudit;
     if(j.newsPlayer) S.newsPlayer=j.newsPlayer; if(j.lessons) S.lessons=j.lessons;
     S.ratings={...(S.ratings||{}),...(j.ratings||{})}; S.lgavg={...(S.lgavg||{}),...(j.lgavg||{})}; if(j.weights) S.weights=j.weights; if(j.evals) S.evals=j.evals;
     if(day?.matches?.length) S.days[date]=prepare({...day,matches:day.matches.map(x=>x.raw||x)});
@@ -669,21 +673,24 @@ function verdict(m){
 }
 
 /* ---------- learning from finished matches ---------- */
+const sentLive={};
 const sentPred={}, sentRes={};
 function recordDay(date){
   const day=S.days[date]; if(!day?.matches?.length || day.source==="snapshot") return;
   freezeCalls(day);
   if(Shared.on){
-    const now=Date.now(), preds=[], results=[];
+    const now=Date.now(), preds=[], results=[], live=[];
     for(const m of day.matches){
       if(m.st==="pre" && m.lh0!=null && (!sentPred[m.id] || now-sentPred[m.id]>30*60e3)){ sentPred[m.id]=now; const mk=m.mk?.home&&m.mk.draw&&m.mk.away?devig([m.mk.home.decimal,m.mk.draw.decimal,m.mk.away.decimal]):null;
         /* raw (before the 1X2 temperature) so the temperature is always learned from the same footing */
         preds.push({id:m.id,lg:m.lg,lh0:+m.lh0.toFixed(3),la0:+m.la0.toFixed(3),ph:+(m.sum.rawH??m.sum.home).toFixed(3),pa:+(m.sum.rawA??m.sum.away).toFixed(3),ko:m.ko,hid:m.h.id,aid:m.a.id,
           pH:+m.pH.toFixed(3),pA:+m.pA.toFixed(3),bH:+m.bH.toFixed(3),bA:+m.bA.toFixed(3),
           mv:MEDUSA.v,lhF:+m.lh.toFixed(3),laF:+m.la.toFixed(3),o25:+m.sum.over25.toFixed(4),dc:m.basis==="dc"?1:0,fr:Object.fromEntries((m.factors||[]).filter(f=>!f.base&&f.k!=="market"&&f.rh>0&&f.ra>0).map(f=>[f.k,[+Math.log(f.rh).toFixed(4),+Math.log(f.ra).toFixed(4)]])),mkH:m.mkt?+m.mkt.lh.toFixed(3):undefined,mkA:m.mkt?+m.mkt.la.toFixed(3):undefined,mh:mk?.[0],md:mk?.[1],ma:mk?.[2]}); }
+      /* เมดูซ่า 4.0 (item 18): one in-play snapshot per match around the hour mark, so the live model gets measured */
+      if(m.st==="in" && m.live && m.live.min>=55 && m.live.min<=75 && !sentLive[m.id]){ sentLive[m.id]=1; const L=m.live; live.push({id:m.id,lg:m.lg,min:L.min,ph:+L.ph.toFixed(3),pd:+L.pd.toFixed(3),pa:+L.pa.toFixed(3),fh:L.final.h,fa:L.final.a,sh:m.h.score,sa:m.a.score,o25:+L.over25.toFixed(3)}); }
       if(m.st==="post" && m.h.score!=null && !sentRes[m.id]){ sentRes[m.id]=1; results.push({id:m.id,hs:m.h.score,as:m.a.score,match:`${m.h.short} ${m.h.score}–${m.a.score} ${m.a.short}`}); }
     }
-    if(preds.length||results.length) syncPush({date,preds,results}).then(()=>{ if(results.length) syncPull(date).then(ok=>{ if(ok&&!S.open) render(); }); });
+    if(preds.length||results.length||live.length) syncPush({date,preds,results,live}).then(()=>{ if(results.length) syncPull(date).then(ok=>{ if(ok&&!S.open) render(); }); });
     return;
   }
   const pred=store.get("pred",{}), hist=store.get("hist",[]), seen=new Set(hist.map(h=>h.id));

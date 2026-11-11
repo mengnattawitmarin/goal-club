@@ -65,7 +65,7 @@ check("backfill parses finished games with neutral ground and shots", rows.lengt
 const plan = backfillPlan(Date.parse("2026-11-11"));
 check("backfill plan covers two seasons for every league in month chunks", plan.length >= 24 * 23 && plan.every((x) => /^[a-z.\d_]+\|\d{8}-\d{8}$/.test(x)), String(plan.length));
 
-const { evalsFromHist, finalCalib, picksAudit } = await import(join(root, "lib/audit.js"));
+const { evalsFromHist, finalCalib, picksAudit, liveAudit } = await import(join(root, "lib/audit.js"));
 const hist = M.slice(0, 400).map((m, i) => ({ d: m.d, ph: 0.45, pa: 0.3, mh: 0.46, md: 0.26, ma: 0.28, hs: m.hs, as: m.as, lhF: 1.5, laF: 1.2 }));
 const ev = evalsFromHist(hist); const evN = Object.values(ev).reduce((s, e) => s + e.n, 0);
 check("item 19: daily evaluation counts every settled match (not only the daily job's)", evN === 400 && Object.values(ev).every((e) => e.nK === e.n), String(evN));
@@ -73,6 +73,8 @@ const fc = finalCalib(hist); check("final calibration: goal level and 1X2 temper
 const pa = picksAudit([{ res: "win", prob: 0.66, fair: 0.6, kind: "dog" }, { res: "lose", prob: 0.64, fair: 0.62, kind: "dog" }, { res: "win", prob: 0.7, kind: "under" }]);
 check("picks judged against the market and split by kind", pa.all.n === 3 && pa.dog.n === 2 && pa.dog.hit === 0.5 && pa.dog.fair === 0.61 && pa.under.fair === null, JSON.stringify(pa));
 
+const la = liveAudit([{ ph: 0.7, pd: 0.2, pa: 0.1, fh: 2, fa: 1, hs: 2, as: 1, o25: 0.8 }, { ph: 0.2, pd: 0.6, pa: 0.2, fh: 1, fa: 1, hs: 1, as: 2, o25: 0.5 }]);
+check("item 18: live model scored (log loss, hit, exact score)", la.n === 2 && la.hit === 0.5 && la.exact === 0.5 && la.logloss > 0, JSON.stringify(la));
 const realFetch = globalThis.fetch;
 const byMonth = {}; for (const m of M.filter((m) => m.lg !== "uefa.europa")) { const k = `${m.lg}|${m.d.slice(0, 7).replace("-", "")}`; (byMonth[k] = byMonth[k] || []).push(m); }
 globalThis.fetch = async (url, opts) => {
