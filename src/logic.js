@@ -236,6 +236,18 @@ function refine(m){
     else if(ra<=3&&rh>=5){ la=clamp(la*.95,0.15,4.2); lh=clamp(lh*1.03,0.15,4.2); }
     push(eff?"rest4":"rest","วันพักและความล้า",`${m.h.short} พัก ${rh} วัน · ${m.a.short} พัก ${ra} วัน${eff?` · จากผลย้อนหลัง ${sr.n} ครั้ง ทีมที่พัก 3 วันหรือน้อยกว่ายิงได้ ${Math.round(eff*100)}% ของที่คาด`:(rh<=3&&ra>=5)||(ra<=3&&rh>=5)?" ทีมที่พักน้อยถูกลดประตูที่คาด":" ไม่ต่างพอให้ปรับ"}`,bh,ba);
   }
+  /* เมดูซ่า 4.0 (item 17, motivation): a side with nothing left to play for late in the season (cannot reach the top 4,
+     cannot be caught by the relegation places). Used only with the backtest's measured effect (200+ cases, 3%+ from even) */
+  { const df=S?.backtest?.context?.deadFor, da=S?.backtest?.context?.deadAgainst, T=m.tinfo;
+    const ef=df?.n>=200&&df.ratio&&Math.abs(df.ratio-1)>=.03?clamp(df.ratio,.85,1.15):1, ea=da?.n>=200&&da.ratio&&Math.abs(da.ratio-1)>=.03?clamp(da.ratio,.85,1.15):1;
+    const dh=deadRubber(T,m.h), dA=deadRubber(T,m.a);
+    if(T&&(ef!==1||ea!==1)&&(dh||dA)&&!m.neutral){
+      const bh=lh, ba=la;
+      if(dh){ lh=clamp(lh*ef,0.15,4.2); la=clamp(la*ea,0.15,4.2); }
+      if(dA){ la=clamp(la*ef,0.15,4.2); lh=clamp(lh*ea,0.15,4.2); }
+      push("motiv","แรงจูงใจท้ายฤดูกาล",`${[dh&&m.h.short,dA&&m.a.short].filter(Boolean).join(" และ ")} ไม่มีลุ้นทั้งพื้นที่ยุโรปและหนีตกชั้นแล้ว · จากผลย้อนหลัง ${df.n} ครั้ง ทีมแบบนี้ยิงได้ ${Math.round(df.ratio*100)}% เสีย ${Math.round(da.ratio*100)}% ของที่คาด`,bh,ba);
+    }
+  }
   /* confirmed line-ups: a leading scorer missing from the XI */
   const lu=m.ds?.lineup;
   if(lu?.known){
@@ -347,11 +359,17 @@ function refine(m){
 }
 
 /* ---------- market-implied expected goals: fit (λh, λa) to de-vigged 1X2 (+ total line) ---------- */
+function openFair(m){ const o=m.mk?.open; const f=o&&devig([o.home.decimal,o.draw.decimal,o.away.decimal]); return f?{oh:+f[0].toFixed(4),od:+f[1].toFixed(4),oa:+f[2].toFixed(4)}:{}; }
+/* same rule as deadRubber() in lib/backtest.js: 10 games or fewer left, cannot reach 4th, cannot be caught by 3rd-from-bottom */
+function deadRubber(T,t){ if(!T||t?.points==null||t.played==null) return false; const left=2*(T.n-1)-t.played; return left>0&&left<=10&&t.points+3*left<T.top&&t.points>T.drop+3*left; }
 function marketLambdas(m, modelTotal){
   const mk=m.mk; if(!mk?.home||!mk?.draw||!mk?.away) return null;
   const f=devig([mk.home.decimal,mk.draw.decimal,mk.away.decimal]); if(!f) return null;
   let tOver=null, tLine=null;
   if(mk.total){ const t=devig([mk.total.over.decimal,mk.total.under.decimal]); if(t){ tOver=t[0]; tLine=mk.total.line; } }
+  /* item 14: the Asian handicap price says how far apart the teams are; use it as a third target */
+  let sCover=null, sLine=null;
+  if(mk.spread){ const t=devig([mk.spread.home.decimal,mk.spread.away.decimal]); if(t){ sCover=t[0]; sLine=mk.spread.line; } }
   const pm=l=>{ const v=[]; let p=Math.exp(-l); for(let k=0;k<=9;k++){ v.push(p); p*=l/(k+1); } return v; };
   const cache=new Map(); const P=l=>{ const k=l.toFixed(3); if(!cache.has(k)) cache.set(k,pm(l)); return cache.get(k); };
   const err=(h,a)=>{
@@ -360,12 +378,13 @@ function marketLambdas(m, modelTotal){
     for(let i=0;i<10;i++) for(let j=0;j<10;j++){ const p=x[i]*y[j]; if(i>j) ph+=p; else if(i===j) pd+=p; else pa+=p; tot[i+j]+=p; }
     let e=(ph-f[0])**2+(pd-f[1])**2+(pa-f[2])**2;
     if(tOver!=null){ let w=0,l=0; for(const part of atomic(tLine)) tot.forEach((p,t)=>{ if(t>part.line+1e-9) w+=p*part.w; else if(t<part.line-1e-9) l+=p*part.w; }); e+=(((w+l)>0?w/(w+l):.5)-tOver)**2; }
+    if(sCover!=null){ let w=0,l=0; for(const part of atomic(sLine)) for(let i=0;i<10;i++) for(let j=0;j<10;j++){ const d=i+part.line-j, p=x[i]*y[j]*part.w; if(d>1e-9) w+=p; else if(d<-1e-9) l+=p; } e+=.5*(((w+l)>0?w/(w+l):.5)-sCover)**2; }
     return e;
   };
   let best={e:9,lh:1,la:1};
   for(let h=.2;h<=3.6;h+=.1) for(let a=.2;a<=3.6;a+=.1){ const e=err(h,a); if(e<best.e) best={e,lh:h,la:a}; }
   const c=best; for(let h=c.lh-.1;h<=c.lh+.1;h+=.02) for(let a=c.la-.1;a<=c.la+.1;a+=.02){ if(h<.1||a<.1) continue; const e=err(h,a); if(e<best.e) best={e,lh:h,la:a}; }
-  return best.e<.01 ? {lh:best.lh, la:best.la, fromTotal:tOver!=null} : null;
+  return best.e<.012 ? {lh:best.lh, la:best.la, fromTotal:tOver!=null, fromSpread:sCover!=null} : null;
 }
 
 /* ---------- in-play stats: shots, shots on target, possession, red cards (from scoreboard or summary) ---------- */
@@ -558,7 +577,7 @@ async function syncPull(date){
     const j=await getJson(`/api/store?date=${date}${teams?`&teams=${teams}`:""}`,8000);
     if(!j?.enabled) return false;
     Shared.on=true; Shared.picks[date]=j.picks||{}; Shared.pickHist=j.pickHist||[]; Shared.histN=j.histN||0; Shared.pulled[date]=Date.now();
-    if(j.calib) S.calib=j.calib; if(j.audit) S.audit=j.audit; if(j.health) S.health=j.health; if(j.reviews) S.reviews=j.reviews; if(j.rotation) S.rotation=j.rotation; if(j.dc) S.dc=j.dc; if(j.finalCal) S.finalCal=j.finalCal; if("backtest" in j) S.backtest=j.backtest; if(j.modelLog) S.modelLog=j.modelLog; if(j.picksAudit) S.picksAudit=j.picksAudit; if(j.liveAudit) S.liveAudit=j.liveAudit;
+    if(j.calib) S.calib=j.calib; if(j.audit) S.audit=j.audit; if(j.health) S.health=j.health; if(j.reviews) S.reviews=j.reviews; if(j.rotation) S.rotation=j.rotation; if(j.dc) S.dc=j.dc; if(j.finalCal) S.finalCal=j.finalCal; if("backtest" in j) S.backtest=j.backtest; if(j.modelLog) S.modelLog=j.modelLog; if(j.picksAudit) S.picksAudit=j.picksAudit; if(j.liveAudit) S.liveAudit=j.liveAudit; if(j.lineMove) S.lineMove=j.lineMove;
     if(j.newsPlayer) S.newsPlayer=j.newsPlayer; if(j.lessons) S.lessons=j.lessons;
     S.ratings={...(S.ratings||{}),...(j.ratings||{})}; S.lgavg={...(S.lgavg||{}),...(j.lgavg||{})}; if(j.weights) S.weights=j.weights; if(j.evals) S.evals=j.evals;
     if(day?.matches?.length) S.days[date]=prepare({...day,matches:day.matches.map(x=>x.raw||x)});
@@ -685,7 +704,7 @@ function recordDay(date){
         /* raw (before the 1X2 temperature) so the temperature is always learned from the same footing */
         preds.push({id:m.id,lg:m.lg,lh0:+m.lh0.toFixed(3),la0:+m.la0.toFixed(3),ph:+(m.sum.rawH??m.sum.home).toFixed(3),pa:+(m.sum.rawA??m.sum.away).toFixed(3),ko:m.ko,hid:m.h.id,aid:m.a.id,
           pH:+m.pH.toFixed(3),pA:+m.pA.toFixed(3),bH:+m.bH.toFixed(3),bA:+m.bA.toFixed(3),
-          mv:MEDUSA.v,lhF:+m.lh.toFixed(3),laF:+m.la.toFixed(3),o25:+m.sum.over25.toFixed(4),dc:m.basis==="dc"?1:0,fr:Object.fromEntries((m.factors||[]).filter(f=>!f.base&&f.k!=="market"&&f.rh>0&&f.ra>0).map(f=>[f.k,[+Math.log(f.rh).toFixed(4),+Math.log(f.ra).toFixed(4)]])),mkH:m.mkt?+m.mkt.lh.toFixed(3):undefined,mkA:m.mkt?+m.mkt.la.toFixed(3):undefined,mh:mk?.[0],md:mk?.[1],ma:mk?.[2]}); }
+          mv:MEDUSA.v,lhF:+m.lh.toFixed(3),laF:+m.la.toFixed(3),o25:+m.sum.over25.toFixed(4),dc:m.basis==="dc"?1:0,fr:Object.fromEntries((m.factors||[]).filter(f=>!f.base&&f.k!=="market"&&f.rh>0&&f.ra>0).map(f=>[f.k,[+Math.log(f.rh).toFixed(4),+Math.log(f.ra).toFixed(4)]])),mkH:m.mkt?+m.mkt.lh.toFixed(3):undefined,mkA:m.mkt?+m.mkt.la.toFixed(3):undefined,mh:mk?.[0],md:mk?.[1],ma:mk?.[2],...openFair(m)}); }
       /* เมดูซ่า 4.0 (item 18): one in-play snapshot per match around the hour mark, so the live model gets measured */
       if(m.st==="in" && m.live && m.live.min>=55 && m.live.min<=75 && !sentLive[m.id]){ sentLive[m.id]=1; const L=m.live; live.push({id:m.id,lg:m.lg,min:L.min,ph:+L.ph.toFixed(3),pd:+L.pd.toFixed(3),pa:+L.pa.toFixed(3),fh:L.final.h,fa:L.final.a,sh:m.h.score,sa:m.a.score,o25:+L.over25.toFixed(3)}); }
       if(m.st==="post" && m.h.score!=null && !sentRes[m.id]){ sentRes[m.id]=1; results.push({id:m.id,hs:m.h.score,as:m.a.score,match:`${m.h.short} ${m.h.score}–${m.a.score} ${m.a.short}`}); }
@@ -770,6 +789,7 @@ async function espn(path, ms=6000){
 }
 function readAmerican(v){ const n=typeof v==="number"?v:Number(String(v??"").replace("+","").trim()); return Number.isFinite(n)&&n!==0?n:null; }
 function amToDec(a){ if(a==null) return null; const d=a>0?1+a/100:1+100/Math.abs(a); return d>1.01?d:null; }
+function openOf(side){ const d=amToDec(readAmerican(side?.open?.odds)); return d?{decimal:d}:null; }
 function priceOf(side){ const n=side?.close?.odds!=null?side.close:side?.open; const d=amToDec(readAmerican(n?.odds)); return d?{decimal:d}:null; }
 function lineOf(side){ const n=side?.close?.line!=null?side.close:side?.open; const v=Number(String(n?.line??"").replace(/[^\d.+-]/g,"")); return n?.line!=null&&Number.isFinite(v)?v:null; }
 function parseMarket(o){
@@ -779,6 +799,8 @@ function parseMarket(o){
   const tl=lineOf(o.total?.over)??lineOf(o.total?.under), ov=priceOf(o.total?.over), un=priceOf(o.total?.under);
   const mk={book:o.provider?.displayName||o.provider?.name||"ตลาด",home,draw,away,
     spread: sl!=null&&sh&&sa?{line:sl,home:sh,away:sa}:null, total: tl!=null&&ov&&un?{line:tl,over:ov,under:un}:null};
+  /* เมดูซ่า 4.0 (item 14): the opening 1X2 price, kept to measure line movement against results */
+  { const oh=openOf(o.moneyline?.home), od=openOf(o.moneyline?.draw), oa=openOf(o.moneyline?.away); if(oh&&od&&oa&&o.moneyline?.home?.close?.odds!=null) mk.open={home:oh,draw:od,away:oa}; }
   return (home||away||draw||mk.spread||mk.total)?mk:null;
 }
 const tableCache=new Map(); // slug -> {at, value}
@@ -795,7 +817,10 @@ async function loadTableRaw(slug){
       if(!id||played==null||gf==null||ga==null||rows.has(id)) continue;
       rows.set(id,{played,gf,ga,points:st("points"),rank:st("rank")}); g+=gf; pl+=played;
     }
-    return rows.size?{rows,avg:pl?g/pl:null}:null;
+    /* item 17: what the table looks like at the top-4 and relegation lines (for the motivation factor) */
+    const pts=[...rows.values()].map(r=>r.points).filter(v=>v!=null).sort((a,b)=>b-a);
+    const tinfo=pts.length>=10&&pts.length===rows.size?{n:pts.length,top:pts[3],drop:pts[pts.length-3]}:null;
+    return rows.size?{rows,avg:pl?g/pl:null,tinfo}:null;
   }catch{ return null; }
 }
 async function pool(items,limit,fn){ const out=new Array(items.length); let i=0; await Promise.all(Array.from({length:Math.min(limit,items.length)},async()=>{ while(i<items.length){ const k=i++; out[k]=await fn(items[k]); } })); return out; }
@@ -815,7 +840,7 @@ async function loadLiveDay(date, onlySlugs){
         const h=side(H), a=side(A), base=baseLambdas(h,a,tbl?.avg??null);
         const name=c?.status?.type?.name||"", state=c?.status?.type?.state||"pre";
         const clock = state!=="in" ? null : name.includes("HALFTIME") ? "พักครึ่ง" : name.includes("PENALT") ? "ยิงจุดโทษ" : (c?.status?.displayClock||"สด");
-        return {id:ev.id,lg:slug,ko:ev.date,st:name.includes("POSTPONED")?"pp":name.includes("CANCEL")?"pp":state,clock,h,a,lh:base.lh,la:base.la,basis:base.basis,mk:parseMarket(c?.odds?.[0]),ds:null,live:true,neutral:!!c?.neutralSite,lgAvg:tbl?.avg??null,
+        return {id:ev.id,lg:slug,ko:ev.date,st:name.includes("POSTPONED")?"pp":name.includes("CANCEL")?"pp":state,clock,h,a,lh:base.lh,la:base.la,basis:base.basis,mk:parseMarket(c?.odds?.[0]),ds:null,live:true,neutral:!!c?.neutralSite,lgAvg:tbl?.avg??null,tinfo:tbl?.tinfo||null,
           ls:state==="pre"?null:liveStatsOf(c?.competitors||[],c?.details||[],H,A)};
       }).filter(Boolean);
     }catch{ feed.failed++; return null; }

@@ -271,7 +271,7 @@ function viewAnalyze(){
   if(S.mode==="acc") body=accuracyView();
   return `<div style="margin-bottom:12px">${seg("mode",[["picks","ฟันธง"],["edge","เทียบราคา"],["goals","สกอร์"],["acc","ความแม่น"]],S.mode)}</div>${body}`;
 }
-const FACTOR_NAME={h2h:"ผลที่เคยเจอกัน",pace:"เกมรุก-รับ 5 นัด",venue:"ฟอร์มในบ้าน/นอกบ้าน",rest:"วันพัก",lineup:"ตัวจริง",weather:"สภาพอากาศ",news:"ข่าววันนี้",newsOld:"ข่าวที่ผ่านมา",trend:"แนวโน้มลีก",rating:"ความแข็งของทีม",calib:"เรียนรู้จากผลจริง"};
+const FACTOR_NAME={motiv:"แรงจูงใจท้ายฤดูกาล",rest4:"วันพัก (ผลที่วัดได้)",h2h:"ผลที่เคยเจอกัน",pace:"เกมรุก-รับ 5 นัด",venue:"ฟอร์มในบ้าน/นอกบ้าน",rest:"วันพัก",lineup:"ตัวจริง",weather:"สภาพอากาศ",news:"ข่าววันนี้",newsOld:"ข่าวที่ผ่านมา",trend:"แนวโน้มลีก",rating:"ความแข็งของทีม",calib:"เรียนรู้จากผลจริง"};
 function reviewBlock(){
   const R=Object.entries(S.reviews||{}); if(!R.length) return "";
   const rows=R.flatMap(([d,list])=>(list||[]).map(x=>({...x,d}))).slice(0,10);
@@ -328,6 +328,10 @@ function medusa4Block(){
   if(kinds.length) out.push(`${sec("ฟันธงเทียบราคาตลาด","แยกตามแบบ")}<div class="card"><div class="statgrid" style="grid-template-columns:minmax(0,1fr) auto auto auto auto"><span class="h">แบบ</span><span class="h">นัด</span><span class="h">โมเดลให้</span><span class="h">ตลาดให้</span><span class="h">เข้าจริง</span>
     ${kinds.map(([k,v])=>`<span>${esc(PICK_KIND[k]||k)}</span><span class="num">${v.n}</span><span class="num">${pct(v.prob)}</span><span class="num">${v.fair!=null?pct(v.fair):"–"}</span><span class="num ${v.fair!=null?(v.hit>v.fair?"green":"lossc"):""}">${pct(v.hit)}</span>`).join("")}</div>
     <p class="note">ถ้า "เข้าจริง" สูงกว่า "ตลาดให้" ต่อเนื่องจากหลายร้อยนัด จึงพอบอกได้ว่าโมเดลเห็นอะไรที่ตลาดไม่เห็น · ไม่ใช่คำแนะนำให้เดิมพัน</p></div>`);
+  const MV=S.lineMove;
+  if(MV&&MV.n>=30) out.push(`${sec("ราคาเปิดเทียบราคาปิด",`${MV.n} นัด`)}<div class="card"><div class="statgrid"><span class="h">log loss</span><span class="h">ค่า</span><span class="h"></span>
+    <span>ราคาเปิด</span><span class="num">${f3(MV.open)}</span><span></span><span>ราคาปิด</span><span class="num">${f3(MV.close)}</span><span></span><span>โมเดล</span><span class="num">${f3(MV.model)}</span><span></span></div>
+    <p class="note">${MV.moved?`ราคาขยับชัด ${MV.moved} นัด ขยับเข้าหาผลจริง ${pct(MV.toward)}`:"ยังไม่มีคู่ที่ราคาขยับชัด"} · ราคาปิดแม่นกว่าราคาเปิดแปลว่าตลาดได้ข่าวระหว่างนั้น โมเดลจึงใช้ราคาล่าสุด</p></div>`);
   if(LV&&LV.n>=20) out.push(`${sec("วิเคราะห์สด นาที 55–75",`${LV.n} นัด`)}<div class="card"><div class="statgrid"><span class="h">ตัวชี้วัด</span><span class="h">ค่า</span><span class="h"></span>
     <span>ทายผลถูก</span><span class="num">${pct(LV.hit)}</span><span></span><span>สกอร์จบตรง</span><span class="num">${pct(LV.exact)}</span><span></span><span>log loss</span><span class="num">${f3(LV.logloss)}</span><span></span></div></div>`);
   return out.join("");

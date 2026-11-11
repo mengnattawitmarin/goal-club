@@ -38,7 +38,7 @@ for (let w = 0; w < 90; w++) {
   for (let k = 0; k < 6; k++) { const h = teams[Math.floor(rnd() * 60)], a = teams[Math.floor(rnd() * 60)]; if (h === a || h.lg === a.lg) continue; M.push({ id: `${w}u${k}`, d, lg: "uefa.europa", hid: h.id, aid: a.id, hs: pois(1.3 * 1.15 * h.att * a.def), as: pois(1.3 * a.att * h.def), neutral: k === 0 && w === 89 }); }
 }
 const { fitDC, lambdas, probs } = await import(join(root, "lib/dc.js"));
-const { walkForward } = await import(join(root, "lib/backtest.js"));
+const { walkForward, deadRubber } = await import(join(root, "lib/backtest.js"));
 const f = fitDC(M, { asOf: "2026-06-01", halfLife: 240, prior: 6 });
 check("home advantage learned per league (eng > esp > sco)", f.leagues["eng.1"].home > f.leagues["esp.1"].home && f.leagues["esp.1"].home > f.leagues["sco.1"].home, JSON.stringify(Object.fromEntries(Object.entries(f.leagues).map(([k, v]) => [k, v.home]))));
 const corr = (xs, ys) => { const mx = xs.reduce((a, b) => a + b) / xs.length, my = ys.reduce((a, b) => a + b) / ys.length; let n = 0, a = 0, b = 0; xs.forEach((x, i) => { n += (x - mx) * (ys[i] - my); a += (x - mx) ** 2; b += (ys[i] - my) ** 2; }); return n / Math.sqrt(a * b); };
@@ -59,13 +59,15 @@ check("walk-forward: never looks ahead (first window starts after the warm-up)",
 check("walk-forward: shot-based expected goals help when they carry signal", r.configs[2].logloss <= r.configs[1].logloss + 0.002, `${r.configs[1].logloss} vs xG ${r.configs[2].logloss}`);
 check("walk-forward: too little data is refused", walkForward(M.slice(0, 50)).ok === false);
 
+{ const T = { teams: {} }; for (let i = 0; i < 20; i++) T.teams["t" + i] = { pts: 80 - i * 3, pl: 32 };
+  check("item 17: dead rubber = cannot reach 4th, cannot be caught by the drop zone, 10 or fewer games left", deadRubber(T, "t10") && !deadRubber(T, "t4") && !deadRubber(T, "t16") && !deadRubber({ teams: Object.fromEntries(Object.entries(T.teams).map(([k, v]) => [k, { ...v, pl: 20 }])) }, "t10")); }
 const { parseBoard, backfillPlan } = await import(join(root, "lib/backfill.js"));
 const rows = parseBoard({ events: [{ id: "1", date: "2025-03-01T15:00Z", competitions: [{ neutralSite: true, status: { type: { state: "post" } }, competitors: [{ homeAway: "home", score: "2", team: { id: "10" }, statistics: [{ name: "shotsOnTarget", displayValue: "6" }, { name: "totalShots", displayValue: "14" }] }, { homeAway: "away", score: "1", team: { id: "11" } }] }] }, { id: "2", competitions: [{ status: { type: { state: "pre" } } }] }] }, "eng.1");
 check("backfill parses finished games with neutral ground and shots", rows.length === 1 && rows[0][4] === 2 && rows[0][6] === 1 && rows[0][7] === 6 && rows[0][9] === 14, JSON.stringify(rows));
 const plan = backfillPlan(Date.parse("2026-11-11"));
 check("backfill plan covers two seasons for every league in month chunks", plan.length >= 24 * 23 && plan.every((x) => /^[a-z.\d_]+\|\d{8}-\d{8}$/.test(x)), String(plan.length));
 
-const { evalsFromHist, finalCalib, picksAudit, liveAudit } = await import(join(root, "lib/audit.js"));
+const { evalsFromHist, finalCalib, picksAudit, liveAudit, lineMove } = await import(join(root, "lib/audit.js"));
 const hist = M.slice(0, 400).map((m, i) => ({ d: m.d, ph: 0.45, pa: 0.3, mh: 0.46, md: 0.26, ma: 0.28, hs: m.hs, as: m.as, lhF: 1.5, laF: 1.2 }));
 const ev = evalsFromHist(hist); const evN = Object.values(ev).reduce((s, e) => s + e.n, 0);
 check("item 19: daily evaluation counts every settled match (not only the daily job's)", evN === 400 && Object.values(ev).every((e) => e.nK === e.n), String(evN));
@@ -73,6 +75,8 @@ const fc = finalCalib(hist); check("final calibration: goal level and 1X2 temper
 const pa = picksAudit([{ res: "win", prob: 0.66, fair: 0.6, kind: "dog" }, { res: "lose", prob: 0.64, fair: 0.62, kind: "dog" }, { res: "win", prob: 0.7, kind: "under" }]);
 check("picks judged against the market and split by kind", pa.all.n === 3 && pa.dog.n === 2 && pa.dog.hit === 0.5 && pa.dog.fair === 0.61 && pa.under.fair === null, JSON.stringify(pa));
 
+const lm = lineMove([{ hs: 2, as: 0, oh: 0.45, od: 0.28, oa: 0.27, mh: 0.52, md: 0.26, ma: 0.22, ph: 0.5, pa: 0.25 }, { hs: 0, as: 1, oh: 0.4, od: 0.3, oa: 0.3, mh: 0.4, md: 0.3, ma: 0.3, ph: 0.45, pa: 0.25 }]);
+check("item 14: opening vs closing vs model on the same matches", lm.n === 2 && lm.close < lm.open && lm.moved === 1 && lm.toward === 1, JSON.stringify(lm));
 const la = liveAudit([{ ph: 0.7, pd: 0.2, pa: 0.1, fh: 2, fa: 1, hs: 2, as: 1, o25: 0.8 }, { ph: 0.2, pd: 0.6, pa: 0.2, fh: 1, fa: 1, hs: 1, as: 2, o25: 0.5 }]);
 check("item 18: live model scored (log loss, hit, exact score)", la.n === 2 && la.hit === 0.5 && la.exact === 0.5 && la.logloss > 0, JSON.stringify(la));
 const realFetch = globalThis.fetch;
@@ -92,7 +96,7 @@ check("model job refuses without the secret", (await call({}))._code === 401);
 let rep; for (let i = 0; i < 6; i++) { rep = await call({ secret: "s3" }); if (!rep.backfill?.left) break; }
 check("backfill fills the history over several runs", rep.backfill.left === 0 && rep.matches > 2000, JSON.stringify(rep.backfill) + " " + rep.matches);
 const bt = JSON.parse(db.get("backtest") || "null");
-check("model job stores a backtest with a pass/fail gate", bt && typeof bt.pass === "boolean" && bt.best && bt.base33, bt ? `gain ${bt.gain} pass ${bt.pass}` : "none");
+check("model job stores a backtest with a pass/fail gate and measured context (rest, motivation)", bt && typeof bt.pass === "boolean" && bt.best && bt.base33 && bt.context?.shortRest && "deadFor" in bt.context, bt ? `gain ${bt.gain} pass ${bt.pass}` : "none");
 check("model job stores team strengths and league levels for the app", Object.keys(db.get("dct") || {}).length >= 60 && JSON.parse(db.get("dcl")).leagues["eng.1"].home > 1);
 kvServer.close();
 process.exit(fail ? 1 : 0);

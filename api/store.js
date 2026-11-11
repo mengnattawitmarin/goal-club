@@ -1,7 +1,7 @@
 // Shared data for every device: daily picks (locked at kickoff), pre-match predictions,
 // settled results, pick track record, learned calibration, news carried between days, daily brief.
 import { kv, kvPipe, kvEnabled, parse, readBody } from "../lib/kv.js";
-import { audit, evalsFromHist, finalCalib, picksAudit, liveAudit } from "../lib/audit.js";
+import { audit, evalsFromHist, finalCalib, picksAudit, liveAudit, lineMove } from "../lib/audit.js";
 import { rateLimit, espnEvent, validPick } from "../lib/guard.js";
 import { LEAGUES } from "../lib/leagues.js";
 
@@ -56,7 +56,7 @@ export default async function handler(req, res) {
       if (!agg) {
         const rows = ((await kv("LRANGE", "hist", "0", "4999")) || []).map((x) => parse(x)).filter(Boolean);
         const lrows = ((await kv("LRANGE", "livehist", "0", "1999")) || []).map((x) => parse(x)).filter(Boolean);
-        agg = { calib: calib(rows), audit: audit(rows), evals: evalsFromHist(rows), finalCal: finalCalib(rows), live: liveAudit(lrows), histN: rows.length };
+        agg = { calib: calib(rows), audit: audit(rows), evals: evalsFromHist(rows), finalCal: finalCalib(rows), live: liveAudit(lrows), move: lineMove(rows), histN: rows.length };
         await kv("SET", "agg", JSON.stringify(agg), "EX", "600");
       }
       const ev = { ...pairs(evals), ...agg.evals }; const evalDays = Object.keys(ev).sort().slice(-21);
@@ -72,6 +72,7 @@ export default async function handler(req, res) {
         audit: agg.audit,
         finalCal: agg.finalCal || null,
         liveAudit: agg.live || null,
+        lineMove: agg.move || null,
         picksAudit: picksAudit((ph || []).map((x) => parse(x))),
         health: { cron: parse(cronlog), backupAt: Number(bakAt) || null, keys: Number(dbsize) || null, guard: true, ai: parse(aist), feeds: parse(feeds) },
         reviews: Object.fromEntries(Object.entries(pairs(reviews)).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 3)),
@@ -127,7 +128,7 @@ export default async function handler(req, res) {
       const num = (x) => (Number.isFinite(+x) && +x > 0 ? +(+x).toFixed(4) : undefined);
       const row = { id: String(p.id), d: date, lg: String(p.lg || "").slice(0, 24), lh0: +p.lh0, la0: +p.la0, ph: +p.ph, pa: +p.pa, ko: p.ko,
         pH: num(p.pH), pA: num(p.pA), bH: num(p.bH), bA: num(p.bA),
-        fr: p.fr && typeof p.fr === "object" ? Object.fromEntries(Object.entries(p.fr).filter(([k, v]) => /^[a-zA-Z]{2,12}$/.test(k) && Array.isArray(v) && v.length === 2 && v.every((x) => Number.isFinite(+x) && Math.abs(+x) < 2)).slice(0, 16).map(([k, v]) => [k, [+v[0], +v[1]]])) : undefined, mv: num(p.mv), lhF: num(p.lhF), laF: num(p.laF), o25: num(p.o25), dc: num(p.dc), mkH: num(p.mkH), mkA: num(p.mkA), mh: num(p.mh), md: num(p.md), ma: num(p.ma), hid: String(p.hid || ""), aid: String(p.aid || "") };
+        fr: p.fr && typeof p.fr === "object" ? Object.fromEntries(Object.entries(p.fr).filter(([k, v]) => /^[a-zA-Z]{2,12}$/.test(k) && Array.isArray(v) && v.length === 2 && v.every((x) => Number.isFinite(+x) && Math.abs(+x) < 2)).slice(0, 16).map(([k, v]) => [k, [+v[0], +v[1]]])) : undefined, mv: num(p.mv), lhF: num(p.lhF), laF: num(p.laF), o25: num(p.o25), dc: num(p.dc), mkH: num(p.mkH), mkA: num(p.mkA), mh: num(p.mh), md: num(p.md), ma: num(p.ma), oh: num(p.oh), od: num(p.od), oa: num(p.oa), hid: String(p.hid || ""), aid: String(p.aid || "") };
       if (!(row.lh0 >= 0.1 && row.lh0 <= 5 && row.la0 >= 0.1 && row.la0 <= 5) || !LEAGUES.includes(row.lg)) continue;
       if (row.ph != null && row.pa != null && row.ph + row.pa > 1.001) continue;
       cmds.push(["SET", `pred:${row.id}`, JSON.stringify(row), "EX", String(14 * 86400)]);

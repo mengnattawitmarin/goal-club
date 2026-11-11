@@ -60,6 +60,18 @@ try {
   });
   check("เมดูซ่า 4.0: core used only after the backtest passes, replaces the old layers", dc4.off !== "dc" && dc4.on === "dc" && dc4.noPace && dc4.base.includes("4.0"), JSON.stringify(dc4));
   check("4.0: neutral ground and power margin removal (favourite not under-rated)", dc4.neutralLower && dc4.fav && Math.abs(dc4.sum - 1) < 1e-9);
+  const i14 = await A.evaluate(() => {
+    const base = { home: { decimal: 2.0 }, draw: { decimal: 3.5 }, away: { decimal: 3.8 }, total: { line: 2.5, over: { decimal: 1.9 }, under: { decimal: 1.95 } } };
+    const a = marketLambdas({ mk: { ...base, spread: { line: -0.5, home: { decimal: 1.95 }, away: { decimal: 1.9 } } } }, 2.6);
+    const b = marketLambdas({ mk: { ...base, spread: { line: -1.0, home: { decimal: 1.9 }, away: { decimal: 1.95 } } } }, 2.6);
+    const T = { n: 20, top: 70, drop: 30 }, raw = S.open.raw, keep = S.backtest;
+    S.backtest = { pass: false, context: { deadFor: { n: 300, ratio: 0.9 }, deadAgainst: { n: 300, ratio: 1.08 } } };
+    const r = refine({ ...raw, tinfo: T, h: { ...raw.h, points: 50, played: 32 } }); S.backtest = keep;
+    const f = r.factors.find((x) => x.k === "motiv");
+    return { a: !!a && a.fromSpread, gap: a && b ? (b.lh - b.la) - (a.lh - a.la) : null, dead: deadRubber(T, { points: 50, played: 32 }), alive: deadRubber(T, { points: 50, played: 20 }), motiv: f ? [f.rh, f.ra] : null };
+  });
+  check("4.0 item 14: Asian handicap price used; a bigger handicap means a bigger expected gap", i14.a && i14.gap > 0, JSON.stringify(i14));
+  check("4.0 item 17: motivation factor only from the measured effect, late in the season", i14.dead && !i14.alive && i14.motiv && i14.motiv[0] < 1 && i14.motiv[1] > 1, JSON.stringify(i14.motiv));
   const acc4 = await A.evaluate(() => {
     const keep = [S.backtest, S.picksAudit, S.liveAudit, S.dc];
     const mt = (ll) => ({ n: 900, logloss: ll, hit: 0.5, loglossOU: 0.68, draw: [0.25, 0.24], home: [0.45, 0.46], goals: [2.7, 2.75] });
