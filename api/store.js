@@ -3,7 +3,7 @@
 import { kv, kvPipe, kvEnabled, parse, readBody } from "../lib/kv.js";
 import { audit, evalsFromHist, finalCalib, picksAudit, liveAudit, lineMove } from "../lib/audit.js";
 import { rateLimit, espnEvent, validPick } from "../lib/guard.js";
-import { LEAGUES } from "../lib/leagues.js";
+import { ALL_LEAGUES as LEAGUES } from "../lib/leagues.js";
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const ID = /^\d{1,12}$/;
@@ -42,12 +42,13 @@ export default async function handler(req, res) {
       if (!DAY.test(date)) { res.status(400).json({ error: "bad date" }); return; }
       const teams = String(req.query.teams || "").split(",").filter((x) => ID.test(x)).slice(0, 200);
       const players = String(req.query.players || "").split(",").filter((x) => ID.test(x)).slice(0, 60);
-      const [picks, brief, ph, hist, news, weights, evals, lgavg, np, lessons, rat, pl, cronlog, bakAt, dbsize, reviews, rotation, aist, feeds, dct, dcl, bt, mlog] = await kvPipe([
+      const [picks, brief, ph, hist, news, weights, evals, lgavg, np, lessons, rat, pl, cronlog, bakAt, dbsize, reviews, rotation, aist, feeds, dct, dcl, bt, mlog, dcnt, dcnl, btn, natsl] = await kvPipe([
         ["GET", `picks:${date}`], ["GET", `brief:${date}`], ["LRANGE", "pickhist", "0", "299"], ["GET", "agg"], ["HGETALL", "newsteam"],
         ["GET", "weights"], ["HGETALL", "evals"], ["HGETALL", "lgavg"], ["HGETALL", "newsplayer"], ["GET", "lessons"],
         teams.length ? ["HMGET", "ratings", ...teams] : ["GET", "__none"], players.length ? ["HMGET", "players", ...players] : ["GET", "__none"],
         ["GET", "cronlog"], ["GET", "bak:at"], ["DBSIZE"], ["HGETALL", "reviews"], ["HGETALL", "rotation"], ["GET", "ai:status"], ["GET", "newsfeeds"],
         teams.length ? ["HMGET", "dct", ...teams] : ["GET", "__none"], ["GET", "dcl"], ["GET", "backtest"], ["GET", "modellog"],
+        teams.length ? ["HMGET", "dcnt", ...teams] : ["GET", "__none"], ["GET", "dcnl"], ["GET", "backtestn"], ["GET", "natslugs"],
       ]);
       const pairs = (arr) => { const o = {}; for (let i = 0; Array.isArray(arr) && i < arr.length; i += 2) o[arr[i]] = parse(arr[i + 1]); return o; };
       const pick = (keys, vals) => { const o = {}; keys.forEach((k, i) => { const v = parse(Array.isArray(vals) ? vals[i] : null); if (v) o[k] = v; }); return o; };
@@ -81,6 +82,10 @@ export default async function handler(req, res) {
         dc: (() => { const L = parse(dcl); if (!L) return null; const t = {}; teams.forEach((id, i) => { const v = parse(Array.isArray(dct) ? dct[i] : null); if (v) t[id] = { att: v[0], def: v[1], n: v[2], lg: v[3] }; }); return { ...L, teams: t }; })(),
         backtest: (() => { const b = parse(bt); if (!b) return null; const { leagues, configs, ...rest } = b; return { ...rest, leagues: Object.fromEntries(Object.entries(leagues || {}).slice(0, 30)) }; })(),
         modelLog: parse(mlog),
+        /* เมดูซ่า 4.1: the national-team model, gated by its own backtest */
+        dcn: (() => { const L = parse(dcnl); if (!L) return null; const t = {}; teams.forEach((id, i) => { const v = parse(Array.isArray(dcnt) ? dcnt[i] : null); if (v) t[id] = { att: v[0], def: v[1], n: v[2], lg: v[3] }; }); return { ...L, teams: t }; })(),
+        backtestn: (() => { const b = parse(btn); if (!b) return null; const { leagues, configs, ...rest } = b; return { ...rest, leagues: Object.fromEntries(Object.entries(leagues || {}).slice(0, 20)) }; })(),
+        natslugs: parse(natsl),
         newsTeam,
         weights: parse(weights),
         newsPlayer: pairs(np),

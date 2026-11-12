@@ -91,6 +91,7 @@ const realFetch = globalThis.fetch; let refuseRanges = false;
 const byMonth = {}; for (const m of M.filter((m) => m.lg !== "uefa.europa")) { const k = `${m.lg}|${m.d.slice(0, 7).replace("-", "")}`; (byMonth[k] = byMonth[k] || []).push(m); }
 globalThis.fetch = async (url, opts) => {
   const u = String(url); if (u.startsWith("http://localhost")) return realFetch(url, opts);
+  if (/soccer\/[^/]+\/scoreboard$/.test(u)) return /aff\.championship/.test(u) ? new Response("no", { status: 404 }) : new Response("{}", { status: 200 });   // slug check (4.1)
   if (/soccer\/bad\./.test(u)) return new Response("busy", { status: 503 });
   { const m = u.match(/soccer\/esp\.1\/scoreboard\?dates=(\d{8})-(\d{8})/); const p = (x) => Date.parse(`${x.slice(0, 4)}-${x.slice(4, 6)}-${x.slice(6)}`);
     if (m && p(m[2]) - p(m[1]) > 10 * 864e5) return new Response("slow", { status: 504 }); }   // a whole month of esp.1 is "too heavy": must be split
@@ -124,5 +125,23 @@ check("model job stores team strengths and league levels for the app", Object.ke
   const want = ["202509", "202510", "202511"].reduce((n, k) => n + (byMonth[`eng.1|${k}`] || []).length, 0);
   const got = Object.values(db.get("bf:eng.1") || {}).reduce((n, v) => n + JSON.parse(v).length, 0);
   check("ESPN refuses ranges (HTTP 400): falls back to one request per day and still stores every match", r2.backfill.left === 0 && db.get("bf:mode") === "day" && got === want && want > 50, `${got}/${want} mode ${db.get("bf:mode")}`); }
+/* เมดูซ่า 4.1: national teams — slug check, 4-year backfill into bfn:*, backtest against the competition average, fit */
+{ refuseRanges = false;
+  const nat = []; for (let i = 0; i < 48; i++) nat.push({ id: `n${i}`, att: Math.exp(gauss() * 0.45), def: Math.exp(gauss() * 0.45) });
+  const t0n = Date.now() - 1440 * 864e5, NM = [];
+  for (let mo = 0; mo < 47; mo++) for (const [lg, n, home] of [["fifa.friendly", 10, 1.15], ["fifa.worldq.afc", 8, 1.35], ["uefa.nations", 8, 1.25]]) for (let k = 0; k < n; k++) {
+    const h = nat[Math.floor(rnd() * 48)], a = nat[Math.floor(rnd() * 48)]; if (h === a) continue;
+    const d = new Date(t0n + (mo * 30 + 3 + k * 2) * 864e5).toISOString().slice(0, 10), neutral = lg === "fifa.friendly" && rnd() < 0.3;
+    const lh = 1.3 * (neutral ? 1 : home) * h.att * a.def, la = 1.3 * a.att * h.def;
+    NM.push({ id: `N${mo}${lg}${k}`, d, lg, hid: h.id, aid: a.id, hs: pois(lh), as: pois(la) });
+  }
+  for (const m of NM) { const key = `${m.lg}|${m.d.slice(0, 7).replace("-", "")}`; (byMonth[key] = byMonth[key] || []).push(m); }
+  for (const k of ["natslugs", "bfn:todo", "bfn:ver", "bfn:mode", "backtestn", "btn:state", "dcnl"]) db.delete(k);
+  let rn; for (let i = 0; i < 60; i++) { rn = await call({ secret: "s3" }); const N = rn.nat || {}; if (!N.waiting && !(N.backfill?.left) && !N.backtest?.partial && db.get("dcnl")) break; }
+  const sl = JSON.parse(db.get("natslugs") || "{}"), btn = JSON.parse(db.get("backtestn") || "null");
+  check("4.1: national slugs checked, ones ESPN lacks are skipped", sl.bad?.includes("aff.championship") && sl.ok?.includes("afc.asian.cup") && !sl.ok.includes("aff.championship"), JSON.stringify(sl.bad));
+  check("4.1: national history stored apart from clubs (bfn:*)", Object.keys(db.get("bfn:fifa.friendly") || {}).length >= 30 && !db.get("bf:fifa.friendly"), `${rn.nat?.matches} matches`);
+  check("4.1: national backtest against the competition average, full run, gate 0.02", btn && !btn.partial && btn.base === "avg" && btn.minGain === 0.02 && btn.pass === true && btn.gain >= 0.02, btn ? `gain ${btn.gain} n ${btn.best.n}` : "none");
+  check("4.1: national strengths stored for the app (dcnt/dcnl)", Object.keys(db.get("dcnt") || {}).length >= 40 && JSON.parse(db.get("dcnl")).cfg.halfLife >= 365); }
 kvServer.close();
 process.exit(fail ? 1 : 0);

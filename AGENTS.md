@@ -31,6 +31,7 @@ lib/learn.js       สูตรเรียนรู้ของงานปร�
 api/model.js       งานโมเดล เมดูซ่า 4.0 (Vercel Cron 21:40 UTC, ต้องมี CRON_SECRET): เก็บผลย้อนหลัง 2 ฤดูกาลทีละช่วง, ทดสอบย้อนหลัง (walk-forward) 4.0 เทียบ 3.3, fit Dixon-Coles ทุกทีม เรียกเองได้ `/api/model?secret=<CRON_SECRET>` (เรียกซ้ำเพื่อเร่งเก็บย้อนหลัง)
 lib/dc.js          แกน 4.0: Dixon-Coles รวมทุกลีก ถ่วงเวลา หดเข้าค่ากลาง home/rho รายลีก สนามกลาง xG จากการยิง
 lib/backtest.js    walk-forward backtest + เกณฑ์ผ่าน (n≥300, log loss ดีกว่า 3.3 ≥0.005) + ผลของวันพักที่วัดได้
+lib/leagues.js     รายการที่แอปติดตาม: LEAGUES (สโมสร) และ NATIONAL (ทีมชาติ 4.1) ต้องตรงกับรายการชื่อไทยใน src/logic.js
 lib/backfill.js    เก็บผลย้อนหลังจาก ESPN scoreboard รายเดือน (bf:todo, bf:<lg>)
 lib/audit.js       ตรวจจุดพลาด, evalsFromHist (วัดผลจากทุกนัด), finalCalib, picksAudit (เทียบราคาตลาดแยกแบบ), liveAudit
 api/analysis.js    (ทางเลือก ต้องมีคีย์) บอท AI + โหมด polish (นักวิเคราะห์ AI เรียบเรียง ตรวจด้วย lib/grounded.js): ค้นเว็บ (web_search) + ข้อมูล ESPN + ตัวเลขทั้งหมดของแอป แล้วเขียนทัศนะบอล สตรีมเป็น NDJSON (แคช ana2:<id>)
@@ -100,6 +101,9 @@ npm test           # build + ทดสอบงานประจำวัน + 
 | `dct` | hash teamId → JSON | `[att, def, n, lg]` ความแข็งทีมจาก Dixon-Coles (เมดูซ่า 4.0) |
 | `dcl` | string JSON | `{leagues{mu,home,rho,n}, asOf, cfg, rows}` |
 | `backtest` | string JSON | ผล walk-forward ล่าสุด `{base33, best, configs, gain, pass, leagues, context}` แอปใช้แกน 4.0 เมื่อ `pass` เท่านั้น |
+| `natslugs` | string JSON | `{ok, bad, at}` รายการทีมชาติที่ ESPN มี/ไม่มี (ตรวจทุก 7 วัน) |
+| `bfn:todo`, `bfn:tries`, `bfn:skip`, `bfn:ver`, `bfn:mode`, `bfn:<lg>` | เหมือน `bf:*` | ผลย้อนหลังทีมชาติ 4 ปี (เมดูซ่า 4.1) |
+| `dcnt`, `dcnl`, `backtestn`, `btn:state` | เหมือน `dct`, `dcl`, `backtest`, `bt:state` | โมเดลทีมชาติแยกจากสโมสร แอปฟันธงทีมชาติเมื่อ `backtestn.pass` เท่านั้น |
 | `bt:state` | string JSON | ความคืบหน้าของการทดสอบย้อนหลังที่ยังไม่ครบ (ทำต่อในรอบถัดไป ลบเมื่อครบ) |
 | `modellog` | string JSON | ผลการรันงานโมเดลล่าสุด |
 | `bf:todo`, `bf:tries`, `bf:skip`, `bf:ver`, `bf:mode`, `bf:<lg>` | string JSON / list / hash YYYYMMDD-YYYYMMDD → rows | งานค้าง จำนวนครั้งที่พลาด ช่วงที่ข้าม (พลาด 3 ครั้ง) และผลย้อนหลังที่เก็บแล้ว |

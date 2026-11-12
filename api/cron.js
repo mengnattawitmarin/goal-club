@@ -12,9 +12,9 @@ import { ruleReview } from "../lib/review.js";
 import { backfillAdd } from "../lib/backfill.js";
 import { updateRatings, probs, logLoss, brier, outcome, blend, tune, totalLoss, predictRow, PICK_VALUE } from "../lib/learn.js";
 
-import { LEAGUES } from "../lib/leagues.js";
+import { LEAGUES as CLUB_LEAGUES, ALL_LEAGUES as LEAGUES, NATIONAL } from "../lib/leagues.js";
 /* keys that hold everything the app has learned; copied to bak:* once a week (เมดูซ่า 3.1) */
-export const BACKUP_KEYS = ["hist", "pickhist", "ratings", "lgavg", "players", "weights", "lessons", "evals", "newsplayer", "histdone", "pickdone", "learned", "dcl", "backtest", ...LEAGUES.map((lg) => `bf:${lg}`)];
+export const BACKUP_KEYS = ["hist", "pickhist", "ratings", "lgavg", "players", "weights", "lessons", "evals", "newsplayer", "histdone", "pickdone", "learned", "dcl", "backtest", "dcnl", "backtestn", "natslugs", ...CLUB_LEAGUES.map((lg) => `bf:${lg}`), ...NATIONAL.map((lg) => `bfn:${lg}`)];
 const nyDate = (d) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 const shift = (iso, n) => { const [y, m, d] = iso.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
 async function getJson(url) { const r = await fetch(url, { signal: AbortSignal.timeout(7000) }); if (!r.ok) throw new Error(r.status); return r.json(); }
@@ -51,9 +51,11 @@ async function run(req, res, t0) {
 
   /* 1. finished matches */
   const games = [], feed = { leagues: 0, failed: 0, events: 0, bad: 0 };
-  await pool(LEAGUES.flatMap((lg) => days.map((d) => [lg, d])), 8, async ([lg, d]) => {
-    feed.leagues++;
-    let b; try { b = await getJson(`https://site.api.espn.com/apis/site/v2/sports/soccer/${lg}/scoreboard?dates=${d.replaceAll("-", "")}`); } catch (e) { feed.failed++; throw e; }
+  /* national competitions ESPN does not carry (checked by the model job) are skipped; they never count against feed health */
+  const natBad = new Set(parse(await kv("GET", "natslugs"))?.bad || []);
+  await pool(LEAGUES.filter((lg) => !natBad.has(lg)).flatMap((lg) => days.map((d) => [lg, d])), 8, async ([lg, d]) => {
+    const nat = NATIONAL.includes(lg); if (!nat) feed.leagues++;
+    let b; try { b = await getJson(`https://site.api.espn.com/apis/site/v2/sports/soccer/${lg}/scoreboard?dates=${d.replaceAll("-", "")}`); } catch (e) { if (!nat) feed.failed++; throw e; }
     for (const ev of b.events || []) {
       /* feed check: every event should carry an id, two teams with ids and a status */
       feed.events++;

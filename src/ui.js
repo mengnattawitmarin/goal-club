@@ -324,6 +324,19 @@ function medusa4Block(){
   } else if(S.modelLog){
     out.push(`${sec("ทดสอบย้อนหลัง "+MEDUSA.name)}<div class="card muted">กำลังเก็บผลย้อนหลัง 2 ฤดูกาล${S.modelLog.backfill?` · เหลืออีก ${S.modelLog.backfill.left} ช่วง`:""} · ระหว่างนี้แอปใช้แกน 3.3 ไปก่อน</div>`);
   }
+  const BN=S.backtestn;
+  if(BN&&BN.ok){
+    const lgs=Object.entries(BN.leagues||{}).sort((a,b)=>b[1].v40.n-a[1].v40.n).slice(0,10);
+    out.push(`${sec("ทดสอบย้อนหลัง ทีมชาติ",`${BN.matches} นัด · ${stampTime(BN.at)}`)}<div class="card">
+      <div class="row"><b>${dcnOn()?"ฟันธงทีมชาติเปิดแล้ว":"ยังไม่ฟันธงทีมชาติ"}</b><span class="spacer"></span><span class="tag ${BN.pass?"value":""}">${BN.pass?"ผ่านเกณฑ์":BN.partial?`ทดสอบแล้ว ${Math.round((BN.progress||0)*100)}%`:"ยังไม่ผ่าน"}</span></div>
+      <div class="statgrid" style="margin-top:8px"><span class="h">ตัวชี้วัด (${BN.best.n} นัด)</span><span class="h">ค่าเฉลี่ยรายการ</span><span class="h">4.1</span>
+        <span>log loss</span><span class="num">${f3(BN.base33.logloss)}</span><span class="num">${f3(BN.best.logloss)}</span>
+        <span>ทายผลถูก</span><span class="num">${pct(BN.base33.hit)}</span><span class="num">${pct(BN.best.hit)}</span>
+        <span>ประตู คาด/จริง</span><span class="num">${(+BN.base33.goals[0]).toFixed(2)}/${(+BN.base33.goals[1]).toFixed(2)}</span><span class="num">${(+BN.best.goals[0]).toFixed(2)}/${(+BN.best.goals[1]).toFixed(2)}</span></div>
+      ${lgs.length?`<div class="statgrid c4" style="margin-top:10px"><span class="h">รายการ</span><span class="h">นัด</span><span class="h">เฉลี่ย</span><span class="h">4.1</span>
+        ${lgs.map(([lg,v])=>`<span>${esc(LEAGUE_NAME[lg]||lg)}</span><span class="num">${v.v40.n}</span><span class="num">${f3(v.base33.logloss)}</span><span class="num ${v.v40.logloss<v.base33.logloss?"green":"lossc"}">${f3(v.v40.logloss)}</span>`).join("")}</div>`:""}
+      <p class="note">เทียบกับการรู้แค่ค่าเฉลี่ยประตูของแต่ละรายการ (ไม่รู้อะไรเรื่องทีมเลย) · ผ่านเมื่อดีกว่าอย่างน้อย 0.02 log loss จาก 300 นัดขึ้นไป แอปจึงเปิดฟันธงทีมชาติเอง · ยังไม่ผ่าน = แสดงโปรแกรม ผล และราคาตลาด แต่ไม่ฟันธง</p></div>`);
+  }
   const kinds=P?Object.entries(P).filter(([k,v])=>v&&v.n>=5&&PICK_KIND[k]).sort((a,b)=>(a[0]==="all")-(b[0]==="all")):[];
   if(kinds.length) out.push(`${sec("ฟันธงเทียบราคาตลาด","แยกตามแบบ")}<div class="card"><div class="statgrid c5"><span class="h">แบบ</span><span class="h">นัด</span><span class="h">โมเดลให้</span><span class="h">ตลาดให้</span><span class="h">เข้าจริง</span>
     ${kinds.map(([k,v])=>`<span>${esc(PICK_KIND[k]||k)}</span><span class="num">${v.n}</span><span class="num">${pct(v.prob)}</span><span class="num">${v.fair!=null?pct(v.fair):"–"}</span><span class="num ${v.fair!=null?(v.hit>v.fair?"green":"lossc"):""}">${pct(v.hit)}</span>`).join("")}</div>
@@ -396,6 +409,7 @@ function healthItem(){
     ["ฟีด ESPN", F?(F.ok?`<span class="green">ปกติ</span> · ${F.events} คู่${F.bad?` · ผิดรูปแบบ ${F.bad}`:""}${F.failed?` · ดึงไม่ได้ ${F.failed}/${F.leagues} ลีก`:""}`:`<span style="color:var(--loss)">ผิดปกติ</span> · ดึงไม่ได้ ${F.failed}/${F.leagues} ลีก · ผิดรูปแบบ ${F.bad}`):"ยังไม่ได้ดึง"],
     ["งานเรียนรู้ประจำวัน", !Shared.on?"ต้องเปิดข้อมูลร่วม":c?`${c.ok?`<span class="green">รันแล้ว</span>`:`<span style="color:var(--loss)">ล้มเหลว</span>`} ${stampTime(c.at)}${c.ok?` · ผลจบ ${c.finished??0} คู่ · เรียนรู้ใหม่ ${c.settled??0}`:""}`:"ยังไม่มีบันทึก"],
     ["งานโมเดล 4.0", !Shared.on?"ต้องเปิดข้อมูลร่วม":S.modelLog?`${S.modelLog.error?`<span style="color:var(--loss)">ล้มเหลว</span> · ${esc(S.modelLog.error)}`:`<span class="green">รันแล้ว</span>`} ${stampTime(S.modelLog.at)} · ผลย้อนหลัง ${S.modelLog.matches||0} นัด${S.modelLog.backfill?.left?` · เก็บย้อนหลังเหลือ ${S.modelLog.backfill.left} ช่วง`:""} · ${dc4On()?"ใช้แกน 4.0":"ใช้แกน 3.3 (รอผลทดสอบย้อนหลังผ่าน)"}`:"ยังไม่เคยรัน"],
+    ["ทีมชาติ (4.1)", !Shared.on?"ต้องเปิดข้อมูลร่วม":(()=>{ const N=S.modelLog?.nat||{}, sl=S.natslugs; return `${sl?`ESPN มี ${sl.ok.length}/${sl.ok.length+sl.bad.length} รายการ`:"ยังไม่ได้ตรวจรายการ"}${N.backfill?` · เก็บย้อนหลังเหลือ ${N.backfill.left} ช่วง`:""}${N.matches!=null?` · ${N.matches} นัด`:""} · ${dcnOn()?"ฟันธงทีมชาติเปิดแล้ว":"ยังไม่ฟันธงทีมชาติ"}`; })()],
     ["สำรองข้อมูล", H?.backupAt?`สำรองล่าสุด ${stampTime(new Date(H.backupAt).toISOString())} (ทุกสัปดาห์)`:Shared.on?"ยังไม่เคยสำรอง (งานประจำวันจะสำรองให้)":"–"],
     ["การป้องกันข้อมูลปลอม", H?.guard?`<span class="green">เปิด</span> · ผลจริงและทีเด็ดตรวจกับ ESPN ก่อนบันทึก`:"–"],
     ["AI หลังบ้าน", !H?"–":H.ai?(H.ai.ai?[H.ai]:Object.values(H.ai)).map(r=>`${r.ok?`<span class="green">ใช้งานได้</span>`:`<span style="color:var(--loss)">มีปัญหา</span>`} · ${esc(r.ai||"")} · ${stampTime(r.at)}${!r.ok&&r.err?` · ${esc(r.err.slice(0,140))}`:""}`).join("<br>"):"ยังไม่ได้ใช้ (ตั้ง GEMINI_API_KEY ฟรีใน Vercel)"],
@@ -432,9 +446,21 @@ async function runModelJob(){
       }
       errs=0;
       if(j.busy){ out(`อีกเครื่องกำลังเก็บผลย้อนหลังอยู่ (เก็บได้ทีละเครื่อง) · รอแล้วจะเก็บต่อเอง…`); await new Promise(f=>setTimeout(f,20000)); continue; }
-      const left=j.backfill?.left??0; if(startLeft==null) startLeft=Math.max(left,1);
-      if(left===0 && j.backtest?.partial){ still=0; last=0; out(`เก็บผลครบแล้ว · กำลังทดสอบย้อนหลัง ${Math.round((j.backtest.progress||0)*100)}% · ${mins()} นาที · เปิดหน้านี้ค้างไว้`); continue; }
-      if(left===0){ out(`เสร็จแล้ว · ผลย้อนหลัง ${j.matches||0} นัด · ${mins()} นาที${j.backtest?` · ทดสอบย้อนหลัง: ${j.backtest.pass?"4.0 ผ่านเกณฑ์ เปิดใช้แกนใหม่":"4.0 ยังไม่ชนะ 3.3 ใช้ 3.3 ต่อ"} (log loss ดีขึ้น ${j.backtest.gain})`:j.matches>=1500?" · กดอีกครั้งเพื่อทดสอบย้อนหลัง":""}`); try{ await syncPull(S.date); render(); }catch{} return; }
+      const left=j.backfill?.left??0, N=j.nat||{}, nLeft=N.backfill?.left??0;
+      /* clubs first (backfill -> backtest), then national teams (4.1) in the same calls */
+      if(left===0 && j.backtest?.partial){ still=0; last=0; out(`สโมสร: เก็บผลครบแล้ว · กำลังทดสอบย้อนหลัง ${Math.round((j.backtest.progress||0)*100)}% · ${mins()} นาที · เปิดหน้านี้ค้างไว้`); continue; }
+      if(left===0 && (N.waiting || nLeft>0 || N.backtest?.partial)){
+        const NB=N.backfill||{}; still = N.waiting ? 0 : (nLeft>0 && (NB.done||0)===0 && !(NB.split>0)) ? still+1 : 0;
+        if(still>=5) return out(`ทีมชาติ หยุดพัก: 5 รอบติดกันเก็บไม่ได้เลย เหลือ ${nLeft} ช่วง${NB.errors?.length?` · ตัวอย่าง: ${NB.errors.join(" / ")}`:""}`);
+        out(N.backtest?.partial?`ทีมชาติ: เก็บผลครบแล้ว · กำลังทดสอบย้อนหลัง ${Math.round((N.backtest.progress||0)*100)}% · ${mins()} นาที`:`ทีมชาติ: กำลังเก็บผลย้อนหลัง 4 ปี${nLeft?` · เหลือ ${nLeft} ช่วง`:""}${N.matches?` · ${N.matches} นัด`:""} · ${mins()} นาที · เปิดหน้านี้ค้างไว้`);
+        continue;
+      }
+      if(startLeft==null) startLeft=Math.max(left,1);
+      if(left===0){
+        const club=j.backtest?` · สโมสร: ${j.backtest.pass?"4.0 ผ่านเกณฑ์":"4.0 ยังไม่ชนะ 3.3"} (log loss ดีขึ้น ${j.backtest.gain})`:"";
+        const nat=N.backtest?.reason?` · ทีมชาติ: ${N.backtest.reason}`:N.backtest?` · ทีมชาติ: ${N.backtest.pass?"ผ่านเกณฑ์ เปิดฟันธงทีมชาติ":"ยังไม่ผ่าน ยังไม่ฟันธงทีมชาติ"} (log loss ดีขึ้น ${N.backtest.gain})`:N.matches!=null?` · ทีมชาติ ${N.matches} นัด`:"";
+        out(`เสร็จแล้ว · ผลย้อนหลังสโมสร ${j.matches||0} นัด · ${mins()} นาที${club}${nat}`); try{ await syncPull(S.date); render(); }catch{} return;
+      }
       const B=j.backfill||{}; still = (B.done||0)===0 && !(B.split>0) ? still+1 : 0; last=left;
       if(still>=5) return out(`หยุดพัก: 5 รอบติดกันเก็บไม่ได้เลย เหลือ ${left} ช่วง · ESPN ตอบไม่ได้ ${B.failed||0} ครั้งในรอบล่าสุด${B.errors?.length?` · ตัวอย่าง: ${B.errors.join(" / ")}`:""}`);
     }
@@ -1067,6 +1093,7 @@ function writeTasana(m){
   /* 7. verdict */
   W("## ทัศนะ");
   const c=bestCall(m), live=m.st==="in"&&m.live, LV=m.live;
+  if(isNat(m.lg)&&!dcnOn()) W("- ทีมชาติ: โมเดลทีมชาติยังไม่ผ่านการทดสอบย้อนหลัง ตัวเลขด้านล่างอิงราคาตลาดเป็นหลัก และยังไม่ฟันธง");
   if(live){
     const lf=LV.ph>=LV.pa?H:A, lp=Math.max(LV.ph,LV.pa);
     W(`- ทิศทางเกมตอนนี้: ${lp>=.5?`${lf} คุมเกม ${pct(lp)}`:`ยังเปิด เสมอ ${pct(LV.pd)}`}`,`- ทายสกอร์จบ (สด): ${LV.final.h}-${LV.final.a}`,`- จบสูง 2.5: ${pct(LV.over25)} · มีประตูเพิ่ม ${pct(LV.pMore)}`);

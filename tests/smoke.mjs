@@ -73,6 +73,15 @@ try {
   });
   check("4.0 item 14: Asian handicap price used; a bigger handicap means a bigger expected gap", i14.a && i14.gap > 0, JSON.stringify(i14));
   check("4.0 item 17: motivation factor only from the measured effect, late in the season", i14.dead && !i14.alive && i14.motiv && i14.motiv[0] < 1 && i14.motiv[1] > 1, JSON.stringify(i14.motiv));
+  const nat4 = await A.evaluate(() => {
+    const raw = { ...S.open.raw, lg: "afc.asian.cup", st: "pre" }, keep = [S.backtestn, S.dcn];
+    S.backtestn = null; S.dcn = null; const off = refine({ ...raw }); const callOff = bestCall(off);
+    S.dcn = { leagues: { "afc.asian.cup": { mu: 1.3, home: 1.2, rho: -0.05 } }, teams: { [raw.h.id]: { att: 1.6, def: 0.7, n: 20, lg: "afc.asian.cup" }, [raw.a.id]: { att: 0.8, def: 1.3, n: 20, lg: "afc.asian.cup" } } };
+    S.backtestn = { pass: true }; const on = refine({ ...raw }); const club = refine({ ...S.open.raw });
+    [S.backtestn, S.dcn] = keep;
+    return { callOff, offBasis: off.basis, onBasis: on.basis, label: on.factors[0].label, clubNotNat: club.factors[0].label !== on.factors[0].label, name: LEAGUE_NAME["afc.asian.cup"] };
+  });
+  check("4.1 national: no picks until the national model passes; then its own strengths", nat4.callOff === null && nat4.offBasis !== "dc" && nat4.onBasis === "dc" && nat4.label.includes("ทีมชาติ") && nat4.clubNotNat && nat4.name === "เอเชียนคัพ", JSON.stringify(nat4));
   const acc4 = await A.evaluate(() => {
     const keep = [S.backtest, S.picksAudit, S.liveAudit, S.dc];
     const mt = (ll) => ({ n: 900, logloss: ll, hit: 0.5, loglossOU: 0.68, draw: [0.25, 0.24], home: [0.45, 0.46], goals: [2.7, 2.75] });

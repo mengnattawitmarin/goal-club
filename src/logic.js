@@ -3,7 +3,13 @@
 const SNAPSHOT = /*__SNAPSHOT__*/null;
 
 /* ---------- leagues ---------- */
-const LEAGUES = [["tha.1","ไทยลีก 1"],["eng.1","พรีเมียร์ลีก"],["esp.1","ลาลีกา"],["ger.1","บุนเดสลีกา"],["ita.1","เซเรียอา"],["fra.1","ลีกเอิง"],["uefa.champions","แชมเปียนส์ลีก"],["uefa.europa","ยูโรปาลีก"],["uefa.europa.conf","คอนเฟอเรนซ์ลีก"],["eng.2","แชมเปียนชิป"],["eng.league_cup","คาราบาวคัพ"],["ned.1","เอเรดิวิซี"],["por.1","ปรีไมราลีกา"],["bel.1","ลีกเบลเยียม"],["sco.1","สกอตติชพรีเมียร์"],["tur.1","ซูเปอร์ลีกตุรกี"],["usa.1","MLS"],["mex.1","ลีกาเอ็มเอ็กซ์"],["bra.1","บราซิลซีรีออา"],["arg.1","ลีกาอาร์เจนตินา"],["ksa.1","ซาอุดีโปรลีก"],["jpn.1","เจลีก"],["chn.1","ซูเปอร์ลีกจีน"],["aus.1","เอลีกออสเตรเลีย"]];
+const LEAGUES = [["tha.1","ไทยลีก 1"],["eng.1","พรีเมียร์ลีก"],["esp.1","ลาลีกา"],["ger.1","บุนเดสลีกา"],["ita.1","เซเรียอา"],["fra.1","ลีกเอิง"],["uefa.champions","แชมเปียนส์ลีก"],["uefa.europa","ยูโรปาลีก"],["uefa.europa.conf","คอนเฟอเรนซ์ลีก"],["eng.2","แชมเปียนชิป"],["eng.league_cup","คาราบาวคัพ"],["ned.1","เอเรดิวิซี"],["por.1","ปรีไมราลีกา"],["bel.1","ลีกเบลเยียม"],["sco.1","สกอตติชพรีเมียร์"],["tur.1","ซูเปอร์ลีกตุรกี"],["usa.1","MLS"],["mex.1","ลีกาเอ็มเอ็กซ์"],["bra.1","บราซิลซีรีออา"],["arg.1","ลีกาอาร์เจนตินา"],["ksa.1","ซาอุดีโปรลีก"],["jpn.1","เจลีก"],["chn.1","ซูเปอร์ลีกจีน"],["aus.1","เอลีกออสเตรเลีย"],
+  /* เมดูซ่า 4.1: ทีมชาติ (same list as NATIONAL in lib/leagues.js) */
+  ["afc.asian.cup","เอเชียนคัพ"],["fifa.friendly","กระชับมิตรทีมชาติ"],["uefa.nations","ยูฟ่าเนชันส์ลีก"],["fifa.world","ฟุตบอลโลก"],["concacaf.nations.league","คอนคาแคฟเนชันส์ลีก"],["aff.championship","อาเซียนแชมเปียนชิพ"],
+  ["fifa.worldq.afc","คัดบอลโลก โซนเอเชีย"],["fifa.worldq.uefa","คัดบอลโลก โซนยุโรป"],["fifa.worldq.conmebol","คัดบอลโลก โซนอเมริกาใต้"],["fifa.worldq.concacaf","คัดบอลโลก โซนคอนคาแคฟ"],["fifa.worldq.caf","คัดบอลโลก โซนแอฟริกา"],
+  ["uefa.euro","ยูโร"],["conmebol.america","โกปา อเมริกา"],["caf.nations","แอฟริกันเนชันส์คัพ"],["concacaf.gold","โกลด์คัพ"]];
+const NATIONAL=new Set(["afc.asian.cup","fifa.friendly","uefa.nations","fifa.world","concacaf.nations.league","aff.championship","fifa.worldq.afc","fifa.worldq.uefa","fifa.worldq.conmebol","fifa.worldq.concacaf","fifa.worldq.caf","uefa.euro","conmebol.america","caf.nations","concacaf.gold"]);
+const isNat=lg=>NATIONAL.has(lg);
 const LEAGUE_NAME = Object.fromEntries(LEAGUES);
 const LEAGUE_ORDER = Object.fromEntries(LEAGUES.map(([s],i)=>[s,i]));
 
@@ -155,13 +161,16 @@ function meetingsFor(m){
   }).filter(Boolean);
 }
 /* เมดูซ่า: ชื่อของอัลกอริทึมวิเคราะห์ เพิ่มเลขทุกครั้งที่ปรับวิธีคำนวณ (ดู MEDUSA.md) */
-const MEDUSA={v:4.0, name:"เมดูซ่า 4.0", date:"2026-11-11"};
+const MEDUSA={v:4.1, name:"เมดูซ่า 4.1", date:"2026-11-12"};
 /* the 4.0 core is used only when the server's walk-forward backtest has shown it beats the 3.3 base (backtest.pass)
    and both teams have enough matches in the fit; otherwise the match runs on the 3.3 base */
 function dc4On(){ return !!(S?.backtest?.pass&&S?.dc?.leagues); }
+/* เมดูซ่า 4.1: national teams have their own fit and backtest (gate: beat the competition average by 0.02 log loss) */
+function dcnOn(){ return !!(S?.backtestn?.pass&&S?.dcn?.leagues); }
 function dc4For(m){
-  if(!dc4On()) return null;
-  const T=S.dc.teams||{}, H=T[m.h.id], A=T[m.a.id], L=S.dc.leagues[m.lg]||(H&&S.dc.leagues[H.lg]);
+  const nat=isNat(m.lg), M=nat?S?.dcn:S?.dc;
+  if(nat?!dcnOn():!dc4On()) return null;
+  const T=M.teams||{}, H=T[m.h.id], A=T[m.a.id], L=M.leagues[m.lg]||(H&&M.leagues[H.lg]);
   if(!H||!A||!L||H.n<3||A.n<3) return null;
   const hm=m.neutral?1:L.home;
   return {lh:clamp(L.mu*hm*H.att*A.def,0.15,4.2), la:clamp(L.mu*A.att*H.def,0.15,4.2), rho:L.rho??RHO};
@@ -195,7 +204,7 @@ function refine(m){
   if(m.neutral&&basis!=="dc"){ const k=Math.sqrt(1.18*0.9); lh=clamp(lh/1.18*k,0.15,4.2); la=clamp(la/0.9*k,0.15,4.2); }
   /* เมดูซ่า 4.0 core: Dixon-Coles strengths fitted on two seasons of every competition, used once the backtest has passed */
   let rho=RHO; const D=dc4For(m);
-  if(D){ const w=S.dc?.cfg?.blend;   /* the backtest may pick an ensemble: dc^w x (3.3 base)^(1-w) */
+  if(D){ const w=isNat(m.lg)?null:S.dc?.cfg?.blend;   /* the backtest may pick an ensemble: dc^w x (3.3 base)^(1-w) */
     if(w>0&&w<1){ lh=clamp(Math.exp(w*Math.log(D.lh)+(1-w)*Math.log(lh)),0.15,4.2); la=clamp(Math.exp(w*Math.log(D.la)+(1-w)*Math.log(la)),0.15,4.2); }
     else { lh=D.lh; la=D.la; }
     rho=D.rho; basis="dc"; }
@@ -205,8 +214,8 @@ function refine(m){
     const fh=lh/bh, fa=la/ba, st=k==="market"?1:(S?.weights?.factors?.[k]??1);
     if(st!==1){ lh=clamp(bh*fh**st,0.15,4.2); la=clamp(ba*fa**st,0.15,4.2); }
     factors.push({k,label,text:st!==1?`${text} · น้ำหนักปรับเอง ×${st}`:text,h:lh/bh,a:la/ba,rh:fh,ra:fa,st}); steps.push({k,text:`${label}: ${text}`,lh,la}); };
-  steps.push({k:"base", text: dc?`โมเดลความแข็งทีม (ดิกสัน-โคลส์) จากผลย้อนหลัง ${S.dc.rows||""} นัด ถ่วงนัดล่าสุดมากกว่า คิดความแข็งคู่แข่ง ค่าเจ้าบ้านและค่าเสมอของ${LEAGUE_NAME[m.lg]||"รายการนี้"}`:basis==="table"?"ตารางคะแนน: อัตรายิง/เสียหดเข้าค่าเฉลี่ยลีกด้วย prior 8 นัด แล้วขยับด้วยฟอร์มล่าสุด":basis==="blend"?"ตารางคะแนน: มีครบทีมเดียว อีกทีมใช้ฟอร์ม 5 นัด":"ฟอร์ม: ตารางยังไม่พอ ใช้ผล 5 นัดหลัง", lh, la});
-  factors.push({k:"base",label:dc?"ความแข็งทีม เมดูซ่า 4.0":basis==="form"?"ฟอร์ม 5 นัด":"ตารางคะแนนและฟอร์ม",text:`เริ่มที่ ${lh.toFixed(2)} – ${la.toFixed(2)} ประตูที่คาด`,h:1,a:1,base:true});
+  steps.push({k:"base", text: dc?`โมเดลความแข็ง${isNat(m.lg)?"ทีมชาติ":"ทีม"} (ดิกสัน-โคลส์) จากผลย้อนหลัง ${(isNat(m.lg)?S.dcn:S.dc)?.rows||""} นัด ถ่วงนัดล่าสุดมากกว่า คิดความแข็งคู่แข่ง ค่าเจ้าบ้านและค่าเสมอของ${LEAGUE_NAME[m.lg]||"รายการนี้"}`:basis==="table"?"ตารางคะแนน: อัตรายิง/เสียหดเข้าค่าเฉลี่ยลีกด้วย prior 8 นัด แล้วขยับด้วยฟอร์มล่าสุด":basis==="blend"?"ตารางคะแนน: มีครบทีมเดียว อีกทีมใช้ฟอร์ม 5 นัด":"ฟอร์ม: ตารางยังไม่พอ ใช้ผล 5 นัดหลัง", lh, la});
+  factors.push({k:"base",label:dc?(isNat(m.lg)?"ความแข็งทีมชาติ เมดูซ่า 4.1":"ความแข็งทีม เมดูซ่า 4.0"):basis==="form"?"ฟอร์ม 5 นัด":"ตารางคะแนนและฟอร์ม",text:`เริ่มที่ ${lh.toFixed(2)} – ${la.toFixed(2)} ประตูที่คาด`,h:1,a:1,base:true});
   const bH=lh, bA=la;
   const meets=meetingsFor(m);
   if(!dc&&meets.length>=3){
@@ -590,7 +599,7 @@ async function syncPull(date){
     const j=await getJson(`/api/store?date=${date}${teams?`&teams=${teams}`:""}`,8000);
     if(!j?.enabled) return false;
     Shared.on=true; Shared.picks[date]=j.picks||{}; Shared.pickHist=j.pickHist||[]; Shared.histN=j.histN||0; Shared.pulled[date]=Date.now();
-    if(j.calib) S.calib=j.calib; if(j.audit) S.audit=j.audit; if(j.health) S.health=j.health; if(j.reviews) S.reviews=j.reviews; if(j.rotation) S.rotation=j.rotation; if(j.dc) S.dc=j.dc; if(j.finalCal) S.finalCal=j.finalCal; if("backtest" in j) S.backtest=j.backtest; if(j.modelLog) S.modelLog=j.modelLog; if(j.picksAudit) S.picksAudit=j.picksAudit; if(j.liveAudit) S.liveAudit=j.liveAudit; if(j.lineMove) S.lineMove=j.lineMove;
+    if(j.calib) S.calib=j.calib; if(j.audit) S.audit=j.audit; if(j.health) S.health=j.health; if(j.reviews) S.reviews=j.reviews; if(j.rotation) S.rotation=j.rotation; if(j.dc) S.dc=j.dc; if(j.finalCal) S.finalCal=j.finalCal; if("backtest" in j) S.backtest=j.backtest; if(j.modelLog) S.modelLog=j.modelLog; if(j.picksAudit) S.picksAudit=j.picksAudit; if(j.liveAudit) S.liveAudit=j.liveAudit; if(j.dcn) S.dcn=j.dcn; if("backtestn" in j) S.backtestn=j.backtestn; if(j.natslugs) S.natslugs=j.natslugs; if(j.lineMove) S.lineMove=j.lineMove;
     if(j.newsPlayer) S.newsPlayer=j.newsPlayer; if(j.lessons) S.lessons=j.lessons;
     S.ratings={...(S.ratings||{}),...(j.ratings||{})}; S.lgavg={...(S.lgavg||{}),...(j.lgavg||{})}; if(j.weights) S.weights=j.weights; if(j.evals) S.evals=j.evals;
     if(day?.matches?.length) S.days[date]=prepare({...day,matches:day.matches.map(x=>x.raw||x)});
@@ -611,6 +620,7 @@ function syncPush(body){
 /* ---------- picks: one strongest call per match, up to 10 a day, frozen at kickoff ---------- */
 function bestCall(m){
   if(m.st!=="pre") return null;
+  if(isNat(m.lg)&&!(dcnOn()&&dc4For(m))) return null;   /* 4.1: no national-team picks until that model has passed its own backtest */
   const c=[];
   if(m.mk?.spread){
     const line=m.mk.spread.line, hc=cover(hdpSplit(m.g,line)), home=hc>=.5;
@@ -837,13 +847,20 @@ async function loadTableRaw(slug){
   }catch{ return null; }
 }
 async function pool(items,limit,fn){ const out=new Array(items.length); let i=0; await Promise.all(Array.from({length:Math.min(limit,items.length)},async()=>{ while(i<items.length){ const k=i++; out[k]=await fn(items[k]); } })); return out; }
+const natEmpty={};
+function natBadSlug(s){ if((S.natslugs?.bad||[]).includes(s)) return true; try{ const m=JSON.parse(localStorage.getItem("gc:natbad")||"{}"); return m[s]>Date.now()-864e5; }catch{ return false; } }
+function natMarkBad(s){ try{ const m=JSON.parse(localStorage.getItem("gc:natbad")||"{}"); m[s]=Date.now(); localStorage.setItem("gc:natbad",JSON.stringify(m)); }catch{} }
 async function loadLiveDay(date, onlySlugs){
   const ymd=date.replaceAll("-","");
-  const list=onlySlugs?.length ? LEAGUES.filter(([s])=>onlySlugs.includes(s)) : LEAGUES;
-  const feed={events:0,bad:0,failed:0,leagues:list.length};
+  /* national competitions: skip ones ESPN does not carry, and ones already seen empty for this date in the last 3 hours,
+     so 15 extra competitions do not slow every refresh; they never count against the feed's health */
+  const now=Date.now(), natOk=s=>!natBadSlug(s) && !(natEmpty[`${s}|${date}`]>now-3*3600e3);
+  const list=(onlySlugs?.length ? LEAGUES.filter(([s])=>onlySlugs.includes(s)) : LEAGUES).filter(([s])=>!isNat(s)||natOk(s));
+  const feed={events:0,bad:0,failed:0,leagues:list.filter(([s])=>!isNat(s)).length};
   const per=await pool(list,6,async([slug])=>{
     try{
-      const b=await espn(`site/v2/sports/soccer/${slug}/scoreboard?dates=${ymd}`); const evs=b.events||[]; if(!evs.length) return [];
+      let b; try{ b=await espn(`site/v2/sports/soccer/${slug}/scoreboard?dates=${ymd}`); }catch(e){ if(isNat(slug)){ if(/^4\d\d$/.test(String(e?.message))) natMarkBad(slug); return []; } throw e; }
+      const evs=b.events||[]; if(!evs.length){ if(isNat(slug)) natEmpty[`${slug}|${date}`]=now; return []; }
       for(const ev of evs){ feed.events++; const c=ev.competitions?.[0]; if(!ev.id||!c?.status?.type?.state||(c.competitors||[]).filter(x=>x.team?.id).length!==2) feed.bad++; }
       const tbl=await loadTable(slug);
       return evs.map(ev=>{
@@ -856,7 +873,7 @@ async function loadLiveDay(date, onlySlugs){
         return {id:ev.id,lg:slug,ko:ev.date,st:name.includes("POSTPONED")?"pp":name.includes("CANCEL")?"pp":state,clock,h,a,lh:base.lh,la:base.la,basis:base.basis,mk:parseMarket(c?.odds?.[0]),ds:null,live:true,neutral:!!c?.neutralSite,lgAvg:tbl?.avg??null,tinfo:tbl?.tinfo||null,
           ls:state==="pre"?null:liveStatsOf(c?.competitors||[],c?.details||[],H,A)};
       }).filter(Boolean);
-    }catch{ feed.failed++; return null; }
+    }catch{ if(isNat(slug)) return []; feed.failed++; return null; }
   });
   S.feed={...feed, at:new Date().toISOString(), ok:feed.failed<=feed.leagues/2&&feed.bad<=Math.max(2,feed.events*.05)};
   if(per.every(x=>x==null)) throw new Error("feed");
