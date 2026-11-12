@@ -915,8 +915,18 @@ function refine(m){
 function openFair(m){ const o=m.mk?.open; const f=o&&devig([o.home.decimal,o.draw.decimal,o.away.decimal]); return f?{oh:+f[0].toFixed(4),od:+f[1].toFixed(4),oa:+f[2].toFixed(4)}:{}; }
 /* same rule as deadRubber() in lib/backtest.js: 10 games or fewer left, cannot reach 4th, cannot be caught by 3rd-from-bottom */
 function deadRubber(T,t){ if(!T||t?.points==null||t.played==null) return false; const left=2*(T.n-1)-t.played; return left>0&&left<=10&&t.points+3*left<T.top&&t.points>T.drop+3*left; }
+/* the fit below is a grid search (~1,300 score grids); prices rarely change between screen updates, so remember the answer
+   per price set — a busy day re-prepared on every refresh was blocking a phone for most of a second */
+const mlMemo=new Map();
 function marketLambdas(m, modelTotal){
   const mk=m.mk; if(!mk?.home||!mk?.draw||!mk?.away) return null;
+  const key=[mk.home.decimal,mk.draw.decimal,mk.away.decimal,mk.total?.line,mk.total?.over?.decimal,mk.total?.under?.decimal,mk.spread?.line,mk.spread?.home?.decimal,mk.spread?.away?.decimal,mk.total?"":Math.round((modelTotal||0)*20)].join("|");
+  if(mlMemo.has(key)) return mlMemo.get(key);
+  const out=marketLambdasFit(m, modelTotal);
+  if(mlMemo.size>3000) mlMemo.clear(); if(out) Object.freeze(out); mlMemo.set(key,out); return out;
+}
+function marketLambdasFit(m, modelTotal){
+  const mk=m.mk;
   const f=devig([mk.home.decimal,mk.draw.decimal,mk.away.decimal]); if(!f) return null;
   let tOver=null, tLine=null;
   if(mk.total){ const t=devig([mk.total.over.decimal,mk.total.under.decimal]); if(t){ tOver=t[0]; tLine=mk.total.line; } }
