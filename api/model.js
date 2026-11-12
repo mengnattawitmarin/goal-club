@@ -50,7 +50,7 @@ async function natStep(t0, report) {
   const bt = parse(btRaw), st = parse(stRaw);
   const stale = !bt || bt.partial || !bt.goalsCal || Date.now() - Date.parse(bt.at) > 6.5 * 864e5 || (bt.matches || 0) * 1.15 < hist.length;
   if (hist.length >= 600 && (st || stale) && Date.now() - t0 < 42000) {
-    const r = walkForward(hist, { configs: NAT_CONFIGS, base: "avg", minGain: 0.02, stepDays: 30, warmDays: 365, budgetMs: Math.max(6000, 46000 - (Date.now() - t0)), state: st });
+    const r = walkForward(hist, { configs: NAT_CONFIGS, base: "avg", minGain: 0.02, stepDays: 30, warmDays: 365, budgetMs: Math.max(5000, 38000 - (Date.now() - t0)), state: st });
     if (r.ok) {
       const { state, ...pub } = r;
       if (r.done) await kvPipe([["SET", "backtestn", JSON.stringify(pub)], ["DEL", "btn:state"]]);
@@ -82,7 +82,7 @@ export default async function handler(req, res) {
   const t0 = Date.now(), report = { at: new Date().toISOString() };
   try {
     /* one collector at a time: a second device (or the daily cron) would fetch the same chunks and race on the queue */
-    const got = await kv("SET", "bf:lock", String(t0), "NX", "EX", "75");
+    const got = await kv("SET", "bf:lock", String(t0), "NX", "EX", "62");
     if (got !== "OK") { res.status(200).json({ ok: true, busy: true, note: "อีกเครื่องกำลังเก็บผลย้อนหลังอยู่" }); return; }
     const pre = parse(await kv("GET", "bf:todo"));
     const filling = !pre || pre.length > 0;
@@ -98,7 +98,7 @@ export default async function handler(req, res) {
     if (hist.length >= 1500 && (st || stale) && Date.now() - t0 < 30000) {
       /* resumable: each run tests the next windows and saves where it stopped; the gate is decided only on a full run */
       const hasXg = hist.filter((m) => m.xh != null).length > hist.length * 0.5;
-      const r = walkForward(hist, { configs: CONFIGS.filter((c) => hasXg || !c.xgW), budgetMs: Math.max(8000, 44000 - (Date.now() - t0)), state: st });
+      const r = walkForward(hist, { configs: CONFIGS.filter((c) => hasXg || !c.xgW), budgetMs: Math.max(6000, 36000 - (Date.now() - t0)), state: st });
       if (r.ok) {
         const { state, ...pub } = r;
         if (r.done) await kvPipe([["SET", "backtest", JSON.stringify(pub)], ["DEL", "bt:state"]]);
