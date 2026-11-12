@@ -94,8 +94,9 @@ function resCall(sum){
 }
 function mainPreds(sum){
   /* 4.2: the backtest measures which way of naming one score hits most (likeliest score / with the result / also O/U and BTTS) */
-  const rule=S?.backtest?.scoreRules?.n>=1000?S.backtest.scoreRules.rule:"full";
-  if(rule==="max") return [];
+  /* the called score must agree with the predicted result (owner's rule since 3.3: the score never contradicts the pick),
+     so only the two consistent ways compete; "likeliest score" is shown for information only */
+  const R=S?.backtest?.scoreRules, rule=R?.n>=1000?(R.res>R.full?"res":"full"):"full";
   const r=resCall(sum), ps=[(h,a)=>r==="h"?h>a:r==="a"?a>h:r==="hd"?h>=a:r==="ad"?a>=h:h===a];
   if(rule==="res") return ps;
   /* เมดูซ่า 4.0 (item 21): 3.3 forced every score to agree with a 51% over/under call, so 77% of calls became 2-1 or 1-2;
