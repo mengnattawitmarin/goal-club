@@ -2074,7 +2074,7 @@ async function runModelJob(){
   try{
     while(true){
       i++;
-      const pc=startLeft&&last!=null?Math.round((1-last/startLeft)*100):null;
+      const pc=startLeft&&last!=null?Math.max(0,Math.round((1-last/startLeft)*100)):null;
       out(`รอบที่ ${i} กำลังเก็บผลย้อนหลัง…${last!=null?` เหลือ ${last} ช่วง${pc!=null?` (เสร็จแล้ว ${pc}%)`:""}`:""} · ${mins()} นาที · เปิดหน้านี้ค้างไว้`);
       let r, j={};
       try{ r=await fetch("/api/model",{headers:{authorization:`Bearer ${sec}`},cache:"no-store"}); j=await r.json().catch(()=>({})); }
@@ -2087,8 +2087,8 @@ async function runModelJob(){
       errs=0;
       const left=j.backfill?.left??0; if(startLeft==null) startLeft=Math.max(left,1);
       if(left===0){ out(`เสร็จแล้ว · ผลย้อนหลัง ${j.matches||0} นัด · ${mins()} นาที${j.backtest?` · ทดสอบย้อนหลัง: ${j.backtest.pass?"4.0 ผ่านเกณฑ์ เปิดใช้แกนใหม่":"4.0 ยังไม่ชนะ 3.3 ใช้ 3.3 ต่อ"} (log loss ดีขึ้น ${j.backtest.gain})`:j.matches>=1500?" · กดอีกครั้งเพื่อทดสอบย้อนหลัง":""}`); try{ await syncPull(S.date); render(); }catch{} return; }
-      still = last!=null && left>=last ? still+1 : 0; last=left;
-      if(still>=3) return out(`หยุดพัก: 3 รอบติดกันยังเหลือ ${left} ช่วง (ESPN ตอบไม่ได้ ${j.backfill?.failed||0} ครั้งในรอบล่าสุด) ลองกดใหม่ภายหลัง`);
+      const B=j.backfill||{}; still = (B.done||0)===0 && !(B.split>0) ? still+1 : 0; last=left;
+      if(still>=5) return out(`หยุดพัก: 5 รอบติดกันเก็บไม่ได้เลย เหลือ ${left} ช่วง · ESPN ตอบไม่ได้ ${B.failed||0} ครั้งในรอบล่าสุด${B.errors?.length?` · ตัวอย่าง: ${B.errors.join(" / ")}`:""}`);
     }
   }finally{ modelRunning=false; try{ await lock?.release(); }catch{} }
 }

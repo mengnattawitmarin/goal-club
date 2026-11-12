@@ -10,7 +10,7 @@ import { backfillStep, loadHistory } from "../lib/backfill.js";
 import { fitDC } from "../lib/dc.js";
 import { walkForward } from "../lib/backtest.js";
 
-async function getJson(url) { const r = await fetch(url, { signal: AbortSignal.timeout(9000) }); if (!r.ok) throw new Error(r.status); return r.json(); }
+async function getJson(url) { const r = await fetch(url, { signal: AbortSignal.timeout(15000), headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 (compatible; GoalClub/2.0)" } }); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }
 
 export const CONFIGS = [
   { halfLife: 120, prior: 6, xgW: 0 }, { halfLife: 240, prior: 6, xgW: 0 }, { halfLife: 365, prior: 8, xgW: 0 },
@@ -30,7 +30,7 @@ export default async function handler(req, res) {
   try {
     const pre = parse(await kv("GET", "bf:todo"));
     const filling = !pre || pre.length > 0;
-    report.backfill = await backfillStep(getJson, { budgetMs: filling ? 40000 : 22000 });
+    report.backfill = await backfillStep(getJson, { budgetMs: filling ? 36000 : 20000 });
     if (report.backfill.left > 0) {   // still collecting: skip the heavy part, the last run does it
       report.months = await kvPipe(LEAGUES.map((lg) => ["HLEN", `bf:${lg}`])).then((r) => r.reduce((s, x) => s + (+x || 0), 0)).catch(() => null);
       report.ms = Date.now() - t0; await kv("SET", "modellog", JSON.stringify(report)); res.status(200).json(report); return;

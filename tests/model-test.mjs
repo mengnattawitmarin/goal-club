@@ -85,6 +85,8 @@ const byMonth = {}; for (const m of M.filter((m) => m.lg !== "uefa.europa")) { c
 globalThis.fetch = async (url, opts) => {
   const u = String(url); if (u.startsWith("http://localhost")) return realFetch(url, opts);
   if (/soccer\/bad\./.test(u)) return new Response("busy", { status: 503 });
+  { const m = u.match(/soccer\/esp\.1\/scoreboard\?dates=(\d{8})-(\d{8})/); const p = (x) => Date.parse(`${x.slice(0, 4)}-${x.slice(4, 6)}-${x.slice(6)}`);
+    if (m && p(m[2]) - p(m[1]) > 10 * 864e5) return new Response("slow", { status: 504 }); }   // a whole month of esp.1 is "too heavy": must be split
   const mm = u.match(/soccer\/([^/]+)\/scoreboard\?dates=(\d{6})\d\d-/);
   if (mm) { const list = byMonth[`${mm[1]}|${mm[2]}`] || []; return new Response(JSON.stringify({ events: list.map((m) => ({ id: m.id, date: m.d + "T15:00Z", competitions: [{ status: { type: { state: "post" } }, competitors: [{ homeAway: "home", score: String(m.hs), team: { id: m.hid } }, { homeAway: "away", score: String(m.as), team: { id: m.aid } }] }] })) }), { status: 200 }); }
   return new Response("{}", { status: 404 });
@@ -98,8 +100,8 @@ const job = (await import(join(root, "api/model.js"))).default;
 const call = async (q, h = {}) => { let out, code = 200; await job({ query: q, headers: h }, { setHeader() {}, status(c) { code = c; return this; }, json(o) { out = { ...o, _code: code }; } }); return out; };
 check("model job refuses without the secret", (await call({}))._code === 401);
 { const w = await call({ secret: "wrong" }); check("wrong secret: refused with a Thai hint (length of what was sent only)", w._code === 401 && /ยาว 5 ตัว/.test(w.hint)); }
-let rep; for (let i = 0; i < 8; i++) { rep = await call({ secret: i ? "s3" : " <s3> \n" }); if (!rep.backfill?.left) break; }
-check("backfill fills the history over several runs, even with chunks ESPN keeps refusing (dropped after 3 tries)", rep.backfill.left === 0 && rep.matches > 2000 && JSON.parse(db.get("bf:tries") || "{}") && (db.get("bf:skip") || []).length === 14, JSON.stringify(rep.backfill) + " " + rep.matches);
+let rep; for (let i = 0; i < 20; i++) { rep = await call({ secret: i ? "s3" : " <s3> \n" }); if (!rep.backfill?.left) break; }
+check("backfill fills the history over several runs: heavy months split in halves, chunks ESPN keeps refusing dropped after 3 tries", rep.backfill.left === 0 && rep.matches > 2000 && JSON.parse(db.get("bf:tries") || "{}") && (db.get("bf:skip") || []).length >= 14 && (db.get("bf:skip") || []).every((x) => x.startsWith("bad.")) && Object.keys(db.get("bf:esp.1") || {}).length >= 10 && Object.keys(db.get("bf:esp.1") || {}).every((k) => /^\d{8}-\d{8}$/.test(k)), JSON.stringify(rep.backfill) + " " + rep.matches);
 const bt = JSON.parse(db.get("backtest") || "null");
 check("model job stores a backtest with a pass/fail gate and measured context (rest, motivation)", bt && typeof bt.pass === "boolean" && bt.best && bt.base33 && bt.context?.shortRest && "deadFor" in bt.context, bt ? `gain ${bt.gain} pass ${bt.pass}` : "none");
 check("model job stores team strengths and league levels for the app", Object.keys(db.get("dct") || {}).length >= 60 && JSON.parse(db.get("dcl")).leagues["eng.1"].home > 1);
