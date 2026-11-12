@@ -37,7 +37,7 @@ export default async function handler(req, res) {
       if (r.ok) { await kv("SET", "backtest", JSON.stringify(r)); report.backtest = { gain: r.gain, pass: r.pass, best: r.best, partial: r.partial }; }
     }
     const best = parse(await kv("GET", "backtest"))?.best || CONFIGS[1];
-    if (hist.length >= 500) {
+    if (hist.length >= 500 && Date.now() - t0 < 45000) {
       const md = fitDC(hist, { halfLife: best.halfLife, prior: best.prior, xgW: best.xgW || 0 });
       const ids = Object.keys(md.teams);
       const cmds = [["DEL", "dct"], ["SET", "dcl", JSON.stringify({ leagues: md.leagues, asOf: md.asOf, cfg: { halfLife: md.halfLife, prior: md.prior, xgW: md.xgW }, rows: md.rows })]];

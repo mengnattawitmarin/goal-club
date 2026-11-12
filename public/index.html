@@ -2067,15 +2067,18 @@ async function runModelJob(){
   const inp=document.getElementById("mjSecret"), sec=(inp?.value||"").trim(), out=t=>{ const el=document.getElementById("mjOut"); if(el) el.textContent=t; };
   if(!sec) return out("ใส่รหัส CRON_SECRET ก่อน");
   if(modelRunning) return; modelRunning=true;
+  let last=null, still=0;
   try{
     for(let i=1;i<=60;i++){
-      out(`รอบที่ ${i} กำลังเก็บผลย้อนหลัง… (อย่าปิดหน้านี้ ใช้เวลารอบละไม่เกิน 1 นาที)`);
+      out(`รอบที่ ${i} กำลังเก็บผลย้อนหลัง…${last!=null?` เหลือ ${last} ช่วง`:""} (อย่าปิดหน้านี้ ใช้เวลารอบละไม่เกิน 1 นาที)`);
       const r=await fetch("/api/model",{headers:{authorization:`Bearer ${sec}`},cache:"no-store"}); const j=await r.json().catch(()=>({}));
       if(r.status===401) return out(`รหัสไม่ตรงกับที่ตั้งใน Vercel${j.hint?` · ${j.hint}`:""}`);
-      if(!r.ok||j.error) return out(`หยุด: ${j.error||("HTTP "+r.status)}`);
+      if(!r.ok||j.error) return out(`หยุด: ${j.error||("HTTP "+r.status)}${r.status>=500?" · ระบบใช้เวลานานเกินรอบ กดใหม่ได้ ระบบจะเก็บต่อจากที่ค้าง":""}`);
       const left=j.backfill?.left??0;
+      still = last!=null && left>=last ? still+1 : 0; last=left;
+      if(still>=3) return out(`หยุดพัก: 3 รอบติดกันยังเหลือ ${left} ช่วง (ESPN ตอบไม่ได้ ${j.backfill?.failed||0} ครั้งในรอบล่าสุด) ลองกดใหม่ภายหลัง · เก็บแล้ว ${j.matches||0} นัด`);
       if(left===0){ out(`เสร็จแล้ว · ผลย้อนหลัง ${j.matches||0} นัด${j.backtest?` · ทดสอบย้อนหลัง: ${j.backtest.pass?"4.0 ผ่านเกณฑ์ เปิดใช้แกนใหม่":"4.0 ยังไม่ชนะ 3.3 ใช้ 3.3 ต่อ"} (log loss ดีขึ้น ${j.backtest.gain})`:j.matches>=1500?" · กดอีกครั้งเพื่อทดสอบย้อนหลัง":""}`); try{ await syncPull(S.date); render(); }catch{} return; }
-      out(`รอบที่ ${i} เสร็จ · เก็บแล้ว ${j.matches||0} นัด · เหลือ ${left} ช่วง`);
+      out(`รอบที่ ${i} เสร็จ · เก็บแล้ว ${j.matches||0} นัด · เหลือ ${left} ช่วง${j.backfill?.failed?` · ESPN ตอบไม่ได้ ${j.backfill.failed} ช่วง (จะลองใหม่ท้ายคิว)`:""}`);
     }
     out("ครบ 60 รอบแล้ว กดอีกครั้งเพื่อเก็บต่อ");
   }catch(e){ out(`เชื่อมต่อไม่ได้: ${e?.message||e}`); }

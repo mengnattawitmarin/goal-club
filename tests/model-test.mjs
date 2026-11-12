@@ -17,6 +17,7 @@ function redis([c, ...a]) {
     case "HGET": return h()[a[1]] ?? null;
     case "HMGET": return a.slice(1).map((k) => h()[k] ?? null);
     case "HGETALL": return Object.entries(h()).flat();
+    case "RPUSH": { const l = db.get(a[0]) || []; l.push(...a.slice(1)); db.set(a[0], l); return l.length; }
   }
   return null;
 }
@@ -83,19 +84,22 @@ const realFetch = globalThis.fetch;
 const byMonth = {}; for (const m of M.filter((m) => m.lg !== "uefa.europa")) { const k = `${m.lg}|${m.d.slice(0, 7).replace("-", "")}`; (byMonth[k] = byMonth[k] || []).push(m); }
 globalThis.fetch = async (url, opts) => {
   const u = String(url); if (u.startsWith("http://localhost")) return realFetch(url, opts);
+  if (/soccer\/bad\./.test(u)) return new Response("busy", { status: 503 });
   const mm = u.match(/soccer\/([^/]+)\/scoreboard\?dates=(\d{6})\d\d-/);
   if (mm) { const list = byMonth[`${mm[1]}|${mm[2]}`] || []; return new Response(JSON.stringify({ events: list.map((m) => ({ id: m.id, date: m.d + "T15:00Z", competitions: [{ status: { type: { state: "post" } }, competitors: [{ homeAway: "home", score: String(m.hs), team: { id: m.hid } }, { homeAway: "away", score: String(m.as), team: { id: m.aid } }] }] })) }), { status: 200 }); }
   return new Response("{}", { status: 404 });
 };
 const { backfillPlan: bp } = await import(join(root, "lib/backfill.js"));
-db.set("bf:todo", JSON.stringify(bp(Date.parse("2026-05-01"), 650).filter((x) => /^(eng\.1|sco\.1|esp\.1)\|/.test(x))));
+/* 14 chunks ESPN always refuses, at the front of the queue: they must not block the rest (bug seen live 12 Nov) */
+const broken = Array.from({ length: 14 }, (_, i) => `bad.${i}|20250101-20250131`);
+db.set("bf:todo", JSON.stringify([...broken, ...bp(Date.parse("2026-05-01"), 650).filter((x) => /^(eng\.1|sco\.1|esp\.1)\|/.test(x))]));
 process.env.CRON_SECRET = "s3";
 const job = (await import(join(root, "api/model.js"))).default;
 const call = async (q, h = {}) => { let out, code = 200; await job({ query: q, headers: h }, { setHeader() {}, status(c) { code = c; return this; }, json(o) { out = { ...o, _code: code }; } }); return out; };
 check("model job refuses without the secret", (await call({}))._code === 401);
 { const w = await call({ secret: "wrong" }); check("wrong secret: refused with a Thai hint (length of what was sent only)", w._code === 401 && /ยาว 5 ตัว/.test(w.hint)); }
-let rep; for (let i = 0; i < 6; i++) { rep = await call({ secret: i ? "s3" : " <s3> \n" }); if (!rep.backfill?.left) break; }
-check("backfill fills the history over several runs", rep.backfill.left === 0 && rep.matches > 2000, JSON.stringify(rep.backfill) + " " + rep.matches);
+let rep; for (let i = 0; i < 8; i++) { rep = await call({ secret: i ? "s3" : " <s3> \n" }); if (!rep.backfill?.left) break; }
+check("backfill fills the history over several runs, even with chunks ESPN keeps refusing (dropped after 3 tries)", rep.backfill.left === 0 && rep.matches > 2000 && JSON.parse(db.get("bf:tries") || "{}") && (db.get("bf:skip") || []).length === 14, JSON.stringify(rep.backfill) + " " + rep.matches);
 const bt = JSON.parse(db.get("backtest") || "null");
 check("model job stores a backtest with a pass/fail gate and measured context (rest, motivation)", bt && typeof bt.pass === "boolean" && bt.best && bt.base33 && bt.context?.shortRest && "deadFor" in bt.context, bt ? `gain ${bt.gain} pass ${bt.pass}` : "none");
 check("model job stores team strengths and league levels for the app", Object.keys(db.get("dct") || {}).length >= 60 && JSON.parse(db.get("dcl")).leagues["eng.1"].home > 1);
