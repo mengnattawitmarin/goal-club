@@ -11,7 +11,7 @@ function redis([c, ...a]) {
   c = String(c).toUpperCase(); const h = () => db.get(a[0]) || {};
   switch (c) {
     case "GET": return db.has(a[0]) ? db.get(a[0]) : null;
-    case "SET": db.set(a[0], a[1]); return "OK";
+    case "SET": if (a.includes("NX") && db.has(a[0])) return null; db.set(a[0], a[1]); return "OK";
     case "DEL": return db.delete(a[0]) ? 1 : 0;
     case "HSET": { const o = h(); for (let i = 1; i < a.length; i += 2) o[a[i]] = a[i + 1]; db.set(a[0], o); return 1; }
     case "HGET": return h()[a[1]] ?? null;
@@ -104,6 +104,7 @@ const job = (await import(join(root, "api/model.js"))).default;
 const call = async (q, h = {}) => { let out, code = 200; await job({ query: q, headers: h }, { setHeader() {}, status(c) { code = c; return this; }, json(o) { out = { ...o, _code: code }; } }); return out; };
 check("model job refuses without the secret", (await call({}))._code === 401);
 { const w = await call({ secret: "wrong" }); check("wrong secret: refused with a Thai hint (length of what was sent only)", w._code === 401 && /ยาว 5 ตัว/.test(w.hint)); }
+{ db.set("bf:lock", "1"); const b = await call({ secret: "s3" }); check("one collector at a time: a second device waits instead of racing on the queue", b.busy === true); db.delete("bf:lock"); }
 let rep; for (let i = 0; i < 20; i++) { rep = await call({ secret: i ? "s3" : " <s3> \n" }); if (!rep.backfill?.left) break; }
 check("backfill fills the history over several runs: heavy months split in halves, chunks ESPN keeps refusing dropped after 3 tries", rep.backfill.left === 0 && rep.matches > 2000 && JSON.parse(db.get("bf:tries") || "{}") && (db.get("bf:skip") || []).length >= 14 && (db.get("bf:skip") || []).every((x) => x.startsWith("bad.")) && Object.keys(db.get("bf:esp.1") || {}).length >= 10 && Object.keys(db.get("bf:esp.1") || {}).every((k) => /^\d{8}-\d{8}$/.test(k)), JSON.stringify(rep.backfill) + " " + rep.matches);
 const bt = JSON.parse(db.get("backtest") || "null");

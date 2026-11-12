@@ -28,12 +28,15 @@ export default async function handler(req, res) {
   if (!kvEnabled) { res.status(200).json({ error: "no database" }); return; }
   const t0 = Date.now(), report = { at: new Date().toISOString() };
   try {
+    /* one collector at a time: a second device (or the daily cron) would fetch the same chunks and race on the queue */
+    const got = await kv("SET", "bf:lock", String(t0), "NX", "EX", "75");
+    if (got !== "OK") { res.status(200).json({ ok: true, busy: true, note: "อีกเครื่องกำลังเก็บผลย้อนหลังอยู่" }); return; }
     const pre = parse(await kv("GET", "bf:todo"));
     const filling = !pre || pre.length > 0;
     report.backfill = await backfillStep(getJson, { budgetMs: filling ? 36000 : 20000 });
     if (report.backfill.left > 0) {   // still collecting: skip the heavy part, the last run does it
       report.months = await kvPipe(LEAGUES.map((lg) => ["HLEN", `bf:${lg}`])).then((r) => r.reduce((s, x) => s + (+x || 0), 0)).catch(() => null);
-      report.ms = Date.now() - t0; await kv("SET", "modellog", JSON.stringify(report)); res.status(200).json(report); return;
+      report.ms = Date.now() - t0; await kvPipe([["SET", "modellog", JSON.stringify(report)], ["DEL", "bf:lock"]]); res.status(200).json(report); return;
     }
     const hist = await loadHistory(); report.matches = hist.length;
     const bt = parse(await kv("GET", "backtest"));
@@ -52,11 +55,11 @@ export default async function handler(req, res) {
       await kvPipe(cmds); report.fit = { teams: ids.length, leagues: Object.keys(md.leagues).length };
     }
     report.ms = Date.now() - t0;
-    await kv("SET", "modellog", JSON.stringify(report));
+    await kvPipe([["SET", "modellog", JSON.stringify(report)], ["DEL", "bf:lock"]]);
     res.status(200).json(report);
   } catch (e) {
     report.error = String(e?.message || e).slice(0, 200);
-    await kv("SET", "modellog", JSON.stringify(report)).catch(() => {});
+    await kvPipe([["SET", "modellog", JSON.stringify(report)], ["DEL", "bf:lock"]]).catch(() => {});
     res.status(200).json(report);
   }
 }

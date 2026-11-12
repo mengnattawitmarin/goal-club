@@ -431,6 +431,7 @@ async function runModelJob(){
         return out(`หยุด: ${j.error||(r?"HTTP "+r.status:"เชื่อมต่อไม่ได้")} ติดกัน 3 ครั้ง กดใหม่ได้ ระบบจะเก็บต่อจากที่ค้าง`);
       }
       errs=0;
+      if(j.busy){ out(`อีกเครื่องกำลังเก็บผลย้อนหลังอยู่ (เก็บได้ทีละเครื่อง) · รอแล้วจะเก็บต่อเอง…`); await new Promise(f=>setTimeout(f,20000)); continue; }
       const left=j.backfill?.left??0; if(startLeft==null) startLeft=Math.max(left,1);
       if(left===0){ out(`เสร็จแล้ว · ผลย้อนหลัง ${j.matches||0} นัด · ${mins()} นาที${j.backtest?` · ทดสอบย้อนหลัง: ${j.backtest.pass?"4.0 ผ่านเกณฑ์ เปิดใช้แกนใหม่":"4.0 ยังไม่ชนะ 3.3 ใช้ 3.3 ต่อ"} (log loss ดีขึ้น ${j.backtest.gain})`:j.matches>=1500?" · กดอีกครั้งเพื่อทดสอบย้อนหลัง":""}`); try{ await syncPull(S.date); render(); }catch{} return; }
       const B=j.backfill||{}; still = (B.done||0)===0 && !(B.split>0) ? still+1 : 0; last=left;
