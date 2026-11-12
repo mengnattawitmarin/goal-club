@@ -195,7 +195,10 @@ function refine(m){
   if(m.neutral&&basis!=="dc"){ const k=Math.sqrt(1.18*0.9); lh=clamp(lh/1.18*k,0.15,4.2); la=clamp(la/0.9*k,0.15,4.2); }
   /* เมดูซ่า 4.0 core: Dixon-Coles strengths fitted on two seasons of every competition, used once the backtest has passed */
   let rho=RHO; const D=dc4For(m);
-  if(D){ lh=D.lh; la=D.la; rho=D.rho; basis="dc"; }
+  if(D){ const w=S.dc?.cfg?.blend;   /* the backtest may pick an ensemble: dc^w x (3.3 base)^(1-w) */
+    if(w>0&&w<1){ lh=clamp(Math.exp(w*Math.log(D.lh)+(1-w)*Math.log(lh)),0.15,4.2); la=clamp(Math.exp(w*Math.log(D.la)+(1-w)*Math.log(la)),0.15,4.2); }
+    else { lh=D.lh; la=D.la; }
+    rho=D.rho; basis="dc"; }
   const dc=basis==="dc";
   /* every factor's push can be strengthened or weakened by the daily job (weights.factors[k]); raw ratios are kept so the job can re-tune */
   const push=(k,label,text,bh,ba)=>{
@@ -1010,11 +1013,16 @@ function saveDay(date){
   try{ const keep=new Set([shiftDate(bkkToday(),-1),bkkToday(),shiftDate(bkkToday(),1),shiftDate(bkkToday(),2),date]);
     Object.keys(localStorage).filter(k=>k.startsWith("gc:day:")&&!keep.has(k.slice(7))).forEach(k=>localStorage.removeItem(k)); }catch{}
 }
+/* one slow answer (a phone switching networks, a cold start right after a deploy) must not leave the app on the
+   saved snapshot for the whole visit: two tries, and a failed probe is tried again after a minute */
+let liveProbeAt=0;
 async function probeLive(){
-  if(S.liveOk!=null) return S.liveOk;
-  try{ await espn(`site/v2/sports/soccer/eng.1/scoreboard`,5000); S.liveOk=true; }catch{ S.liveOk=false; }
-  return S.liveOk;
+  if(S.liveOk===true || (S.liveOk===false && Date.now()-liveProbeAt<60000)) return S.liveOk;
+  liveProbeAt=Date.now();
+  for(const ms of [6000,10000]){ try{ await espn(`site/v2/sports/soccer/eng.1/scoreboard`,ms); S.liveOk=true; return true; }catch{} }
+  S.liveOk=false; return false;
 }
+setInterval(()=>{ if(S.liveOk===false && !window.claude && document.visibilityState!=="hidden") probeLive().then(async ok=>{ if(ok){ try{ await syncPull(S.date); refresh(S.date,true); }catch{} } }); }, 65000);
 async function refresh(date, manual, light){
   if(S.loading){ S.queued={date,manual}; return; }
   S.loading=date; S.err=null;

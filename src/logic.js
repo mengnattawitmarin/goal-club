@@ -195,7 +195,10 @@ function refine(m){
   if(m.neutral&&basis!=="dc"){ const k=Math.sqrt(1.18*0.9); lh=clamp(lh/1.18*k,0.15,4.2); la=clamp(la/0.9*k,0.15,4.2); }
   /* เมดูซ่า 4.0 core: Dixon-Coles strengths fitted on two seasons of every competition, used once the backtest has passed */
   let rho=RHO; const D=dc4For(m);
-  if(D){ lh=D.lh; la=D.la; rho=D.rho; basis="dc"; }
+  if(D){ const w=S.dc?.cfg?.blend;   /* the backtest may pick an ensemble: dc^w x (3.3 base)^(1-w) */
+    if(w>0&&w<1){ lh=clamp(Math.exp(w*Math.log(D.lh)+(1-w)*Math.log(lh)),0.15,4.2); la=clamp(Math.exp(w*Math.log(D.la)+(1-w)*Math.log(la)),0.15,4.2); }
+    else { lh=D.lh; la=D.la; }
+    rho=D.rho; basis="dc"; }
   const dc=basis==="dc";
   /* every factor's push can be strengthened or weakened by the daily job (weights.factors[k]); raw ratios are kept so the job can re-tune */
   const push=(k,label,text,bh,ba)=>{

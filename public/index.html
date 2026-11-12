@@ -255,6 +255,9 @@ ol.steps b{color:var(--gold)}
 .statgrid > *{padding:8px 0;border-top:1px solid var(--line-soft)}
 .statgrid > .h{border-top:0;color:var(--faint);font-size:11.5px}
 .statgrid > :nth-child(3n+2),.statgrid > :nth-child(3n){text-align:right;padding-left:16px}
+.statgrid.c4{grid-template-columns:minmax(0,1fr) auto auto auto}.statgrid.c5{grid-template-columns:minmax(0,1fr) auto auto auto auto}
+.statgrid.c4 > *,.statgrid.c5 > *{text-align:right;padding-left:12px}
+.statgrid.c4 > :nth-child(4n+1),.statgrid.c5 > :nth-child(5n+1){text-align:left;padding-left:0}
 .form-lines{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
 .form-lines span{font-size:12px;padding:2px 7px;border-radius:5px;background:var(--surface-2)}
 .omen{border:1px dashed color-mix(in srgb,var(--gold) 38%,transparent);border-radius:var(--r-lg);padding:14px}
@@ -742,7 +745,10 @@ function refine(m){
   if(m.neutral&&basis!=="dc"){ const k=Math.sqrt(1.18*0.9); lh=clamp(lh/1.18*k,0.15,4.2); la=clamp(la/0.9*k,0.15,4.2); }
   /* เมดูซ่า 4.0 core: Dixon-Coles strengths fitted on two seasons of every competition, used once the backtest has passed */
   let rho=RHO; const D=dc4For(m);
-  if(D){ lh=D.lh; la=D.la; rho=D.rho; basis="dc"; }
+  if(D){ const w=S.dc?.cfg?.blend;   /* the backtest may pick an ensemble: dc^w x (3.3 base)^(1-w) */
+    if(w>0&&w<1){ lh=clamp(Math.exp(w*Math.log(D.lh)+(1-w)*Math.log(lh)),0.15,4.2); la=clamp(Math.exp(w*Math.log(D.la)+(1-w)*Math.log(la)),0.15,4.2); }
+    else { lh=D.lh; la=D.la; }
+    rho=D.rho; basis="dc"; }
   const dc=basis==="dc";
   /* every factor's push can be strengthened or weakened by the daily job (weights.factors[k]); raw ratios are kept so the job can re-tune */
   const push=(k,label,text,bh,ba)=>{
@@ -1976,15 +1982,15 @@ function medusa4Block(){
         <span>ทายผลถูก</span><span class="num">${pct(B.base33.hit)}</span><span class="num">${pct(B.best.hit)}</span>
         <span>log loss สูง/ต่ำ 2.5</span><span class="num">${f3(B.base33.loglossOU)}</span><span class="num">${f3(B.best.loglossOU)}</span>
         <span>เสมอ คาด/จริง</span><span class="num">${pct(B.base33.draw[0])}/${pct(B.base33.draw[1])}</span><span class="num">${pct(B.best.draw[0])}/${pct(B.best.draw[1])}</span>
-        <span>ประตู คาด/จริง</span><span class="num">${B.base33.goals[0]}/${B.base33.goals[1]}</span><span class="num">${B.best.goals[0]}/${B.best.goals[1]}</span></div>
-      ${lgs.length?`<div class="statgrid" style="margin-top:10px;grid-template-columns:minmax(0,1fr) auto auto auto"><span class="h">ลีก</span><span class="h">นัด</span><span class="h">3.3</span><span class="h">4.0</span>
+        <span>ประตู คาด/จริง</span><span class="num">${(+B.base33.goals[0]).toFixed(2)}/${(+B.base33.goals[1]).toFixed(2)}</span><span class="num">${(+B.best.goals[0]).toFixed(2)}/${(+B.best.goals[1]).toFixed(2)}</span></div>
+      ${lgs.length?`<div class="statgrid c4" style="margin-top:10px"><span class="h">ลีก</span><span class="h">นัด</span><span class="h">3.3</span><span class="h">4.0</span>
         ${lgs.map(([lg,v])=>`<span>${esc(LEAGUE_NAME[lg]||lg)}</span><span class="num">${v.v40.n}</span><span class="num">${f3(v.base33.logloss)}</span><span class="num ${v.v40.logloss<v.base33.logloss?"green":"lossc"}">${f3(v.v40.logloss)}</span>`).join("")}</div>`:""}
-      <p class="note">ทายทีละ 2 สัปดาห์โดยใช้เฉพาะผลก่อนวันนั้น · ผ่านเกณฑ์เมื่อ log loss ดีกว่า 3.3 อย่างน้อย 0.005 จาก 300 นัดขึ้นไป แอปจึงสลับมาใช้แกนใหม่เอง${sr?.n?` · ทีมที่พักไม่เกิน 3 วันยิงได้ ${Math.round(sr.ratio*100)}% ของที่คาด (${sr.n} ครั้ง)`:""}${B.partial?" · รอบนี้ทดสอบไม่ครบทุกช่วงเพราะเวลาหมด":""}</p></div>`);
+      <p class="note">${B.partial?`<b>ทดสอบไปแล้ว ${Math.round((B.progress||0)*100)}%</b> (กดเร่งเก็บผลย้อนหลังในหน้าสถานะเพื่อทดสอบต่อ ตัดสินผ่าน/ไม่ผ่านเมื่อครบ) · `:""}${B.best?.blend!=null?`ตัวที่ดีที่สุด: ผสม 4.0 ${Math.round(B.best.blend*100)}% กับ 3.3 · `:""}ทายทีละ 2 สัปดาห์โดยใช้เฉพาะผลก่อนวันนั้น · ผ่านเกณฑ์เมื่อ log loss ดีกว่า 3.3 อย่างน้อย 0.005 จาก 300 นัดขึ้นไป แอปจึงสลับมาใช้แกนใหม่เอง${sr?.n?` · ทีมที่พักไม่เกิน 3 วันยิงได้ ${Math.round(sr.ratio*100)}% ของที่คาด (${sr.n} ครั้ง)`:""}</p></div>`);
   } else if(S.modelLog){
     out.push(`${sec("ทดสอบย้อนหลัง "+MEDUSA.name)}<div class="card muted">กำลังเก็บผลย้อนหลัง 2 ฤดูกาล${S.modelLog.backfill?` · เหลืออีก ${S.modelLog.backfill.left} ช่วง`:""} · ระหว่างนี้แอปใช้แกน 3.3 ไปก่อน</div>`);
   }
-  const kinds=P?Object.entries(P).filter(([k,v])=>v&&v.n>=5):[];
-  if(kinds.length) out.push(`${sec("ฟันธงเทียบราคาตลาด","แยกตามแบบ")}<div class="card"><div class="statgrid" style="grid-template-columns:minmax(0,1fr) auto auto auto auto"><span class="h">แบบ</span><span class="h">นัด</span><span class="h">โมเดลให้</span><span class="h">ตลาดให้</span><span class="h">เข้าจริง</span>
+  const kinds=P?Object.entries(P).filter(([k,v])=>v&&v.n>=5&&PICK_KIND[k]).sort((a,b)=>(a[0]==="all")-(b[0]==="all")):[];
+  if(kinds.length) out.push(`${sec("ฟันธงเทียบราคาตลาด","แยกตามแบบ")}<div class="card"><div class="statgrid c5"><span class="h">แบบ</span><span class="h">นัด</span><span class="h">โมเดลให้</span><span class="h">ตลาดให้</span><span class="h">เข้าจริง</span>
     ${kinds.map(([k,v])=>`<span>${esc(PICK_KIND[k]||k)}</span><span class="num">${v.n}</span><span class="num">${pct(v.prob)}</span><span class="num">${v.fair!=null?pct(v.fair):"–"}</span><span class="num ${v.fair!=null?(v.hit>v.fair?"green":"lossc"):""}">${pct(v.hit)}</span>`).join("")}</div>
     <p class="note">ถ้า "เข้าจริง" สูงกว่า "ตลาดให้" ต่อเนื่องจากหลายร้อยนัด จึงพอบอกได้ว่าโมเดลเห็นอะไรที่ตลาดไม่เห็น · ไม่ใช่คำแนะนำให้เดิมพัน</p></div>`);
   const MV=S.lineMove;
@@ -2092,6 +2098,7 @@ async function runModelJob(){
       errs=0;
       if(j.busy){ out(`อีกเครื่องกำลังเก็บผลย้อนหลังอยู่ (เก็บได้ทีละเครื่อง) · รอแล้วจะเก็บต่อเอง…`); await new Promise(f=>setTimeout(f,20000)); continue; }
       const left=j.backfill?.left??0; if(startLeft==null) startLeft=Math.max(left,1);
+      if(left===0 && j.backtest?.partial){ still=0; last=0; out(`เก็บผลครบแล้ว · กำลังทดสอบย้อนหลัง ${Math.round((j.backtest.progress||0)*100)}% · ${mins()} นาที · เปิดหน้านี้ค้างไว้`); continue; }
       if(left===0){ out(`เสร็จแล้ว · ผลย้อนหลัง ${j.matches||0} นัด · ${mins()} นาที${j.backtest?` · ทดสอบย้อนหลัง: ${j.backtest.pass?"4.0 ผ่านเกณฑ์ เปิดใช้แกนใหม่":"4.0 ยังไม่ชนะ 3.3 ใช้ 3.3 ต่อ"} (log loss ดีขึ้น ${j.backtest.gain})`:j.matches>=1500?" · กดอีกครั้งเพื่อทดสอบย้อนหลัง":""}`); try{ await syncPull(S.date); render(); }catch{} return; }
       const B=j.backfill||{}; still = (B.done||0)===0 && !(B.split>0) ? still+1 : 0; last=left;
       if(still>=5) return out(`หยุดพัก: 5 รอบติดกันเก็บไม่ได้เลย เหลือ ${left} ช่วง · ESPN ตอบไม่ได้ ${B.failed||0} ครั้งในรอบล่าสุด${B.errors?.length?` · ตัวอย่าง: ${B.errors.join(" / ")}`:""}`);

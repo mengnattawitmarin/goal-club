@@ -15,6 +15,8 @@ async function getJson(url) { const r = await fetch(url, { signal: AbortSignal.t
 export const CONFIGS = [
   { halfLife: 120, prior: 6, xgW: 0 }, { halfLife: 240, prior: 6, xgW: 0 }, { halfLife: 365, prior: 8, xgW: 0 },
   { halfLife: 240, prior: 12, xgW: 0 }, { halfLife: 240, prior: 6, xgW: 0.3 }, { halfLife: 240, prior: 6, xgW: 0.6 },
+  /* ensembles of the 4.0 core with the 3.3 base (same fit as {240, 6}, no extra cost) */
+  { halfLife: 240, prior: 6, xgW: 0, blend: 0.5 }, { halfLife: 240, prior: 6, xgW: 0, blend: 0.7 },
 ];
 
 export default async function handler(req, res) {
@@ -39,18 +41,26 @@ export default async function handler(req, res) {
       report.ms = Date.now() - t0; await kvPipe([["SET", "modellog", JSON.stringify(report)], ["DEL", "bf:lock"]]); res.status(200).json(report); return;
     }
     const hist = await loadHistory(); report.matches = hist.length;
-    const bt = parse(await kv("GET", "backtest"));
-    const stale = !bt || Date.now() - Date.parse(bt.at) > 6.5 * 864e5 || (bt.matches || 0) * 1.25 < hist.length;
-    if (hist.length >= 1500 && stale && Date.now() - t0 < 30000) {
+    const [btRaw, stRaw] = await kvPipe([["GET", "backtest"], ["GET", "bt:state"]]);
+    const bt = parse(btRaw), st = parse(stRaw);
+    const stale = !bt || bt.partial || Date.now() - Date.parse(bt.at) > 6.5 * 864e5 || (bt.matches || 0) * 1.25 < hist.length;
+    if (hist.length >= 1500 && (st || stale) && Date.now() - t0 < 30000) {
+      /* resumable: each run tests the next windows and saves where it stopped; the gate is decided only on a full run */
       const hasXg = hist.filter((m) => m.xh != null).length > hist.length * 0.5;
-      const r = walkForward(hist, { configs: CONFIGS.filter((c) => hasXg || !c.xgW), budgetMs: 20000 });
-      if (r.ok) { await kv("SET", "backtest", JSON.stringify(r)); report.backtest = { gain: r.gain, pass: r.pass, best: r.best, partial: r.partial }; }
+      const r = walkForward(hist, { configs: CONFIGS.filter((c) => hasXg || !c.xgW), budgetMs: Math.max(8000, 44000 - (Date.now() - t0)), state: st });
+      if (r.ok) {
+        const { state, ...pub } = r;
+        if (r.done) await kvPipe([["SET", "backtest", JSON.stringify(pub)], ["DEL", "bt:state"]]);
+        else { await kv("SET", "bt:state", JSON.stringify(state)); if (!bt || bt.partial) await kv("SET", "backtest", JSON.stringify(pub)); }
+        report.backtest = { gain: r.gain, pass: r.pass, best: r.best, partial: !r.done, progress: r.progress };
+        if (!r.done) { report.ms = Date.now() - t0; await kvPipe([["SET", "modellog", JSON.stringify(report)], ["DEL", "bf:lock"]]); res.status(200).json(report); return; }
+      }
     }
     const best = parse(await kv("GET", "backtest"))?.best || CONFIGS[1];
     if (hist.length >= 500 && Date.now() - t0 < 45000) {
       const md = fitDC(hist, { halfLife: best.halfLife, prior: best.prior, xgW: best.xgW || 0 });
       const ids = Object.keys(md.teams);
-      const cmds = [["DEL", "dct"], ["SET", "dcl", JSON.stringify({ leagues: md.leagues, asOf: md.asOf, cfg: { halfLife: md.halfLife, prior: md.prior, xgW: md.xgW }, rows: md.rows })]];
+      const cmds = [["DEL", "dct"], ["SET", "dcl", JSON.stringify({ leagues: md.leagues, asOf: md.asOf, cfg: { halfLife: md.halfLife, prior: md.prior, xgW: md.xgW, blend: best.blend ?? null }, rows: md.rows })]];
       for (let i = 0; i < ids.length; i += 400) cmds.push(["HSET", "dct", ...ids.slice(i, i + 400).flatMap((id) => [id, JSON.stringify([md.teams[id].att, md.teams[id].def, md.teams[id].n, md.teams[id].lg])])]);
       await kvPipe(cmds); report.fit = { teams: ids.length, leagues: Object.keys(md.leagues).length };
     }

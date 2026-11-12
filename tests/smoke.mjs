@@ -53,11 +53,12 @@ try {
     const raw = S.open.raw, keep = [S.backtest, S.dc];
     S.dc = { leagues: { "eng.1": { mu: 1.4, home: 1.25, rho: -0.06 } }, teams: { 359: { att: 1.4, def: 0.8, n: 30, lg: "eng.1" }, 363: { att: 1.1, def: 1, n: 30, lg: "eng.1" } }, rows: 9000 };
     S.backtest = { pass: false }; const off = refine({ ...raw });
-    S.backtest = { pass: true }; const on = refine({ ...raw }); const neu = refine({ ...raw, neutral: true });
+    S.backtest = { pass: true }; const on = refine({ ...raw }); const neu = refine({ ...raw, neutral: true }); const offBase = refine({ ...raw, lh: 1.2, la: 1.0, basis: "table" }); S.dc.cfg = { blend: 0.5 }; const bl = refine({ ...raw, lh: 1.2, la: 1.0, basis: "table" }); delete S.dc.cfg; const pure = refine({ ...raw, lh: 1.2, la: 1.0, basis: "table" });
     [S.backtest, S.dc] = keep;
     const p = devig([1.5, 4.2, 6.5]), prop = [1 / 1.5, 1 / 4.2, 1 / 6.5], s = prop.reduce((a, b) => a + b);
-    return { off: off.basis, on: on.basis, noPace: !on.factors.some((f) => ["pace", "h2h", "venue", "rating", "calib"].includes(f.k)), base: on.factors[0].label, neutralLower: neu.lh0 < on.lh0, fav: p[0] > prop[0] / s, sum: p.reduce((a, b) => a + b) };
+    return { off: off.basis, on: on.basis, noPace: !on.factors.some((f) => ["pace", "h2h", "venue", "rating", "calib"].includes(f.k)), base: on.factors[0].label, neutralLower: neu.lh0 < on.lh0, fav: p[0] > prop[0] / s, sum: p.reduce((a, b) => a + b), blendMid: bl.lh0 < pure.lh0 && bl.lh0 > 1.2 - 1e-9 };
   });
+  check("4.0: an ensemble chosen by the backtest mixes the core with the 3.3 base", dc4.blendMid, JSON.stringify(dc4));
   check("เมดูซ่า 4.0: core used only after the backtest passes, replaces the old layers", dc4.off !== "dc" && dc4.on === "dc" && dc4.noPace && dc4.base.includes("4.0"), JSON.stringify(dc4));
   check("4.0: neutral ground and power margin removal (favourite not under-rated)", dc4.neutralLower && dc4.fav && Math.abs(dc4.sum - 1) < 1e-9);
   const i14 = await A.evaluate(() => {

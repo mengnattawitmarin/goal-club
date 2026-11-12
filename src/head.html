@@ -242,6 +242,9 @@ ol.steps b{color:var(--gold)}
 .statgrid > *{padding:8px 0;border-top:1px solid var(--line-soft)}
 .statgrid > .h{border-top:0;color:var(--faint);font-size:11.5px}
 .statgrid > :nth-child(3n+2),.statgrid > :nth-child(3n){text-align:right;padding-left:16px}
+.statgrid.c4{grid-template-columns:minmax(0,1fr) auto auto auto}.statgrid.c5{grid-template-columns:minmax(0,1fr) auto auto auto auto}
+.statgrid.c4 > *,.statgrid.c5 > *{text-align:right;padding-left:12px}
+.statgrid.c4 > :nth-child(4n+1),.statgrid.c5 > :nth-child(5n+1){text-align:left;padding-left:0}
 .form-lines{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
 .form-lines span{font-size:12px;padding:2px 7px;border-radius:5px;background:var(--surface-2)}
 .omen{border:1px dashed color-mix(in srgb,var(--gold) 38%,transparent);border-radius:var(--r-lg);padding:14px}

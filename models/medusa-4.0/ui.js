@@ -317,15 +317,15 @@ function medusa4Block(){
         <span>ทายผลถูก</span><span class="num">${pct(B.base33.hit)}</span><span class="num">${pct(B.best.hit)}</span>
         <span>log loss สูง/ต่ำ 2.5</span><span class="num">${f3(B.base33.loglossOU)}</span><span class="num">${f3(B.best.loglossOU)}</span>
         <span>เสมอ คาด/จริง</span><span class="num">${pct(B.base33.draw[0])}/${pct(B.base33.draw[1])}</span><span class="num">${pct(B.best.draw[0])}/${pct(B.best.draw[1])}</span>
-        <span>ประตู คาด/จริง</span><span class="num">${B.base33.goals[0]}/${B.base33.goals[1]}</span><span class="num">${B.best.goals[0]}/${B.best.goals[1]}</span></div>
-      ${lgs.length?`<div class="statgrid" style="margin-top:10px;grid-template-columns:minmax(0,1fr) auto auto auto"><span class="h">ลีก</span><span class="h">นัด</span><span class="h">3.3</span><span class="h">4.0</span>
+        <span>ประตู คาด/จริง</span><span class="num">${(+B.base33.goals[0]).toFixed(2)}/${(+B.base33.goals[1]).toFixed(2)}</span><span class="num">${(+B.best.goals[0]).toFixed(2)}/${(+B.best.goals[1]).toFixed(2)}</span></div>
+      ${lgs.length?`<div class="statgrid c4" style="margin-top:10px"><span class="h">ลีก</span><span class="h">นัด</span><span class="h">3.3</span><span class="h">4.0</span>
         ${lgs.map(([lg,v])=>`<span>${esc(LEAGUE_NAME[lg]||lg)}</span><span class="num">${v.v40.n}</span><span class="num">${f3(v.base33.logloss)}</span><span class="num ${v.v40.logloss<v.base33.logloss?"green":"lossc"}">${f3(v.v40.logloss)}</span>`).join("")}</div>`:""}
-      <p class="note">ทายทีละ 2 สัปดาห์โดยใช้เฉพาะผลก่อนวันนั้น · ผ่านเกณฑ์เมื่อ log loss ดีกว่า 3.3 อย่างน้อย 0.005 จาก 300 นัดขึ้นไป แอปจึงสลับมาใช้แกนใหม่เอง${sr?.n?` · ทีมที่พักไม่เกิน 3 วันยิงได้ ${Math.round(sr.ratio*100)}% ของที่คาด (${sr.n} ครั้ง)`:""}${B.partial?" · รอบนี้ทดสอบไม่ครบทุกช่วงเพราะเวลาหมด":""}</p></div>`);
+      <p class="note">${B.partial?`<b>ทดสอบไปแล้ว ${Math.round((B.progress||0)*100)}%</b> (กดเร่งเก็บผลย้อนหลังในหน้าสถานะเพื่อทดสอบต่อ ตัดสินผ่าน/ไม่ผ่านเมื่อครบ) · `:""}${B.best?.blend!=null?`ตัวที่ดีที่สุด: ผสม 4.0 ${Math.round(B.best.blend*100)}% กับ 3.3 · `:""}ทายทีละ 2 สัปดาห์โดยใช้เฉพาะผลก่อนวันนั้น · ผ่านเกณฑ์เมื่อ log loss ดีกว่า 3.3 อย่างน้อย 0.005 จาก 300 นัดขึ้นไป แอปจึงสลับมาใช้แกนใหม่เอง${sr?.n?` · ทีมที่พักไม่เกิน 3 วันยิงได้ ${Math.round(sr.ratio*100)}% ของที่คาด (${sr.n} ครั้ง)`:""}</p></div>`);
   } else if(S.modelLog){
     out.push(`${sec("ทดสอบย้อนหลัง "+MEDUSA.name)}<div class="card muted">กำลังเก็บผลย้อนหลัง 2 ฤดูกาล${S.modelLog.backfill?` · เหลืออีก ${S.modelLog.backfill.left} ช่วง`:""} · ระหว่างนี้แอปใช้แกน 3.3 ไปก่อน</div>`);
   }
-  const kinds=P?Object.entries(P).filter(([k,v])=>v&&v.n>=5):[];
-  if(kinds.length) out.push(`${sec("ฟันธงเทียบราคาตลาด","แยกตามแบบ")}<div class="card"><div class="statgrid" style="grid-template-columns:minmax(0,1fr) auto auto auto auto"><span class="h">แบบ</span><span class="h">นัด</span><span class="h">โมเดลให้</span><span class="h">ตลาดให้</span><span class="h">เข้าจริง</span>
+  const kinds=P?Object.entries(P).filter(([k,v])=>v&&v.n>=5&&PICK_KIND[k]).sort((a,b)=>(a[0]==="all")-(b[0]==="all")):[];
+  if(kinds.length) out.push(`${sec("ฟันธงเทียบราคาตลาด","แยกตามแบบ")}<div class="card"><div class="statgrid c5"><span class="h">แบบ</span><span class="h">นัด</span><span class="h">โมเดลให้</span><span class="h">ตลาดให้</span><span class="h">เข้าจริง</span>
     ${kinds.map(([k,v])=>`<span>${esc(PICK_KIND[k]||k)}</span><span class="num">${v.n}</span><span class="num">${pct(v.prob)}</span><span class="num">${v.fair!=null?pct(v.fair):"–"}</span><span class="num ${v.fair!=null?(v.hit>v.fair?"green":"lossc"):""}">${pct(v.hit)}</span>`).join("")}</div>
     <p class="note">ถ้า "เข้าจริง" สูงกว่า "ตลาดให้" ต่อเนื่องจากหลายร้อยนัด จึงพอบอกได้ว่าโมเดลเห็นอะไรที่ตลาดไม่เห็น · ไม่ใช่คำแนะนำให้เดิมพัน</p></div>`);
   const MV=S.lineMove;
@@ -403,7 +403,42 @@ function healthItem(){
     ["ฐานข้อมูล", H?.keys?`${H.keys} รายการ`:"–"],
   ];
   return `<div class="gitem"><div class="lbl">สถานะระบบ · ${MEDUSA.name}</div>${w?`<p class="note" style="color:var(--loss)">⚠ ${esc(w)}</p>`:""}
-    <div class="statgrid" style="grid-template-columns:auto minmax(0,1fr);font-size:13px">${rows.map(([k,v])=>`<span class="muted">${k}</span><span>${v}</span>`).join("")}</div></div>`;
+    <div class="statgrid" style="grid-template-columns:auto minmax(0,1fr);font-size:13px">${rows.map(([k,v])=>`<span class="muted">${k}</span><span>${v}</span>`).join("")}</div>
+    ${Shared.on?`<div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap"><input id="mjSecret" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="รหัส CRON_SECRET" style="flex:1;min-width:140px;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--bg2,transparent);color:inherit;font:inherit"><button class="btn" data-act="modelrun">เร่งเก็บผลย้อนหลัง</button></div>
+      <p class="note" id="mjOut">สำหรับเจ้าของแอป: ใส่รหัสแล้วกดครั้งเดียว ระบบจะวนเก็บจนครบเอง (จอจะไม่ดับระหว่างเก็บ) แค่เปิดหน้านี้ค้างไว้ รหัสไม่ถูกบันทึกไว้ในเครื่อง</p>`:""}</div>`;
+}
+/* owner tool: run the model job (backfill + backtest) over and over until the history is complete; the secret stays in memory.
+   Keeps the screen awake while it runs (a sleeping phone stops the loop); network hiccups are retried. */
+let modelRunning=false;
+async function runModelJob(){
+  const inp=document.getElementById("mjSecret"), sec=(inp?.value||"").trim(), out=t=>{ const el=document.getElementById("mjOut"); if(el) el.textContent=t; };
+  if(!sec) return out("ใส่รหัส CRON_SECRET ก่อน");
+  if(modelRunning) return; modelRunning=true;
+  let lock=null; try{ lock=await navigator.wakeLock?.request("screen"); }catch{}
+  const t0=Date.now(), mins=()=>Math.round((Date.now()-t0)/60000);
+  let last=null, still=0, errs=0, i=0, startLeft=null;
+  try{
+    while(true){
+      i++;
+      const pc=startLeft&&last!=null?Math.max(0,Math.round((1-last/startLeft)*100)):null;
+      out(`รอบที่ ${i} กำลังเก็บผลย้อนหลัง…${last!=null?` เหลือ ${last} ช่วง${pc!=null?` (เสร็จแล้ว ${pc}%)`:""}`:""} · ${mins()} นาที · เปิดหน้านี้ค้างไว้`);
+      let r, j={};
+      try{ r=await fetch("/api/model",{headers:{authorization:`Bearer ${sec}`},cache:"no-store"}); j=await r.json().catch(()=>({})); }
+      catch(e){ r=null; }
+      if(r?.status===401) return out(`รหัสไม่ตรงกับที่ตั้งใน Vercel${j.hint?` · ${j.hint}`:""}`);
+      if(!r||!r.ok||j.error){
+        if(++errs<=3){ out(`รอบที่ ${i} สะดุด (${j.error||(r?"HTTP "+r.status:"เน็ตหลุด")}) ลองใหม่ใน 10 วินาที…`); await new Promise(f=>setTimeout(f,10000)); continue; }
+        return out(`หยุด: ${j.error||(r?"HTTP "+r.status:"เชื่อมต่อไม่ได้")} ติดกัน 3 ครั้ง กดใหม่ได้ ระบบจะเก็บต่อจากที่ค้าง`);
+      }
+      errs=0;
+      if(j.busy){ out(`อีกเครื่องกำลังเก็บผลย้อนหลังอยู่ (เก็บได้ทีละเครื่อง) · รอแล้วจะเก็บต่อเอง…`); await new Promise(f=>setTimeout(f,20000)); continue; }
+      const left=j.backfill?.left??0; if(startLeft==null) startLeft=Math.max(left,1);
+      if(left===0 && j.backtest?.partial){ still=0; last=0; out(`เก็บผลครบแล้ว · กำลังทดสอบย้อนหลัง ${Math.round((j.backtest.progress||0)*100)}% · ${mins()} นาที · เปิดหน้านี้ค้างไว้`); continue; }
+      if(left===0){ out(`เสร็จแล้ว · ผลย้อนหลัง ${j.matches||0} นัด · ${mins()} นาที${j.backtest?` · ทดสอบย้อนหลัง: ${j.backtest.pass?"4.0 ผ่านเกณฑ์ เปิดใช้แกนใหม่":"4.0 ยังไม่ชนะ 3.3 ใช้ 3.3 ต่อ"} (log loss ดีขึ้น ${j.backtest.gain})`:j.matches>=1500?" · กดอีกครั้งเพื่อทดสอบย้อนหลัง":""}`); try{ await syncPull(S.date); render(); }catch{} return; }
+      const B=j.backfill||{}; still = (B.done||0)===0 && !(B.split>0) ? still+1 : 0; last=left;
+      if(still>=5) return out(`หยุดพัก: 5 รอบติดกันเก็บไม่ได้เลย เหลือ ${left} ช่วง · ESPN ตอบไม่ได้ ${B.failed||0} ครั้งในรอบล่าสุด${B.errors?.length?` · ตัวอย่าง: ${B.errors.join(" / ")}`:""}`);
+    }
+  }finally{ modelRunning=false; try{ await lock?.release(); }catch{} }
 }
 function viewMore(){
   const day=getDay(S.date);
@@ -1210,6 +1245,7 @@ document.addEventListener("click",e=>{
   if(d.tab){ e.preventDefault(); return goTab(d.tab); }
   if(d.act==="refresh"){ S.liveOk=null; return refresh(S.date,true); }
   if(d.act==="copyai") return copyAI();
+  if(d.act==="modelrun") return runModelJob();
   if(d.act==="clear"){ try{ Object.keys(localStorage).filter(k=>k.startsWith("gc:day:")||k.startsWith("gc:brief:")).forEach(k=>localStorage.removeItem(k)); }catch{} toast("ล้างข้อมูลที่เก็บไว้แล้ว ทีมโปรดยังอยู่"); S.liveOk=null; return refresh(S.date,false); }
   if(t.id==="btnBrief") return runBrief();
   if(t.id==="btnBot") return runBot();

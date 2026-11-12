@@ -100,6 +100,7 @@ npm test           # build + ทดสอบงานประจำวัน + 
 | `dct` | hash teamId → JSON | `[att, def, n, lg]` ความแข็งทีมจาก Dixon-Coles (เมดูซ่า 4.0) |
 | `dcl` | string JSON | `{leagues{mu,home,rho,n}, asOf, cfg, rows}` |
 | `backtest` | string JSON | ผล walk-forward ล่าสุด `{base33, best, configs, gain, pass, leagues, context}` แอปใช้แกน 4.0 เมื่อ `pass` เท่านั้น |
+| `bt:state` | string JSON | ความคืบหน้าของการทดสอบย้อนหลังที่ยังไม่ครบ (ทำต่อในรอบถัดไป ลบเมื่อครบ) |
 | `modellog` | string JSON | ผลการรันงานโมเดลล่าสุด |
 | `bf:todo`, `bf:tries`, `bf:skip`, `bf:ver`, `bf:mode`, `bf:<lg>` | string JSON / list / hash YYYYMMDD-YYYYMMDD → rows | งานค้าง จำนวนครั้งที่พลาด ช่วงที่ข้าม (พลาด 3 ครั้ง) และผลย้อนหลังที่เก็บแล้ว |
 | `live:<matchId>` → `livehist` | string (3 วัน) → list (2000) | ภาพนิ่งโมเดลสดครั้งแรกช่วงนาที 55–75 ตัดสินโดยงานประจำวัน |

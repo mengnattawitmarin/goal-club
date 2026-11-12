@@ -62,6 +62,13 @@ check("walk-forward: too little data is refused", walkForward(M.slice(0, 50)).ok
 
 { const T = { teams: {} }; for (let i = 0; i < 20; i++) T.teams["t" + i] = { pts: 80 - i * 3, pl: 32 };
   check("item 17: dead rubber = cannot reach 4th, cannot be caught by the drop zone, 10 or fewer games left", deadRubber(T, "t10") && !deadRubber(T, "t4") && !deadRubber(T, "t16") && !deadRubber({ teams: Object.fromEntries(Object.entries(T.teams).map(([k, v]) => [k, { ...v, pl: 20 }])) }, "t10")); }
+{ /* resumable backtest: many short runs = one long run, and blend configs are scored */
+  const cfg = [{ halfLife: 180, prior: 6 }, { halfLife: 180, prior: 6, blend: 0.5 }];
+  const one = walkForward(M, { configs: cfg, budgetMs: 1e9 });
+  let st = null, r, runs = 0; do { r = walkForward(M, { configs: cfg, budgetMs: 1, state: st }); st = r.state; runs++; } while (!r.done && runs < 500);
+  check("backtest resumes across runs and ends with the same numbers as one long run", r.done && runs > 3 && r.best.logloss === one.best.logloss && r.base33.n === one.base33.n && !one.partial, `${runs} runs`);
+  check("an unfinished backtest never passes the gate", walkForward(M, { configs: cfg, budgetMs: 1 }).pass === false);
+  check("ensemble (4.0 x 3.3) is scored as a candidate", one.configs.length === 2 && one.configs[1].blend === 0.5 && one.configs[1].n === one.configs[0].n, `blend ${one.configs[1].logloss} vs dc ${one.configs[0].logloss} vs 3.3 ${one.base33.logloss}`); }
 const { parseBoard, backfillPlan } = await import(join(root, "lib/backfill.js"));
 const rows = parseBoard({ events: [{ id: "1", date: "2025-03-01T15:00Z", competitions: [{ neutralSite: true, status: { type: { state: "post" } }, competitors: [{ homeAway: "home", score: "2", team: { id: "10" }, statistics: [{ name: "shotsOnTarget", displayValue: "6" }, { name: "totalShots", displayValue: "14" }] }, { homeAway: "away", score: "1", team: { id: "11" } }] }] }, { id: "2", competitions: [{ status: { type: { state: "pre" } } }] }] }, "eng.1");
 check("backfill parses finished games with neutral ground and shots", rows.length === 1 && rows[0][4] === 2 && rows[0][6] === 1 && rows[0][7] === 6 && rows[0][9] === 14, JSON.stringify(rows));
@@ -105,7 +112,7 @@ const call = async (q, h = {}) => { let out, code = 200; await job({ query: q, h
 check("model job refuses without the secret", (await call({}))._code === 401);
 { const w = await call({ secret: "wrong" }); check("wrong secret: refused with a Thai hint (length of what was sent only)", w._code === 401 && /ยาว 5 ตัว/.test(w.hint)); }
 { db.set("bf:lock", "1"); const b = await call({ secret: "s3" }); check("one collector at a time: a second device waits instead of racing on the queue", b.busy === true); db.delete("bf:lock"); }
-let rep; for (let i = 0; i < 20; i++) { rep = await call({ secret: i ? "s3" : " <s3> \n" }); if (!rep.backfill?.left) break; }
+let rep; for (let i = 0; i < 40; i++) { rep = await call({ secret: i ? "s3" : " <s3> \n" }); if (!rep.backfill?.left && !rep.backtest?.partial) break; }
 check("backfill fills the history over several runs: heavy months split in halves, chunks ESPN keeps refusing dropped after 3 tries", rep.backfill.left === 0 && rep.matches > 2000 && JSON.parse(db.get("bf:tries") || "{}") && (db.get("bf:skip") || []).length >= 14 && (db.get("bf:skip") || []).every((x) => x.startsWith("bad.")) && Object.keys(db.get("bf:esp.1") || {}).length >= 10 && Object.keys(db.get("bf:esp.1") || {}).every((k) => /^\d{8}-\d{8}$/.test(k)), JSON.stringify(rep.backfill) + " " + rep.matches);
 const bt = JSON.parse(db.get("backtest") || "null");
 check("model job stores a backtest with a pass/fail gate and measured context (rest, motivation)", bt && typeof bt.pass === "boolean" && bt.best && bt.base33 && bt.context?.shortRest && "deadFor" in bt.context, bt ? `gain ${bt.gain} pass ${bt.pass}` : "none");
