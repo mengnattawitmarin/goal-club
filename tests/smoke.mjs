@@ -73,6 +73,16 @@ try {
   });
   check("4.0 item 14: Asian handicap price used; a bigger handicap means a bigger expected gap", i14.a && i14.gap > 0, JSON.stringify(i14));
   check("4.0 item 17: motivation factor only from the measured effect, late in the season", i14.dead && !i14.alive && i14.motiv && i14.motiv[0] < 1 && i14.motiv[1] > 1, JSON.stringify(i14.motiv));
+  const mix42 = await A.evaluate(() => {
+    const raw = { ...S.open.raw, lh: 1.2, la: 1.0, basis: "table" }, keep = [S.backtest, S.dc, S.audit];
+    S.dc = { leagues: { [raw.lg]: { mu: 1.4, home: 1.25, rho: -0.06 } }, teams: { [raw.h.id]: { att: 1.4, def: 0.8, n: 30, lg: raw.lg }, [raw.a.id]: { att: 1.1, def: 1, n: 30, lg: raw.lg } } };
+    S.backtest = { pass: true, leagueChoice: { [raw.lg]: { w: 0 } } }; const w0 = refine({ ...raw });
+    S.backtest = { pass: true, leagueChoice: { [raw.lg]: { w: 0.5 } }, goalsCal: { [raw.lg]: 0.95 } }; const w5 = refine({ ...raw });
+    S.audit = { core: { n: 250, ll: 1.0, ll33: 0.98 } }; const off = refine({ ...raw }); const offOn = dc4On();
+    [S.backtest, S.dc, S.audit] = keep;
+    return { w0: w0.basis, w5: w5.basis, label: w5.factors[0].label, gcal: !!w5.factors.find((f) => f.k === "gcal"), offBasis: off.basis, offOn };
+  });
+  check("4.2: two cores merged per league (3.3 / mix / 4.0), league goal level, and real results can switch the core off", mix42.w0 !== "dc" && mix42.w5 === "dc" && mix42.label.includes("ผสาน 4.0 50%") && mix42.gcal && mix42.offBasis !== "dc" && mix42.offOn === false, JSON.stringify(mix42));
   const nat4 = await A.evaluate(() => {
     const raw = { ...S.open.raw, lg: "afc.asian.cup", st: "pre" }, keep = [S.backtestn, S.dcn];
     S.backtestn = null; S.dcn = null; const off = refine({ ...raw }); const callOff = bestCall(off);

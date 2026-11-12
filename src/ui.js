@@ -271,7 +271,7 @@ function viewAnalyze(){
   if(S.mode==="acc") body=accuracyView();
   return `<div style="margin-bottom:12px">${seg("mode",[["picks","ฟันธง"],["edge","เทียบราคา"],["goals","สกอร์"],["acc","ความแม่น"]],S.mode)}</div>${body}`;
 }
-const FACTOR_NAME={motiv:"แรงจูงใจท้ายฤดูกาล",rest4:"วันพัก (ผลที่วัดได้)",h2h:"ผลที่เคยเจอกัน",pace:"เกมรุก-รับ 5 นัด",venue:"ฟอร์มในบ้าน/นอกบ้าน",rest:"วันพัก",lineup:"ตัวจริง",weather:"สภาพอากาศ",news:"ข่าววันนี้",newsOld:"ข่าวที่ผ่านมา",trend:"แนวโน้มลีก",rating:"ความแข็งของทีม",calib:"เรียนรู้จากผลจริง"};
+const FACTOR_NAME={gcal:"ระดับประตูของลีก",motiv:"แรงจูงใจท้ายฤดูกาล",rest4:"วันพัก (ผลที่วัดได้)",h2h:"ผลที่เคยเจอกัน",pace:"เกมรุก-รับ 5 นัด",venue:"ฟอร์มในบ้าน/นอกบ้าน",rest:"วันพัก",lineup:"ตัวจริง",weather:"สภาพอากาศ",news:"ข่าววันนี้",newsOld:"ข่าวที่ผ่านมา",trend:"แนวโน้มลีก",rating:"ความแข็งของทีม",calib:"เรียนรู้จากผลจริง"};
 function reviewBlock(){
   const R=Object.entries(S.reviews||{}); if(!R.length) return "";
   const rows=R.flatMap(([d,list])=>(list||[]).map(x=>({...x,d}))).slice(0,10);
@@ -318,8 +318,11 @@ function medusa4Block(){
         <span>log loss สูง/ต่ำ 2.5</span><span class="num">${f3(B.base33.loglossOU)}</span><span class="num">${f3(B.best.loglossOU)}</span>
         <span>เสมอ คาด/จริง</span><span class="num">${pct(B.base33.draw[0])}/${pct(B.base33.draw[1])}</span><span class="num">${pct(B.best.draw[0])}/${pct(B.best.draw[1])}</span>
         <span>ประตู คาด/จริง</span><span class="num">${(+B.base33.goals[0]).toFixed(2)}/${(+B.base33.goals[1]).toFixed(2)}</span><span class="num">${(+B.best.goals[0]).toFixed(2)}/${(+B.best.goals[1]).toFixed(2)}</span></div>
-      ${lgs.length?`<div class="statgrid c4" style="margin-top:10px"><span class="h">ลีก</span><span class="h">นัด</span><span class="h">3.3</span><span class="h">4.0</span>
-        ${lgs.map(([lg,v])=>`<span>${esc(LEAGUE_NAME[lg]||lg)}</span><span class="num">${v.v40.n}</span><span class="num">${f3(v.base33.logloss)}</span><span class="num ${v.v40.logloss<v.base33.logloss?"green":"lossc"}">${f3(v.v40.logloss)}</span>`).join("")}</div>`:""}
+      ${B.merged?`<div class="row" style="margin-top:8px;font-size:13px"><span>ผสาน 2 แกนรายลีก (${B.merged.n} นัด)</span><span class="spacer"></span><b class="num ${B.merged.logloss<B.base33.logloss?"green":"lossc"}">log loss ${f3(B.merged.logloss)}</b></div>`:""}
+      ${lgs.length?`<div class="statgrid c5" style="margin-top:10px"><span class="h">ลีก</span><span class="h">นัด</span><span class="h">3.3</span><span class="h">4.0</span><span class="h">ใช้</span>
+        ${lgs.map(([lg,v])=>{ const c=B.leagueChoice?.[lg]; return `<span>${esc(LEAGUE_NAME[lg]||lg)}</span><span class="num">${v.v40.n}</span><span class="num">${f3(v.base33.logloss)}</span><span class="num ${v.v40.logloss<v.base33.logloss?"green":"lossc"}">${f3(v.v40.logloss)}</span><span class="num">${c?(c.w===1?"4.0":c.w===0?"3.3":`ผสม ${Math.round(c.w*100)}%`):"–"}</span>`; }).join("")}</div>`:""}
+      ${S.audit?.core?.n?`<p class="note">ผลจริงหลังผสมราคาตลาด ${S.audit.core.n} นัด: แกนใหม่ ${f3(S.audit.core.ll)} · ทาง 3.3 ${f3(S.audit.core.ll33)}${coreWorse(S.audit.core)?" · <b>แกนใหม่แย่กว่า ระบบปิดไว้เอง</b>":S.audit.core.n<200?" · ครบ 200 นัดจะใช้ตัดสินว่าเปิดต่อหรือปิด":""}</p>`:""}
+      ${B.scoreRules?`<p class="note">ทายสกอร์ตรง (ทดสอบ ${B.scoreRules.n} นัด): สกอร์ที่น่าจะเป็นที่สุด ${pct(B.scoreRules.max)} · ตามผลแพ้ชนะ ${pct(B.scoreRules.res)} · ตามผล+สูงต่ำ+ยิงทั้งคู่ ${pct(B.scoreRules.full)} → ใช้แบบ${B.scoreRules.rule==="max"?"สกอร์ที่น่าจะเป็นที่สุด":B.scoreRules.rule==="res"?"ตามผลแพ้ชนะ":"ตามผล+สูงต่ำ+ยิงทั้งคู่"}</p>`:""}
       <p class="note">${B.partial?`<b>ทดสอบไปแล้ว ${Math.round((B.progress||0)*100)}%</b> (กดเร่งเก็บผลย้อนหลังในหน้าสถานะเพื่อทดสอบต่อ ตัดสินผ่าน/ไม่ผ่านเมื่อครบ) · `:""}${B.best?.blend!=null?`ตัวที่ดีที่สุด: ผสม 4.0 ${Math.round(B.best.blend*100)}% กับ 3.3 · `:""}ทายทีละ 2 สัปดาห์โดยใช้เฉพาะผลก่อนวันนั้น · ผ่านเกณฑ์เมื่อ log loss ดีกว่า 3.3 อย่างน้อย 0.005 จาก 300 นัดขึ้นไป แอปจึงสลับมาใช้แกนใหม่เอง${sr?.n?` · ทีมที่พักไม่เกิน 3 วันยิงได้ ${Math.round(sr.ratio*100)}% ของที่คาด (${sr.n} ครั้ง)`:""}</p></div>`);
   } else if(S.modelLog){
     out.push(`${sec("ทดสอบย้อนหลัง "+MEDUSA.name)}<div class="card muted">กำลังเก็บผลย้อนหลัง 2 ฤดูกาล${S.modelLog.backfill?` · เหลืออีก ${S.modelLog.backfill.left} ช่วง`:""} · ระหว่างนี้แอปใช้แกน 3.3 ไปก่อน</div>`);

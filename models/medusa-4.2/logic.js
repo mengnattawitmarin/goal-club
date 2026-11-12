@@ -1,0 +1,1159 @@
+
+/* ---------- embedded snapshot (ESPN feed, saved by the original app) ---------- */
+const SNAPSHOT = /*__SNAPSHOT__*/null;
+
+/* ---------- leagues ---------- */
+const LEAGUES = [["tha.1","ไทยลีก 1"],["eng.1","พรีเมียร์ลีก"],["esp.1","ลาลีกา"],["ger.1","บุนเดสลีกา"],["ita.1","เซเรียอา"],["fra.1","ลีกเอิง"],["uefa.champions","แชมเปียนส์ลีก"],["uefa.europa","ยูโรปาลีก"],["uefa.europa.conf","คอนเฟอเรนซ์ลีก"],["eng.2","แชมเปียนชิป"],["eng.league_cup","คาราบาวคัพ"],["ned.1","เอเรดิวิซี"],["por.1","ปรีไมราลีกา"],["bel.1","ลีกเบลเยียม"],["sco.1","สกอตติชพรีเมียร์"],["tur.1","ซูเปอร์ลีกตุรกี"],["usa.1","MLS"],["mex.1","ลีกาเอ็มเอ็กซ์"],["bra.1","บราซิลซีรีออา"],["arg.1","ลีกาอาร์เจนตินา"],["ksa.1","ซาอุดีโปรลีก"],["jpn.1","เจลีก"],["chn.1","ซูเปอร์ลีกจีน"],["aus.1","เอลีกออสเตรเลีย"],
+  /* เมดูซ่า 4.1: ทีมชาติ (same list as NATIONAL in lib/leagues.js) */
+  ["afc.asian.cup","เอเชียนคัพ"],["fifa.friendly","กระชับมิตรทีมชาติ"],["uefa.nations","ยูฟ่าเนชันส์ลีก"],["fifa.world","ฟุตบอลโลก"],["concacaf.nations.league","คอนคาแคฟเนชันส์ลีก"],["aff.championship","อาเซียนแชมเปียนชิพ"],
+  ["fifa.worldq.afc","คัดบอลโลก โซนเอเชีย"],["fifa.worldq.uefa","คัดบอลโลก โซนยุโรป"],["fifa.worldq.conmebol","คัดบอลโลก โซนอเมริกาใต้"],["fifa.worldq.concacaf","คัดบอลโลก โซนคอนคาแคฟ"],["fifa.worldq.caf","คัดบอลโลก โซนแอฟริกา"],
+  ["uefa.euro","ยูโร"],["conmebol.america","โกปา อเมริกา"],["caf.nations","แอฟริกันเนชันส์คัพ"],["concacaf.gold","โกลด์คัพ"]];
+const NATIONAL=new Set(["afc.asian.cup","fifa.friendly","uefa.nations","fifa.world","concacaf.nations.league","aff.championship","fifa.worldq.afc","fifa.worldq.uefa","fifa.worldq.conmebol","fifa.worldq.concacaf","fifa.worldq.caf","uefa.euro","conmebol.america","caf.nations","concacaf.gold"]);
+const isNat=lg=>NATIONAL.has(lg);
+const LEAGUE_NAME = Object.fromEntries(LEAGUES);
+const LEAGUE_ORDER = Object.fromEntries(LEAGUES.map(([s],i)=>[s,i]));
+
+/* ---------- storage (per-viewer conveniences only) ---------- */
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem("gc:"+k); return v==null ? d : JSON.parse(v); }catch{ return d; } },
+  set(k, v){ try{ localStorage.setItem("gc:"+k, JSON.stringify(v)); }catch{} }
+};
+
+/* ---------- dates (all Thai time) ---------- */
+/* "วันนี้" = the feed's match day. ESPN days follow US Eastern time, so a Thai match day runs from late morning
+   (11:00 in summer time, 12:00 in winter) to the next late morning, matching how Thai fans read "คืนนี้". */
+const bkkToday = () => new Intl.DateTimeFormat("en-CA",{timeZone:"America/New_York",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+const shiftDate = (iso,n) => { const [y,m,d]=iso.split("-").map(Number); return new Date(Date.UTC(y,m-1,d+n)).toISOString().slice(0,10); };
+const weekday = iso => { const [y,m,d]=iso.split("-").map(Number); return new Date(Date.UTC(y,m-1,d)).getUTCDay(); };
+const dayLabel = iso => { const [y,m,d]=iso.split("-").map(Number); return new Intl.DateTimeFormat("th-TH",{weekday:"short",day:"numeric",month:"short",timeZone:"UTC"}).format(new Date(Date.UTC(y,m-1,d))); };
+const kickTime = iso => new Intl.DateTimeFormat("th-TH",{timeZone:"Asia/Bangkok",hour:"2-digit",minute:"2-digit"}).format(new Date(iso));
+const stampTime = iso => new Intl.DateTimeFormat("th-TH",{timeZone:"Asia/Bangkok",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}).format(new Date(iso));
+const bkkDateOf = iso => new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Bangkok",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date(iso));
+const nextSaturday = from => { const add = (6 - weekday(from) + 7) % 7 || 7; return shiftDate(from, add); };
+function relLabel(iso){ const t=bkkToday(); if(iso===t) return "วันนี้"; if(iso===shiftDate(t,1)) return "พรุ่งนี้"; if(iso===shiftDate(t,-1)) return "เมื่อวาน"; return dayLabel(iso); }
+
+/* ---------- model: Poisson + Dixon-Coles (rho -0.08) ---------- */
+const RHO = -0.08, MAXG = 10;
+const clamp = (n,a,b) => Math.min(b, Math.max(a, n));
+function formPPG(form){
+  const c = (form||"").toUpperCase().replace(/[^WDL]/g,""); if(!c) return null;
+  let w=0,s=0; for(let i=0;i<c.length;i++){ const wt=(i+1)/c.length; w += (c[i]==="W"?3:c[i]==="D"?1:0)*wt; s+=wt; } return w/s;
+}
+function formNudge(form){ const p=formPPG(form); if(p==null) return 1; return clamp(1+((p-1.4)/1.4)*0.12, 0.82, 1.18); }
+function formGoals(form){ const p=formPPG(form); if(p==null) return {score:1.28,concede:1.28}; return {score:0.75+(p/3)*1.3, concede:1.85-(p/3)*0.9}; }
+const PRIOR = 8;
+const shrunk = (count,played,avg) => (count + avg*PRIOR)/(played + PRIOR);
+const hasTable = s => s.played!=null && s.played>=3 && s.gf!=null && s.ga!=null;
+function baseLambdas(h, a, avg){
+  const ht=hasTable(h), at=hasTable(a); avg = avg && avg>0.4 ? avg : null;
+  const att = s => clamp(shrunk(s.gf,s.played,avg)/avg,0.4,2.2)*formNudge(s.form);
+  const def = s => clamp(shrunk(s.ga,s.played,avg)/avg,0.4,2.2)/formNudge(s.form);
+  if(avg && ht && at) return {lh:clamp(att(h)*def(a)*avg*1.18,0.15,4.2), la:clamp(att(a)*def(h)*avg*0.9,0.15,4.2), basis:"table"};
+  if(avg && (ht||at)){
+    const fo = s => { const f=formGoals(s.form); return {att:clamp(f.score/avg,0.35,2.6), def:clamp(f.concede/avg,0.35,2.6)}; };
+    const H = ht ? {att:att(h),def:def(h)} : fo(h), A = at ? {att:att(a),def:def(a)} : fo(a);
+    return {lh:clamp(H.att*A.def*avg*1.18,0.15,4.2), la:clamp(A.att*H.def*avg*0.9,0.15,4.2), basis:"blend"};
+  }
+  const hf=formGoals(h.form), af=formGoals(a.form);
+  return {lh:clamp(hf.score*(af.concede/1.28)*1.1,0.15,4.2), la:clamp(af.score*(hf.concede/1.28)*0.92,0.15,4.2), basis:"form"};
+}
+function pmf(k,l){ let p=Math.exp(-l); for(let i=1;i<=k;i++) p*=l/i; return p; }
+function grid(lh,la,rho=RHO){
+  const g=[]; let s=0;
+  for(let h=0;h<=MAXG;h++){ g[h]=[]; for(let a=0;a<=MAXG;a++){
+    let p=pmf(h,lh)*pmf(a,la);
+    if(h===0&&a===0) p*=1-lh*la*rho; else if(h===0&&a===1) p*=1+lh*rho; else if(h===1&&a===0) p*=1+la*rho; else if(h===1&&a===1) p*=1-rho;
+    g[h][a]=Math.max(0,p); s+=g[h][a]; } }
+  for(const r of g) for(let a=0;a<r.length;a++) r[a]/=s;
+  return g;
+}
+function summarize(g){
+  let home=0,draw=0,away=0,over=0,btts=0; const cells=[];
+  g.forEach((r,h)=>r.forEach((p,a)=>{ if(h>a) home+=p; else if(h===a) draw+=p; else away+=p; if(h+a>=3) over+=p; if(h>0&&a>0) btts+=p; cells.push({h,a,p}); }));
+  cells.sort((x,y)=>y.p-x.p);
+  return {home,draw,away,over25:over,under25:1-over,btts,top:cells.slice(0,5)};
+}
+/* เมดูซ่า 3: the called score agrees with the other calls (result, over/under 2.5, both teams to score).
+   The single likeliest cell of a Poisson grid is almost always 1-0 / 1-1 / 0-1 whatever the teams, which
+   reads like a bot and contradicts "home win, over 2.5". So: among the cells that agree with every call,
+   take the likeliest; if no cell can agree with all of them, drop the lowest-priority call and retry. */
+function callScore(g, preds, offH=0, offA=0){
+  const cells=[]; g.forEach((r,h)=>r.forEach((p,a)=>cells.push({h:h+offH,a:a+offA,p})));
+  cells.sort((x,y)=>y.p-x.p);
+  for(let k=preds.length;k>=0;k--){ const ok=cells.filter(c=>preds.slice(0,k).every(f=>f(c.h,c.a))); if(ok.length) return {...ok[0], alt:ok.slice(1,3), used:k}; }
+  return cells[0];
+}
+function resOf(sum){ return sum.home>=sum.away&&sum.home>=sum.draw?"h":sum.away>=sum.draw?"a":"d"; }
+/* เมดูซ่า 3.3: in a close game (no result above 40%) the result call is "this side does not lose",
+   the side with the bigger win+draw chance, so the score never says "Spurs win" while the numbers
+   (and the pick) say "Leeds do not lose 65%" */
+function resCall(sum){
+  const r=resOf(sum), top=Math.max(sum.home,sum.draw,sum.away);
+  if(top<.40&&r!=="d") return sum.home+sum.draw>=sum.away+sum.draw?"hd":"ad";
+  return r;
+}
+function mainPreds(sum){
+  /* 4.2: the backtest measures which way of naming one score hits most (likeliest score / with the result / also O/U and BTTS) */
+  const rule=S?.backtest?.scoreRules?.n>=1000?S.backtest.scoreRules.rule:"full";
+  if(rule==="max") return [];
+  const r=resCall(sum), ps=[(h,a)=>r==="h"?h>a:r==="a"?a>h:r==="hd"?h>=a:r==="ad"?a>=h:h===a];
+  if(rule==="res") return ps;
+  /* เมดูซ่า 4.0 (item 21): 3.3 forced every score to agree with a 51% over/under call, so 77% of calls became 2-1 or 1-2;
+     only a confident call (58%+) shapes the score now */
+  if(Math.abs(sum.over25-.5)>=.08) ps.push(sum.over25>=.5?(h,a)=>h+a>=3:(h,a)=>h+a<=2);
+  if(Math.abs(sum.btts-.5)>=.08) ps.push(sum.btts>=.5?(h,a)=>h>0&&a>0:(h,a)=>h===0||a===0);
+  return ps;
+}
+function atomic(line){ const t=Math.round(line*4); const s=t/4; return t%2===0 ? [{line:s,w:1}] : [{line:(t-1)/4,w:.5},{line:(t+1)/4,w:.5}]; }
+function hdpSplit(g, homeLine){
+  let win=0,push=0,lose=0;
+  for(const part of atomic(homeLine)){ g.forEach((r,h)=>r.forEach((p,a)=>{ const m=h+part.line-a; if(m>1e-9) win+=p*part.w; else if(m<-1e-9) lose+=p*part.w; else push+=p*part.w; })); }
+  return {win,push,lose};
+}
+function totSplit(g, line){
+  let over=0,push=0,under=0;
+  for(const part of atomic(line)){ g.forEach((r,h)=>r.forEach((p,a)=>{ const t=h+a; if(t>part.line+1e-9) over+=p*part.w; else if(t<part.line-1e-9) under+=p*part.w; else push+=p*part.w; })); }
+  return {over:{win:over,push,lose:under}, under:{win:under,push,lose:over}};
+}
+const cover = s => (s.win+s.lose)>0 ? s.win/(s.win+s.lose) : .5;
+/* เมดูซ่า 4.0 (item 14): "power" margin removal. Bookmakers load more of their margin onto long shots, so dividing
+   evenly overrates underdogs; raising each implied probability to the same power k (sum = 1) corrects for that. */
+function devig(ds){
+  if(ds.some(d=>!(d>1.01))) return null; const imp=ds.map(d=>1/d);
+  let lo=1, hi=3; for(let i=0;i<40;i++){ const k=(lo+hi)/2, s=imp.reduce((x,v)=>x+v**k,0); if(s>1) lo=k; else hi=k; }
+  const k=(lo+hi)/2, p=imp.map(v=>v**k), s=p.reduce((x,y)=>x+y,0); return p.map(v=>v/s);
+}
+const VALUE_EDGE = 0.04;
+
+/* Thai handicap wording */
+const BALL = {"0.25":"0/0.5","0.5":"0.5","0.75":"0.5/1","1":"1","1.25":"1/1.5","1.5":"1.5","1.75":"1.5/2","2":"2","2.25":"2/2.5","2.5":"2.5","2.75":"2.5/3","3":"3","3.25":"3/3.5","3.5":"3.5","3.75":"3.5/4","4":"4"};
+const ballLabel = x => { const k=String(Math.round(Math.abs(x)*4)/4); return BALL[k] ?? k; };
+const ahPhrase = (home,away,homeLine) => { const abs=Math.round(Math.abs(homeLine)*4)/4; if(abs<0.01) return "เสมอ (ไม่มีต่อ)"; return homeLine<0 ? `${home} ต่อ ${ballLabel(abs)}` : `${away} ต่อ ${ballLabel(abs)}`; };
+
+/* price formats */
+const PRICE_STYLES = {decimal:"ทศนิยม (ยุโรป)", malay:"มาเลย์", hongkong:"ฮ่องกง"};
+function fmtPrice(dec, style){
+  if(!(dec>1.01)) return "–";
+  if(style==="hongkong") return (dec-1).toFixed(2);
+  if(style==="malay"){ const m = dec>=2 ? -(1/(dec-1)) : dec-1; return (m<0?"-":"")+Math.abs(m).toFixed(2); }
+  return dec.toFixed(2);
+}
+function toDecimal(raw, style){
+  if(!Number.isFinite(raw) || raw===0) return null;
+  if(style==="decimal") return raw>1.01 ? raw : null;
+  if(style==="hongkong") return raw>0 ? raw+1 : null;
+  if(raw>0 && raw<=1) return 1+raw;
+  if(raw<0 && raw>=-1) return 1+1/Math.abs(raw);
+  return null;
+}
+const pct = n => `${Math.round(n*100)}%`;
+const pts = e => { const r=Math.round(e*1000)/10; return (r>0?"+":"")+r.toFixed(1); };
+
+/* ---------- match refinement (the spec's two blends only) ---------- */
+function linesStats(lines){
+  const rows=(lines||[]).map(s=>s.split("-").map(Number)).filter(x=>x.length===2&&x.every(Number.isFinite));
+  if(!rows.length) return null;
+  const n=rows.length, c=f=>rows.filter(f).length;
+  return {n, gf:rows.reduce((s,r)=>s+r[0],0), ga:rows.reduce((s,r)=>s+r[1],0),
+    btts:c(r=>r[0]>0&&r[1]>0), over:c(r=>r[0]+r[1]>=3), clean:c(r=>r[1]===0), blank:c(r=>r[0]===0)};
+}
+function meetingsFor(m){
+  return (m.ds?.meet||[]).map(([date,hid,aid,hs,as])=>{
+    if(hid===m.h.id) return {date,f:hs,a:as,venueHome:true};
+    if(aid===m.h.id) return {date,f:as,a:hs,venueHome:false};
+    return null;
+  }).filter(Boolean);
+}
+/* เมดูซ่า: ชื่อของอัลกอริทึมวิเคราะห์ เพิ่มเลขทุกครั้งที่ปรับวิธีคำนวณ (ดู MEDUSA.md) */
+const MEDUSA={v:4.2, name:"เมดูซ่า 4.2", date:"2026-11-12"};
+/* the 4.0 core is used only when the server's walk-forward backtest has shown it beats the 3.3 base (backtest.pass)
+   and both teams have enough matches in the fit; otherwise the match runs on the 3.3 base */
+/* 4.2 safety: if real results (200+ matches, after the market blend) show the new core doing worse than the 3.3 path, switch it off */
+function coreWorse(c){ return !!(c&&c.n>=200&&c.ll>c.ll33+.005); }
+function dc4On(){ return !!(S?.backtest?.pass&&S?.dc?.leagues&&!coreWorse(S?.audit?.core)); }
+/* เมดูซ่า 4.1: national teams have their own fit and backtest (gate: beat the competition average by 0.02 log loss) */
+function dcnOn(){ return !!(S?.backtestn?.pass&&S?.dcn?.leagues); }
+function dc4For(m){
+  if(m.noDc) return null;
+  const nat=isNat(m.lg), M=nat?S?.dcn:S?.dc;
+  if(nat?!dcnOn():!dc4On()) return null;
+  const T=M.teams||{}, H=T[m.h.id], A=T[m.a.id], L=M.leagues[m.lg]||(H&&M.leagues[H.lg]);
+  if(!H||!A||!L||H.n<3||A.n<3) return null;
+  const hm=m.neutral?1:L.home;
+  return {lh:clamp(L.mu*hm*H.att*A.def,0.15,4.2), la:clamp(L.mu*A.att*H.def,0.15,4.2), rho:L.rho??RHO};
+}
+/* เส้นทางเกม: chance to win after scoring first / conceding first (first goal time ~ exponential) */
+function pathOdds(m){
+  const L=m.lh+m.la; if(!(L>0)) return null;
+  const P=l=>{ const a=[]; let p=Math.exp(-l); for(let i=0;i<=8;i++){ a.push(p); p*=l/(i+1); } return a; };
+  let hw=0,hd=0,aw=0,ad=0,norm=0; const N=24;
+  for(let k=0;k<N;k++){ const t=(k+.5)/N, w=L*Math.exp(-L*t)/N; norm+=w; const x=P(m.lh*(1-t)), y=P(m.la*(1-t));
+    let a1=0,a2=0,b1=0,b2=0; for(let i=0;i<=8;i++) for(let j=0;j<=8;j++){ const p=x[i]*y[j]; if(1+i>j) a1+=p; else if(1+i===j) a2+=p; if(1+j>i) b1+=p; else if(1+j===i) b2+=p; }
+    hw+=w*a1; hd+=w*a2; aw+=w*b1; ad+=w*b2; }
+  return {homeFirst:{win:hw/norm,draw:hd/norm,lose:1-(hw+hd)/norm}, awayFirst:{win:aw/norm,draw:ad/norm,lose:1-(aw+ad)/norm}, none:Math.exp(-L)};
+}
+/* how complete this match's data is, 0-100 (เมดูซ่า 3.1): table, form, prices, learned ratings, league average */
+function dataQuality(m){
+  const both=(f)=>(f(m.h)?1:0)+(f(m.a)?1:0), R=S?.ratings||{};
+  let q=both(hasTable)*15 + both(t=>String(t.form||"").length>=3)*7.5;
+  if(m.mk?.home&&m.mk?.draw&&m.mk?.away) q+=25; if(m.mk?.spread||m.mk?.total) q+=5;
+  q+=both(t=>(R[t.id]?.n||0)>=5)*7.5;
+  if(m.lgAvg||S?.lgavg?.[m.lg]) q+=10;
+  q=Math.round(Math.min(100,q));
+  return {q, label:q>=70?"ข้อมูลครบ":q>=45?"ข้อมูลพอใช้":"ข้อมูลน้อย", tone:q>=70?"good":q>=45?"ok":"low"};
+}
+function refine(m){
+  /* Each factor records how it moves the expected goals (λ) of each side, so the page can show its work. */
+  const steps=[], factors=[];
+  let lh=m.lh, la=m.la, basis=m.basis;
+  if(lh==null||la==null){ const b=baseLambdas(m.h,m.a,null); lh=b.lh; la=b.la; basis=b.basis; }
+  /* item 10: neutral ground -> no home edge in the 3.3 base either */
+  if(m.neutral&&basis!=="dc"){ const k=Math.sqrt(1.18*0.9); lh=clamp(lh/1.18*k,0.15,4.2); la=clamp(la/0.9*k,0.15,4.2); }
+  /* เมดูซ่า 4.0 core: Dixon-Coles strengths fitted on two seasons of every competition, used once the backtest has passed */
+  let rho=RHO; const D=dc4For(m);
+  /* เมดูซ่า 4.2: the two cores merged per league — the backtest scores every league at dc^w x (3.3 base)^(1-w) and keeps
+     the best w where it has 300+ matches (w=0: this league stays on 3.3 with all its layers) */
+  const nat=isNat(m.lg), lc=nat?null:S?.backtest?.leagueChoice?.[m.lg];
+  const mixW=nat?1:(lc?lc.w:(S?.dc?.cfg?.blend??1));
+  if(D&&mixW>0){ const w=mixW;
+    if(w>0&&w<1){ lh=clamp(Math.exp(w*Math.log(D.lh)+(1-w)*Math.log(lh)),0.15,4.2); la=clamp(Math.exp(w*Math.log(D.la)+(1-w)*Math.log(la)),0.15,4.2); }
+    else { lh=D.lh; la=D.la; }
+    rho=D.rho; basis="dc"; }
+  const dc=basis==="dc", mixUsed=dc?mixW:0;
+  /* every factor's push can be strengthened or weakened by the daily job (weights.factors[k]); raw ratios are kept so the job can re-tune */
+  const push=(k,label,text,bh,ba)=>{
+    const fh=lh/bh, fa=la/ba, st=k==="market"?1:(S?.weights?.factors?.[k]??1);
+    if(st!==1){ lh=clamp(bh*fh**st,0.15,4.2); la=clamp(ba*fa**st,0.15,4.2); }
+    factors.push({k,label,text:st!==1?`${text} · น้ำหนักปรับเอง ×${st}`:text,h:lh/bh,a:la/ba,rh:fh,ra:fa,st}); steps.push({k,text:`${label}: ${text}`,lh,la}); };
+  steps.push({k:"base", text: dc?`โมเดลความแข็ง${isNat(m.lg)?"ทีมชาติ":"ทีม"} (ดิกสัน-โคลส์) จากผลย้อนหลัง ${(isNat(m.lg)?S.dcn:S.dc)?.rows||""} นัด ถ่วงนัดล่าสุดมากกว่า คิดความแข็งคู่แข่ง ค่าเจ้าบ้านและค่าเสมอของ${LEAGUE_NAME[m.lg]||"รายการนี้"}`:basis==="table"?"ตารางคะแนน: อัตรายิง/เสียหดเข้าค่าเฉลี่ยลีกด้วย prior 8 นัด แล้วขยับด้วยฟอร์มล่าสุด":basis==="blend"?"ตารางคะแนน: มีครบทีมเดียว อีกทีมใช้ฟอร์ม 5 นัด":"ฟอร์ม: ตารางยังไม่พอ ใช้ผล 5 นัดหลัง", lh, la});
+  factors.push({k:"base",label:dc?(isNat(m.lg)?"ความแข็งทีมชาติ เมดูซ่า 4.1":mixUsed<1?`ผสาน 4.0 ${Math.round(mixUsed*100)}% กับ 3.3`:"ความแข็งทีม เมดูซ่า 4.0"):basis==="form"?"ฟอร์ม 5 นัด":"ตารางคะแนนและฟอร์ม",text:`เริ่มที่ ${lh.toFixed(2)} – ${la.toFixed(2)} ประตูที่คาด`,h:1,a:1,base:true});
+  /* 4.2: each league's goal level measured in the backtest (actual / expected of the chosen mix, shrunk toward 1) */
+  { const gc=dc?(nat?S?.backtestn:S?.backtest)?.goalsCal?.[m.lg]:null;
+    if(gc&&Math.abs(gc-1)>=.01){ const bh=lh, ba=la, k=clamp(gc,.85,1.15); lh=clamp(lh*k,0.15,4.2); la=clamp(la*k,0.15,4.2); push("gcal","ระดับประตูของลีก",`ผลย้อนหลังลีกนี้ยิงจริง ${Math.round(gc*100)}% ของที่โมเดลคาด`,bh,ba); } }
+  const bH=lh, bA=la;
+  const meets=meetingsFor(m);
+  if(!dc&&meets.length>=3){
+    const bh=lh, ba=la, hf=meets.reduce((s,x)=>s+x.f,0)/meets.length, af=meets.reduce((s,x)=>s+x.a,0)/meets.length;
+    lh=clamp(lh*.82+hf*.18,0.15,4.2); la=clamp(la*.82+af*.18,0.15,4.2); basis="h2h";
+    push("h2h","ผลที่เคยเจอกัน",`${meets.length} นัด ยิงเฉลี่ย ${hf.toFixed(1)}–${af.toFixed(1)} ผสม 18%`,bh,ba);
+  }
+  const hs=linesStats(m.ds?.hf?.lines), as=linesStats(m.ds?.af?.lines);
+  if(!dc&&hs&&as&&hs.n>=3&&as.n>=3){
+    const bh=lh, ba=la, tH=(hs.gf/hs.n + as.ga/as.n)/2, tA=(as.gf/as.n + hs.ga/hs.n)/2;
+    lh=clamp(lh*.7+tH*.3,0.15,4.2); la=clamp(la*.7+tA*.3,0.15,4.2);
+    push("pace","เกมรุก-รับ 5 นัดหลัง",`${m.h.short} ยิง ${(hs.gf/hs.n).toFixed(1)} เสีย ${(hs.ga/hs.n).toFixed(1)} · ${m.a.short} ยิง ${(as.gf/as.n).toFixed(1)} เสีย ${(as.ga/as.n).toFixed(1)} ต่อเกม ผสม 30%`,bh,ba);
+  }
+  /* home form at home, away form on the road */
+  const hv=venueSplit(m.ds?.hf,"H"), av=venueSplit(m.ds?.af,"A");
+  if(!dc&&hv&&av){
+    const bh=lh, ba=la;
+    lh=clamp(lh*.88+((hv.gf/hv.n+av.ga/av.n)/2)*.12,0.15,4.2); la=clamp(la*.88+((av.gf/av.n+hv.ga/hv.n)/2)*.12,0.15,4.2);
+    push("venue","ฟอร์มในบ้าน/นอกบ้าน",`${m.h.short} ในบ้าน ${hv.n} นัด ยิง ${(hv.gf/hv.n).toFixed(1)} · ${m.a.short} นอกบ้าน ${av.n} นัด ยิง ${(av.gf/av.n).toFixed(1)} ผสม 12%`,bh,ba);
+  }
+  /* rest days since each team's last match */
+  const rh=restDays(m.ds?.hf,m.ko), ra=restDays(m.ds?.af,m.ko);
+  if(rh!=null&&ra!=null){
+    const bh=lh, ba=la;
+    /* เมดูซ่า 4.0 (item 17): with the backtest's measured effect of a short rest (300+ cases, 3%+ away from even) use that;
+       otherwise the 3.3 rule, whose learned weight is currently off */
+    const sr=S?.backtest?.context?.shortRest, eff=sr?.n>=300&&sr.ratio&&Math.abs(sr.ratio-1)>=.03?clamp(sr.ratio,.85,1.1):null;
+    if(eff){ if(rh<=3) lh=clamp(lh*eff,0.15,4.2); if(ra<=3) la=clamp(la*eff,0.15,4.2); }
+    else if(rh<=3&&ra>=5){ lh=clamp(lh*.95,0.15,4.2); la=clamp(la*1.03,0.15,4.2); }
+    else if(ra<=3&&rh>=5){ la=clamp(la*.95,0.15,4.2); lh=clamp(lh*1.03,0.15,4.2); }
+    push(eff?"rest4":"rest","วันพักและความล้า",`${m.h.short} พัก ${rh} วัน · ${m.a.short} พัก ${ra} วัน${eff?` · จากผลย้อนหลัง ${sr.n} ครั้ง ทีมที่พัก 3 วันหรือน้อยกว่ายิงได้ ${Math.round(eff*100)}% ของที่คาด`:(rh<=3&&ra>=5)||(ra<=3&&rh>=5)?" ทีมที่พักน้อยถูกลดประตูที่คาด":" ไม่ต่างพอให้ปรับ"}`,bh,ba);
+  }
+  /* เมดูซ่า 4.0 (item 17, motivation): a side with nothing left to play for late in the season (cannot reach the top 4,
+     cannot be caught by the relegation places). Used only with the backtest's measured effect (200+ cases, 3%+ from even) */
+  { const df=S?.backtest?.context?.deadFor, da=S?.backtest?.context?.deadAgainst, T=m.tinfo;
+    const ef=df?.n>=200&&df.ratio&&Math.abs(df.ratio-1)>=.03?clamp(df.ratio,.85,1.15):1, ea=da?.n>=200&&da.ratio&&Math.abs(da.ratio-1)>=.03?clamp(da.ratio,.85,1.15):1;
+    const dh=deadRubber(T,m.h), dA=deadRubber(T,m.a);
+    if(T&&(ef!==1||ea!==1)&&(dh||dA)&&!m.neutral){
+      const bh=lh, ba=la;
+      if(dh){ lh=clamp(lh*ef,0.15,4.2); la=clamp(la*ea,0.15,4.2); }
+      if(dA){ la=clamp(la*ef,0.15,4.2); lh=clamp(lh*ea,0.15,4.2); }
+      push("motiv","แรงจูงใจท้ายฤดูกาล",`${[dh&&m.h.short,dA&&m.a.short].filter(Boolean).join(" และ ")} ไม่มีลุ้นทั้งพื้นที่ยุโรปและหนีตกชั้นแล้ว · จากผลย้อนหลัง ${df.n} ครั้ง ทีมแบบนี้ยิงได้ ${Math.round(df.ratio*100)}% เสีย ${Math.round(da.ratio*100)}% ของที่คาด`,bh,ba);
+    }
+  }
+  /* confirmed line-ups: a leading scorer missing from the XI */
+  const lu=m.ds?.lineup;
+  if(lu?.known){
+    const bh=lh, ba=la;
+    lh=clamp(lh*(1-.06*Math.min(2,lu.hMiss.length)),0.15,4.2); la=clamp(la*(1-.06*Math.min(2,lu.aMiss.length)),0.15,4.2);
+    const miss=[...lu.hMiss.map(n=>`${n} (${m.h.short})`),...lu.aMiss.map(n=>`${n} (${m.a.short})`)];
+    push("lineup","ตัวจริงที่ประกาศ",miss.length?`ดาวยิงไม่อยู่ใน 11 ตัวจริง: ${miss.join(", ")}`:"ดาวยิงหลักของทั้งสองทีมลงตัวจริงครบ",bh,ba);
+  }
+  /* injury list from ESPN (เมดูซ่า 2): before line-ups are known, take away the injured players' share of the team's goals */
+  const inj=m.ds?.inj;
+  if(inj&&!lu?.known){
+    const ps=m.ds?.players||[], bh=lh, ba=la, notes=[];
+    const cut=s=>{
+      const t=s==="h"?m.h:m.a, list=inj[s]||[]; if(!list.length) return 0;
+      const mine=ps.filter(p=>p.side===s), tg=Math.max(t.gf||0, mine.reduce((a,p)=>a+(p.goals||0),0)*1.6, 1);
+      let r=0, other=0;
+      for(const i of list){
+        const p=mine.find(x=>(i.id&&x.id===i.id)||(i.name&&String(x.name).toLowerCase()===i.name.toLowerCase()));
+        const w=i.status==="out"?.45:.2;
+        if(p&&((p.goals||0)+(p.assists||0))>0){ r+=w*clamp(((p.goals||0)+.5*(p.assists||0))/tg,0,.6); notes.push(`${i.name} (${t.short}${i.status==="out"?" ไม่ได้ลง":" ไม่แน่นอน"})`); }
+        else if(i.status==="out") other++;
+      }
+      return Math.min(.15, r+Math.min(.03,other*.01));
+    };
+    const ch=cut("h"), ca=cut("a");
+    if(ch>0||ca>0){
+      lh=clamp(lh*(1-ch),0.15,4.2); la=clamp(la*(1-ca),0.15,4.2);
+      push("injury","ผู้เล่นบาดเจ็บ/ติดโทษ",`${m.h.short} ${inj.h.length} คน · ${m.a.short} ${inj.a.length} คน${notes.length?` · ตัวยิงที่หายไป: ${notes.join(", ")}`:" · ไม่มีดาวยิงหลักในรายชื่อ"}`,bh,ba);
+    }
+  }
+  /* weather and altitude at the ground */
+  const wx=S?.ext?.[m.id]?.wx;
+  if(wx){
+    const bh=lh, ba=la; const notes=[];
+    if(wx.rain>=4||wx.wind>=40){ lh*=.94; la*=.94; notes.push(wx.rain>=4?`ฝน ${wx.rain} มม./ชม.`:`ลม ${Math.round(wx.wind)} กม./ชม.`); }
+    if(wx.temp>=30){ lh*=.97; la*=.97; notes.push(`ร้อน ${Math.round(wx.temp)}°C`); }
+    if(wx.elev>=1500){ lh*=1.05; la*=.95; notes.push(`สนามสูง ${Math.round(wx.elev)} ม. เจ้าบ้านคุ้นกว่า`); }
+    lh=clamp(lh,0.15,4.2); la=clamp(la,0.15,4.2);
+    push("weather","สภาพอากาศและสนาม",`${Math.round(wx.temp)}°C ฝน ${wx.rain} มม. ลม ${Math.round(wx.wind)} กม./ชม.${notes.length?" · ปรับเพราะ "+notes.join(", "):" · ไม่หนักพอให้ปรับ"}`,bh,ba);
+  }
+  /* news: confirmed absences named in today's headlines (from the daily brief) */
+  const na=S?.newsAdj?.[m.id];
+  if(na){
+    const bh=lh, ba=la;
+    lh=clamp(lh*(1+clamp(na.h||0,-.05,.03)),0.15,4.2); la=clamp(la*(1+clamp(na.a||0,-.05,.03)),0.15,4.2);
+    push("news","ข่าววันนี้",na.reason||"มีข่าวตัวผู้เล่นที่กระทบทีม",bh,ba);
+  }
+  /* news from the last 3 days carried to this match, fading each day */
+  if(!na){
+    const age=d=>Math.max(0,Math.round((Date.parse(m.ko)-Date.parse(d))/864e5));
+    const pick=id=>{ const n=S?.newsTeam?.[id]; if(!n) return null; const a=age(n.d); return a<=3?{e:n.e*(1-a/4),reason:n.reason,a}:null; };
+    const nh=pick(m.h.id), nA=pick(m.a.id);
+    if(nh||nA){
+      const bh=lh, ba=la;
+      if(nh) lh=clamp(lh*(1+nh.e),0.15,4.2); if(nA) la=clamp(la*(1+nA.e),0.15,4.2);
+      push("newsOld","ข่าวที่ผ่านมา",[nh?`${m.h.short}: ${nh.reason} (${nh.a} วันก่อน)`:"",nA?`${m.a.short}: ${nA.reason} (${nA.a} วันก่อน)`:""].filter(Boolean).join(" · "),bh,ba);
+    }
+  }
+  /* league trend: goals per game over the last 14 days vs the season so far */
+  const tr=S?.trends?.[m.lg];
+  if(!dc&&tr?.gpg&&tr.n>=8&&m.lgAvg){
+    const bh=lh, ba=la, ratio=tr.gpg/(m.lgAvg*2), k=clamp(1+(ratio-1)*.5*tr.n/(tr.n+20),.92,1.08);
+    lh=clamp(lh*k,0.15,4.2); la=clamp(la*k,0.15,4.2);
+    push("trend","แนวโน้มลีก 14 วัน",`${tr.n} นัดหลังสุดเฉลี่ย ${tr.gpg.toFixed(2)} ประตู เทียบทั้งฤดูกาล ${(m.lgAvg*2).toFixed(2)}`,bh,ba);
+  }
+  /* team strength learned from every finished match (daily job): attack/defence ratings */
+  const RH=S?.ratings?.[m.h.id], RA=S?.ratings?.[m.a.id], avg=S?.lgavg?.[m.lg];
+  if(!dc&&RH&&RA&&RH.n>=6&&RA.n>=6){
+    const mu=avg>0.4?avg:1.35, rlh=mu*1.12*RH.att*RA.def, rla=mu/1.12*RA.att*RH.def, W=Math.min(.3,.12+(Math.min(RH.n,RA.n)-6)*.01);
+    const bh=lh, ba=la; lh=clamp(Math.exp(Math.log(lh)*(1-W)+Math.log(rlh)*W),0.15,4.2); la=clamp(Math.exp(Math.log(la)*(1-W)+Math.log(rla)*W),0.15,4.2);
+    push("rating","ความแข็งของทีม (เรียนรู้ทุกวัน)",`เกมรุก/รับ ${m.h.short} ${RH.att.toFixed(2)}/${RH.def.toFixed(2)} · ${m.a.short} ${RA.att.toFixed(2)}/${RA.def.toFixed(2)} จาก ${RH.n}/${RA.n} นัดที่บันทึก → ${rlh.toFixed(2)}–${rla.toFixed(2)} ผสม ${Math.round(W*100)}%`,bh,ba);
+  }
+  /* coach says he will rest players / rotate (news scan, last 3 days) — เมดูซ่า 3.2 */
+  const rotOf=t=>{ const n=String(t.name||"").toLowerCase(), sh=String(t.short||"").toLowerCase();
+    for(const [k,v] of Object.entries(S?.rotation||{})){ if(!v?.d||v.signal!=="rotation"||k.length<4) continue; const age=(Date.parse(m.ko)-Date.parse(v.d))/864e5; if(age<-0.5||age>3) continue; if(n.includes(k)||k.includes(n)||k===sh) return v; } return null; };
+  const rH=rotOf(m.h), rA=rotOf(m.a);
+  if(rH||rA){
+    const bh=lh, ba=la;
+    if(rH){ lh=clamp(lh*.93,0.15,4.2); la=clamp(la*1.04,0.15,4.2); } if(rA){ la=clamp(la*.93,0.15,4.2); lh=clamp(lh*1.04,0.15,4.2); }
+    push("rotation","ข่าวหมุนตัว/พักตัวหลัก",[rH&&`${m.h.short}: ${rH.reason||"โค้ชเตรียมหมุนตัว"}`,rA&&`${m.a.short}: ${rA.reason||"โค้ชเตรียมหมุนตัว"}`].filter(Boolean).join(" · "),bh,ba);
+  }
+  /* learned from this app's own past predictions vs real scores */
+  const lh0=lh, la0=la;
+  const cal=dc?null:S?.calib?.[m.lg]?.n>=10?S.calib[m.lg]:S?.calib?._all?.n>=30?S.calib._all:null;
+  if(cal){
+    const bh=lh, ba=la; lh=clamp(lh*cal.hAdj,0.15,4.2); la=clamp(la*cal.aAdj,0.15,4.2);
+    push("calib","เรียนรู้จากผลที่ผ่านมา",`เทียบที่ทำนายไว้กับสกอร์จริง ${cal.n} นัด${cal===S.calib._all?" (รวมทุกลีก)":` ใน${LEAGUE_NAME[m.lg]||"ลีกนี้"}`} เจ้าบ้านยิงจริง ${Math.round((cal.hs/cal.lh)*100)}% ของที่คาด ทีมเยือน ${Math.round((cal.as/cal.la)*100)}%`,bh,ba);
+  }
+  /* market: blend in the expected goals implied by DraftKings prices (bookmaker prices carry
+     information the stats miss: injuries, rotation, motivation). Weight 35%, geometric blend. */
+  const pH=lh, pA=la;
+  const mkt=marketLambdas(m, lh+la);
+  if(mkt){
+    const bh=lh, ba=la, W=S?.weights?.marketLg?.[m.lg]??S?.weights?.market??.35;
+    lh=clamp(Math.exp(Math.log(lh)*(1-W)+Math.log(mkt.lh)*W),0.15,4.2); la=clamp(Math.exp(Math.log(la)*(1-W)+Math.log(mkt.la)*W),0.15,4.2);
+    push("market","ราคาตลาด",`ราคา ${m.mk.book} บอกประตูที่คาด ${mkt.lh.toFixed(2)} – ${mkt.la.toFixed(2)}${mkt.fromTotal?"":" (ไม่มีเส้นสูงต่ำ ใช้ผลรวมจากโมเดล)"} ผสม ${Math.round(W*100)}%${S?.weights?.n?` (ปรับเองจากผลจริง ${S.weights.n} นัด)`:""}`,bh,ba);
+  }
+  /* เมดูซ่า 4.0 (items 11, 13): calibration last, after the market — total goals scaled by what the final numbers
+     actually produced (needs 200+ settled 4.0 predictions), so over/under is checked on its own */
+  const fc=S?.finalCal; if(fc?.goals&&fc.n>=200&&Math.abs(fc.goals-1)>.02){ const bh=lh, ba=la, k=clamp(fc.goals,.9,1.1); lh=clamp(lh*k,0.15,4.2); la=clamp(la*k,0.15,4.2); push("final","ปรับเทียบขั้นสุดท้าย",`ประตูรวมจริง ${Math.round(k*100)}% ของที่คาดไว้ จาก ${fc.n} นัด`,bh,ba); }
+  const g=grid(lh,la,rho), sum=summarize(g);
+  if(fc?.temp&&fc.nT>=300&&Math.abs(fc.temp-1)>.03){ sum.rawH=sum.home; sum.rawA=sum.away; const t=clamp(fc.temp,.8,1.25), q=[sum.home,sum.draw,sum.away].map(x=>Math.max(1e-6,x)**(1/t)), z=q[0]+q[1]+q[2]; sum.home=q[0]/z; sum.draw=q[1]/z; sum.away=q[2]/z; sum.temp=t; }
+  sum.call=callScore(g,mainPreds(sum));
+  const out={...m, raw:m.raw||m, lh, la, lh0, la0, pH, pA, bH, bA, mkt, basis, g, sum, steps, factors, hs, as, meets};
+  /* one called score per match: when there is a pick, the score is the pick's (it also agrees with the other calls where it can) */
+  const bc=bestCall(out); if(bc?.score){ const [ch,ca]=bc.score.split("-").map(Number); if(Number.isInteger(ch)&&Number.isInteger(ca)) out.sum.call={h:ch,a:ca,p:out.g[ch]?.[ca]??0}; }
+  out.live=liveModel(out); out.extra=extraMarkets(out); out.scorers=scorerModel(out); out.dq=dataQuality(out);
+  return out;
+}
+
+/* ---------- market-implied expected goals: fit (λh, λa) to de-vigged 1X2 (+ total line) ---------- */
+function openFair(m){ const o=m.mk?.open; const f=o&&devig([o.home.decimal,o.draw.decimal,o.away.decimal]); return f?{oh:+f[0].toFixed(4),od:+f[1].toFixed(4),oa:+f[2].toFixed(4)}:{}; }
+/* same rule as deadRubber() in lib/backtest.js: 10 games or fewer left, cannot reach 4th, cannot be caught by 3rd-from-bottom */
+function deadRubber(T,t){ if(!T||t?.points==null||t.played==null) return false; const left=2*(T.n-1)-t.played; return left>0&&left<=10&&t.points+3*left<T.top&&t.points>T.drop+3*left; }
+/* the fit below is a grid search (~1,300 score grids); prices rarely change between screen updates, so remember the answer
+   per price set — a busy day re-prepared on every refresh was blocking a phone for most of a second */
+const mlMemo=new Map();
+function marketLambdas(m, modelTotal){
+  const mk=m.mk; if(!mk?.home||!mk?.draw||!mk?.away) return null;
+  const key=[mk.home.decimal,mk.draw.decimal,mk.away.decimal,mk.total?.line,mk.total?.over?.decimal,mk.total?.under?.decimal,mk.spread?.line,mk.spread?.home?.decimal,mk.spread?.away?.decimal,mk.total?"":Math.round((modelTotal||0)*20)].join("|");
+  if(mlMemo.has(key)) return mlMemo.get(key);
+  const out=marketLambdasFit(m, modelTotal);
+  if(mlMemo.size>3000) mlMemo.clear(); if(out) Object.freeze(out); mlMemo.set(key,out); return out;
+}
+function marketLambdasFit(m, modelTotal){
+  const mk=m.mk;
+  const f=devig([mk.home.decimal,mk.draw.decimal,mk.away.decimal]); if(!f) return null;
+  let tOver=null, tLine=null;
+  if(mk.total){ const t=devig([mk.total.over.decimal,mk.total.under.decimal]); if(t){ tOver=t[0]; tLine=mk.total.line; } }
+  /* item 14: the Asian handicap price says how far apart the teams are; use it as a third target */
+  let sCover=null, sLine=null;
+  if(mk.spread){ const t=devig([mk.spread.home.decimal,mk.spread.away.decimal]); if(t){ sCover=t[0]; sLine=mk.spread.line; } }
+  const pm=l=>{ const v=[]; let p=Math.exp(-l); for(let k=0;k<=9;k++){ v.push(p); p*=l/(k+1); } return v; };
+  const cache=new Map(); const P=l=>{ const k=l.toFixed(3); if(!cache.has(k)) cache.set(k,pm(l)); return cache.get(k); };
+  const err=(h,a)=>{
+    if(tOver==null && Math.abs(h+a-modelTotal)>.1) return 9;
+    const x=P(h), y=P(a); let ph=0,pd=0,pa=0; const tot=Array(19).fill(0);
+    for(let i=0;i<10;i++) for(let j=0;j<10;j++){ const p=x[i]*y[j]; if(i>j) ph+=p; else if(i===j) pd+=p; else pa+=p; tot[i+j]+=p; }
+    let e=(ph-f[0])**2+(pd-f[1])**2+(pa-f[2])**2;
+    if(tOver!=null){ let w=0,l=0; for(const part of atomic(tLine)) tot.forEach((p,t)=>{ if(t>part.line+1e-9) w+=p*part.w; else if(t<part.line-1e-9) l+=p*part.w; }); e+=(((w+l)>0?w/(w+l):.5)-tOver)**2; }
+    if(sCover!=null){ let w=0,l=0; for(const part of atomic(sLine)) for(let i=0;i<10;i++) for(let j=0;j<10;j++){ const d=i+part.line-j, p=x[i]*y[j]*part.w; if(d>1e-9) w+=p; else if(d<-1e-9) l+=p; } e+=.5*(((w+l)>0?w/(w+l):.5)-sCover)**2; }
+    return e;
+  };
+  let best={e:9,lh:1,la:1};
+  /* coarse-to-fine (0.2 -> 0.05 -> 0.01): ~530 score grids instead of ~1,350, and a finer answer (4.2, faster first open) */
+  for(let h=.2;h<=3.61;h+=.2) for(let a=.2;a<=3.61;a+=.2){ const e=err(h,a); if(e<best.e) best={e,lh:h,la:a}; }
+  for(const [span,step] of [[.2,.05],[.05,.01]]){ const c=best; for(let h=c.lh-span;h<=c.lh+span+1e-9;h+=step) for(let a=c.la-span;a<=c.la+span+1e-9;a+=step){ if(h<.1||a<.1) continue; const e=err(h,a); if(e<best.e) best={e,lh:h,la:a}; } }
+  return best.e<.012 ? {lh:best.lh, la:best.la, fromTotal:tOver!=null, fromSpread:sCover!=null} : null;
+}
+
+/* ---------- in-play stats: shots, shots on target, possession, red cards (from scoreboard or summary) ---------- */
+function statMap(list){ const o={}; for(const x of list||[]){ const k=String(x.name||x.label||"").toLowerCase().replace(/[^a-z]/g,""); const v=parseFloat(String(x.displayValue??x.value??"").replace("%","")); if(k&&Number.isFinite(v)) o[k]=v; } return o; }
+function liveStatsOf(comps, details, H, A){
+  const pick=t=>{ const o=statMap(t?.statistics); return {shots:o.totalshots??o.shots??null, sot:o.shotsontarget??o.ontargetshots??null, poss:o.possessionpct??o.possession??null, corners:o.woncorners??o.cornerkicks??null, red:0}; };
+  const h=pick(H), a=pick(A);
+  for(const d of details||[]){ if(d.redCard||/red card/i.test(d.type?.text||"")){ const tid=String(d.team?.id??""); if(tid===String(H?.team?.id)) h.red++; else if(tid===String(A?.team?.id)) a.red++; } }
+  const any=[h.shots,h.sot,h.poss,a.shots,a.sot,a.poss].some(v=>v!=null)||h.red||a.red;
+  return any?{h,a}:null;
+}
+function liveStatsFromSummary(p){
+  const T=p?.boxscore?.teams||[]; const H=T.find(t=>t.homeAway==="home")||T[0], A=T.find(t=>t.homeAway==="away")||T[1]; if(!H||!A) return null;
+  const pick=t=>{ const o=statMap(t.statistics); return {shots:o.totalshots??o.shots??null, sot:o.shotsontarget??null, poss:o.possessionpct??null, corners:o.woncorners??null, red:o.redcards??0}; };
+  return {h:pick(H), a:pick(A)};
+}
+
+/* ---------- in-play: remaining expected goals on top of the current score ---------- */
+function matchMinute(m){
+  if(m.st!=="in") return null;
+  const c=String(m.clock||"");
+  if(/พัก|HT/i.test(c)) return 45;
+  const n=c.match(/(\d+)(?:'|\+|$)/); const add=c.match(/\+(\d+)/);
+  return n ? Math.min(120, Number(n[1])+(add?Number(add[1]):0)) : null;
+}
+function liveModel(m){
+  const min=matchMinute(m); if(min==null||m.h.score==null) return null;
+  /* more goals come in the second half (about 46/54), so the time left is weighted, not linear */
+  const left=clamp(min<46?((46-min)*.92+51.84)/94.16:Math.max(0,94-min)*1.08/94.16,.01,1);
+  let rh=m.lh*left, ra=m.la*left; const notes=[];
+  /* momentum: who is creating more than the pre-match model expected (shots on target, then shots) */
+  const L=m.ls||m.raw?.ls||m.ds?.ls;
+  if(L){
+    const expShare=m.lh/(m.lh+m.la), k=Math.min(1,min/60)*.5;
+    const sh=(L.h.sot!=null&&L.a.sot!=null&&L.h.sot+L.a.sot>=3)?{x:L.h.sot,y:L.a.sot,n:"ยิงเข้ากรอบ"}:(L.h.shots!=null&&L.a.shots!=null&&L.h.shots+L.a.shots>=6)?{x:L.h.shots,y:L.a.shots,n:"ยิง"}:null;
+    if(sh){
+      const obs=(sh.x+1)/(sh.x+sh.y+2), mh=clamp((obs/expShare)**k,.7,1.4), ma=clamp(((1-obs)/(1-expShare))**k,.7,1.4);
+      rh*=mh; ra*=ma;
+      if(Math.abs(mh-1)>.05||Math.abs(ma-1)>.05) notes.push(`${sh.n} ${sh.x}–${sh.y} ${mh>ma?m.h.short:m.a.short} คุมเกมกว่าที่คาด ขยับโอกาสยิงที่เหลือ ${m.h.short} ${mh>1?"+":""}${Math.round((mh-1)*100)}% ${m.a.short} ${ma>1?"+":""}${Math.round((ma-1)*100)}%`);
+    }
+  }
+  /* key events from the feed: red cards, substitutions, injuries (เมดูซ่า 3) */
+  const EV=m.ds?.ev||[], reds={h:Math.max(L?.h?.red||0,EV.filter(e=>e.t==="red"&&e.side==="h").length),a:Math.max(L?.a?.red||0,EV.filter(e=>e.t==="red"&&e.side==="a").length)};
+  {
+    if(reds.h||reds.a){
+      const d=reds.h-reds.a;
+      const who=s=>EV.filter(e=>e.t==="red"&&e.side===s).map(e=>e.player).filter(Boolean).join(", ");
+      if(d>0){ rh*=.7; ra*=1.25; notes.push(`${m.h.short} โดนใบแดง ${reds.h} ใบ${who("h")?` (${who("h")})`:""} เหลือคนน้อยกว่า`); }
+      if(d<0){ ra*=.7; rh*=1.25; notes.push(`${m.a.short} โดนใบแดง ${reds.a} ใบ${who("a")?` (${who("a")})`:""} เหลือคนน้อยกว่า`); }
+      if(d===0) notes.push(`ใบแดงทั้งสองฝั่ง จำนวนคนเท่ากัน`);
+    }
+    /* a scorer who left the pitch (substituted or injured off) takes his share of the team's goals with him */
+    const ps=m.ds?.players||[], low=x=>String(x||"").toLowerCase();
+    for(const s of ["h","a"]){
+      const t=s==="h"?m.h:m.a, mine=ps.filter(p=>p.side===s), tg=Math.max(t.gf||0, mine.reduce((a,p)=>a+(p.goals||0),0)*1.6, 1);
+      const gone=new Set([...EV.filter(e=>e.t==="sub"&&e.side===s).map(e=>low(e.out)), ...EV.filter(e=>e.t==="red"&&e.side===s).map(e=>low(e.player))]);
+      let cut=0; const names=[];
+      for(const p of mine){ if(!gone.has(low(p.name))) continue; const sh=clamp(((p.goals||0)+.5*(p.assists||0))/tg,0,.6); if(sh>=.08&&!EV.some(e=>e.t==="red"&&low(e.player)===low(p.name))){ cut+=.5*sh; names.push(p.name); } }
+      cut=Math.min(.25,cut);
+      if(cut>0){ if(s==="h") rh*=1-cut; else ra*=1-cut; notes.push(`${t.short} เปลี่ยน ${names.join(", ")} ออก ตัวยิงหลักไม่อยู่ในสนาม ลดโอกาสยิงที่เหลือ ${Math.round(cut*100)}%`); }
+      const hurt=EV.filter(e=>e.t==="inj"&&e.side===s&&!gone.has(low(e.player))).map(e=>e.player);
+      if(hurt.length) notes.push(`${t.short}: ${[...new Set(hurt)].join(", ")} มีอาการเจ็บระหว่างเกม รอดูว่าจะไหวไหม`);
+      const subs=EV.filter(e=>e.t==="sub"&&e.side===s).length; if(subs) notes.push(`${t.short} เปลี่ยนตัวแล้ว ${subs} คน`);
+    }
+    if(L&&L.h.poss!=null&&L.a.poss!=null) notes.push(`ครองบอล ${Math.round(L.h.poss)}–${Math.round(L.a.poss)}%`);
+  }
+  /* late game: a trailing side pushes, the leader sits back */
+  if(min>=70&&m.h.score!==m.a.score){ const lead=m.h.score>m.a.score?"h":"a"; if(lead==="h"){ ra*=1.1; rh*=.95; } else { rh*=1.1; ra*=.95; } }
+  const g=grid(Math.max(.01,rh),Math.max(.01,ra));
+  let ph=0,pd=0,pa=0,over=0; const cells=[];
+  g.forEach((r,i)=>r.forEach((p,j)=>{ const H=m.h.score+i, A=m.a.score+j; if(H>A) ph+=p; else if(H===A) pd+=p; else pa+=p; if(H+A>=3) over+=p; cells.push({h:H,a:A,p}); }));
+  cells.sort((a,b)=>b.p-a.p);
+  const pMore=1-g[0][0], next={h:pMore*rh/(rh+ra), a:pMore*ra/(rh+ra)};
+  /* coherent final score: agrees with the likeliest result and with whether another goal is expected */
+  const r=ph>=pa&&ph>=pd?"h":pa>=pd?"a":"d", base=m.h.score+m.a.score;
+  const final=callScore(g,[(H,A)=>r==="h"?H>A:r==="a"?A>H:H===A,pMore>=.5?(H,A)=>H+A>base:(H,A)=>H+A===base,...(pMore>=.5?[(H,A)=>next.h>=next.a?H>m.h.score:A>m.a.score]:[])],m.h.score,m.a.score);
+  return {min, ph, pd, pa, final, events:EV, top:cells.slice(0,4), pMore, over25:over, next, rh, ra, notes, stats:L||null};
+}
+
+/* ---------- extra markets from the same expected goals ---------- */
+function extraMarkets(m){
+  const H1=.45, lh=m.lh, la=m.la;
+  const pois=(k,l)=>{ let p=Math.exp(-l); for(let i=1;i<=k;i++) p*=l/i; return p; };
+  const res=(lH,lA)=>{ let h=0,d=0,a=0; for(let i=0;i<=8;i++) for(let j=0;j<=8;j++){ const p=pois(i,lH)*pois(j,lA); if(i>j) h+=p; else if(i===j) d+=p; else a+=p; } return {h,d,a}; };
+  // half-time / full-time: first-half goals then second-half goals, independent Poisson
+  const ht=[], htft={};
+  for(let i=0;i<=6;i++) for(let j=0;j<=6;j++) ht.push({i,j,p:pois(i,lh*H1)*pois(j,la*H1)});
+  for(const x of ht){
+    const hs=x.i>x.j?"h":x.i===x.j?"d":"a";
+    for(let k=0;k<=6;k++) for(let l=0;l<=6;l++){ const p=x.p*pois(k,lh*(1-H1))*pois(l,la*(1-H1)); const H=x.i+k, A=x.j+l; const fs=H>A?"h":H===A?"d":"a"; htft[hs+fs]=(htft[hs+fs]||0)+p; }
+  }
+  const htftTop=Object.entries(htft).sort((a,b)=>b[1]-a[1]).slice(0,3);
+  const p00=m.g[0][0];
+  const first={h:(1-p00)*lh/(lh+la), a:(1-p00)*la/(lh+la), none:p00};
+  let cleanH=0, cleanA=0, nilH=0, nilA=0, odd=0; const margin={};
+  m.g.forEach((r,i)=>r.forEach((p,j)=>{ if(j===0) cleanH+=p; if(i===0) cleanA+=p; if(i>j&&j===0) nilH+=p; if(j>i&&i===0) nilA+=p; if((i+j)%2) odd+=p; const d=i-j; const k=d>=3?"h3":d===2?"h2":d===1?"h1":d===0?"d":d===-1?"a1":d===-2?"a2":"a3"; margin[k]=(margin[k]||0)+p; }));
+  return {
+    h1:res(lh*H1,la*H1), goal1H:1-Math.exp(-(lh+la)*H1), goal2H:1-Math.exp(-(lh+la)*(1-H1)),
+    first, cleanH, cleanA, nilH, nilA, odd, even:1-odd, margin, htftTop,
+    over15:m.g.reduce((s,r,i)=>s+r.reduce((t,p,j)=>t+(i+j>=2?p:0),0),0),
+    over35:m.g.reduce((s,r,i)=>s+r.reduce((t,p,j)=>t+(i+j>=4?p:0),0),0)
+  };
+}
+
+/* ---------- scorers and assisters: each player's share of his team's season goals ---------- */
+function scorerModel(m){
+  const ps=m.ds?.players||[]; if(!ps.length) return null;
+  const sideOf=p=>p.side||(String(p.team||"").toLowerCase()===m.h.name.toLowerCase()?"h":String(p.team||"").toLowerCase()===m.a.name.toLowerCase()?"a":null);
+  const starters=new Set(m.ds?.lineup?.starters||[]); const known=!!m.ds?.lineup?.known;
+  const teamGoals=s=>{ const t=s==="h"?m.h:m.a; const fromTable=t.gf; const fromList=ps.filter(p=>sideOf(p)===s).reduce((a,p)=>a+(p.goals||0),0); return Math.max(fromTable||0, fromList*1.6, 1); };
+  const out=[];
+  for(const p of ps){
+    const s=sideOf(p); if(!s) continue;
+    const lam=s==="h"?m.lh:m.la, tg=teamGoals(s);
+    let play = known ? (p.id&&starters.has(String(p.id))?1:.25) : .85;
+    const nw=S?.newsPlayer?.[String(p.name||"").toLowerCase()];
+    const fresh_=nw&&(Date.parse(m.ko)-Date.parse(nw.d))/864e5<=7;
+    if(fresh_&&!known){ if(nw.status==="out") play=.05; else if(nw.status==="doubtful") play=.5; }
+    const hurt=(m.ds?.inj?.[s]||[]).find(i=>(i.id&&i.id===String(p.id))||(i.name&&i.name.toLowerCase()===String(p.name||"").toLowerCase()));
+    if(hurt&&!known) play=Math.min(play, hurt.status==="out"?.05:.5);
+    const gShare=clamp((p.goals||0)/tg,0,.6), aShare=clamp((p.assists||0)/tg,0,.5);
+    let xg=lam*gShare*play, xa=lam*aShare*play;
+    const rec=p.id?S?.players?.[p.id]:null;
+    if(rec&&rec.apps>=3){ xg=.5*xg+.5*(rec.g/rec.apps)*play; xa=.5*xa+.5*(rec.a/rec.apps)*play; }
+    out.push({name:p.name, side:s, team:s==="h"?m.h.short:m.a.short, goals:p.goals, assists:p.assists, play, news:fresh_?nw:hurt&&!known?{status:hurt.status,reason:hurt.raw||"บาดเจ็บ"}:null,
+      pGoal:1-Math.exp(-xg), pAssist:1-Math.exp(-xa), pFirst:(s==="h"?m.extra?.first?.h:m.extra?.first?.a)??0, xg, xa, gShare});
+  }
+  out.forEach(o=>{ o.pFirst = (o.side==="h"?(1-m.g[0][0])*m.lh/(m.lh+m.la):(1-m.g[0][0])*m.la/(m.lh+m.la))*o.gShare*o.play; });
+  out.sort((a,b)=>b.pGoal-a.pGoal);
+  /* story for the most likely scoreline: hand the predicted goals to the likeliest scorers */
+  const top=m.sum.call||m.sum.top[0], story={h:[],a:[]};
+  for(const s of ["h","a"]){
+    const n=s==="h"?top.h:top.a; const pool=out.filter(o=>o.side===s&&o.xg>0).map(o=>({...o,left:o.xg}));
+    for(let k=0;k<n;k++){
+      pool.sort((a,b)=>b.left-a.left); const pick=pool[0];
+      if(!pick||pick.left<.05){ story[s].push({name:"ผู้เล่นคนอื่น"}); continue; }
+      const helper=out.filter(o=>o.side===s&&o.name!==pick.name&&o.xa>0).sort((a,b)=>b.xa-a.xa)[k%2]||null;
+      story[s].push({name:pick.name, assist:helper?.name||null}); pick.left/=2.2;
+    }
+  }
+  return {list:out, story, known};
+}
+function venueSplit(f, side){
+  if(!f?.ha?.length) return null;
+  const rows=(f.lines||[]).map((s,i)=>({s:s.split("-").map(Number),v:f.ha[i]})).filter(r=>r.v===side&&r.s.every(Number.isFinite));
+  if(rows.length<2) return null;
+  return {n:rows.length, gf:rows.reduce((a,r)=>a+r.s[0],0), ga:rows.reduce((a,r)=>a+r.s[1],0)};
+}
+function restDays(f, ko){
+  const d=f?.dates?.[0]; if(!d) return null;
+  const days=Math.floor((Date.parse(ko)-Date.parse(d))/864e5);
+  return days>0&&days<40?days:null;
+}
+
+/* market rows: model vs de-vigged market */
+function edgeRows(m){
+  if(m._rows) return m._rows;
+  const rows=computeRows(m); Object.defineProperty(m,"_rows",{value:rows,enumerable:false}); return rows;
+}
+function computeRows(m){
+  const mk=m.mk, rows=[]; if(!mk) return rows;
+  if(mk.home&&mk.draw&&mk.away){
+    const fair=devig([mk.home.decimal,mk.draw.decimal,mk.away.decimal]);
+    [["1x2-h",`${m.h.short} ชนะ`,m.sum.home,mk.home],["1x2-d","เสมอ",m.sum.draw,mk.draw],["1x2-a",`${m.a.short} ชนะ`,m.sum.away,mk.away]]
+      .forEach(([key,label,model,price],i)=>rows.push({key,kind:"1x2",label,model,fair:fair?.[i]??null,edge:fair?model-fair[i]:null,dec:price.decimal}));
+  }
+  if(mk.spread){
+    const s=hdpSplit(m.g,mk.spread.line), aw={win:s.lose,lose:s.win,push:s.push};
+    const f=devig([mk.spread.home.decimal,mk.spread.away.decimal]);
+    rows.push({key:"ah-h",kind:"ah",label:`${m.h.short} ${signed(mk.spread.line)}`,model:cover(s),fair:f?.[0]??null,edge:f?cover(s)-f[0]:null,dec:mk.spread.home.decimal,split:s});
+    rows.push({key:"ah-a",kind:"ah",label:`${m.a.short} ${signed(-mk.spread.line)}`,model:cover(aw),fair:f?.[1]??null,edge:f?cover(aw)-f[1]:null,dec:mk.spread.away.decimal,split:aw});
+  }
+  if(mk.total){
+    const t=totSplit(m.g,mk.total.line), f=devig([mk.total.over.decimal,mk.total.under.decimal]);
+    rows.push({key:"ou-o",kind:"ou",label:`สูง ${ballLabel(mk.total.line)}`,model:cover(t.over),fair:f?.[0]??null,edge:f?cover(t.over)-f[0]:null,dec:mk.total.over.decimal});
+    rows.push({key:"ou-u",kind:"ou",label:`ต่ำ ${ballLabel(mk.total.line)}`,model:cover(t.under),fair:f?.[1]??null,edge:f?cover(t.under)-f[1]:null,dec:mk.total.under.decimal});
+  }
+  return rows;
+}
+function signed(line){ const s=Math.round(line*4)/4; if(Math.abs(s)<.01) return "0"; return (s>0?"+":"-")+ballLabel(Math.abs(s)); }
+function bestEdge(m){ return edgeRows(m).filter(r=>r.edge!=null).sort((a,b)=>b.edge-a.edge)[0]||null; }
+
+/* picks: up to 5 market AH lines where the model is most confident */
+/* ---------- shared store: one data set for every device (hosted site with Upstash Redis) ---------- */
+const Shared={on:false, picks:{}, pickHist:[], histN:0, pulled:{}};
+async function syncPull(date){
+  if(window.claude || S.liveOk===false) return false;
+  try{
+    const day=S.days[date]; const teams=[...new Set((day?.matches||[]).flatMap(m=>[m.h.id,m.a.id]))].filter(Boolean).slice(0,200).join(",");
+    const j=await getJson(`/api/store?date=${date}${teams?`&teams=${teams}`:""}`,8000);
+    if(!j?.enabled) return false;
+    Shared.on=true; Shared.picks[date]=j.picks||{}; Shared.pickHist=j.pickHist||[]; Shared.histN=j.histN||0; Shared.pulled[date]=Date.now();
+    if(j.calib) S.calib=j.calib; if(j.audit) S.audit=j.audit; if(j.health) S.health=j.health; if(j.reviews) S.reviews=j.reviews; if(j.rotation) S.rotation=j.rotation; if(j.dc) S.dc=j.dc; if(j.finalCal) S.finalCal=j.finalCal; if("backtest" in j) S.backtest=j.backtest; if(j.modelLog) S.modelLog=j.modelLog; if(j.picksAudit) S.picksAudit=j.picksAudit; if(j.liveAudit) S.liveAudit=j.liveAudit; if(j.dcn) S.dcn=j.dcn; if("backtestn" in j) S.backtestn=j.backtestn; if(j.natslugs) S.natslugs=j.natslugs; if(j.lineMove) S.lineMove=j.lineMove;
+    if(j.newsPlayer) S.newsPlayer=j.newsPlayer; if(j.lessons) S.lessons=j.lessons;
+    S.ratings={...(S.ratings||{}),...(j.ratings||{})}; S.lgavg={...(S.lgavg||{}),...(j.lgavg||{})}; if(j.weights) S.weights=j.weights; if(j.evals) S.evals=j.evals;
+    if(day?.matches?.length) S.days[date]=prepare({...day,matches:day.matches.map(x=>x.raw||x)});
+    if(j.newsTeam){ S.newsTeam={...S.newsTeam,...j.newsTeam}; }
+    if(j.brief && (!store.get("brief:"+date,null) || store.get("brief:"+date).at < j.brief.at)) store.set("brief:"+date,j.brief);
+    return true;
+  }catch{ return false; }
+}
+async function syncPlayers(ids){
+  if(!Shared.on||!ids.length) return false;
+  try{ const j=await getJson(`/api/store?date=${bkkToday()}&players=${ids.slice(0,60).join(",")}`,6000); S.players={...(S.players||{}),...(j.players||{})}; return Object.keys(j.players||{}).length>0; }catch{ return false; }
+}
+function syncPush(body){
+  if(!Shared.on) return Promise.resolve();
+  return fetch("/api/store",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).catch(()=>{});
+}
+
+/* ---------- picks: one strongest call per match, up to 10 a day, frozen at kickoff ---------- */
+function bestCall(m){
+  if(m.st!=="pre") return null;
+  if(isNat(m.lg)&&!(dcnOn()&&dc4For(m))) return null;   /* 4.1: no national-team picks until that model has passed its own backtest */
+  const c=[];
+  if(m.mk?.spread){
+    const line=m.mk.spread.line, hc=cover(hdpSplit(m.g,line)), home=hc>=.5;
+    c.push({type:"ah",side:home?"h":"a",line,prob:Math.max(hc,1-hc),label:home?`${m.h.short} ${signed(line)}`:`${m.a.short} ${signed(-line)}`,phrase:ahPhrase(m.h.short,m.a.short,line)});
+  }
+  if(m.mk?.total){
+    const line=m.mk.total.line, t=totSplit(m.g,line), oc=cover(t.over), over=oc>=.5;
+    c.push({type:"ou",side:over?"o":"u",line,prob:Math.max(oc,1-oc),label:`${over?"สูง":"ต่ำ"} ${ballLabel(line)}`,phrase:`สูงต่ำ ${ballLabel(line)} ตามตลาด`});
+  } else {
+    const over=m.sum.over25>=.5;
+    c.push({type:"ou",side:over?"o":"u",line:2.5,prob:Math.max(m.sum.over25,m.sum.under25),label:`${over?"สูง":"ต่ำ"} 2.5`,phrase:"ยังไม่มีราคา ใช้เส้นมาตรฐาน 2.5"});
+  }
+  if(!m.mk?.spread){
+    const home=m.sum.home>=m.sum.away;
+    c.push({type:"1x2",side:home?"h":"a",line:0,prob:Math.max(m.sum.home,m.sum.away),label:`${home?m.h.short:m.a.short} ชนะ`,phrase:"ผลชนะในเวลา 90 นาที"});
+  }
+  /* prefer the call where the model also beats the market's fair price, not just the safest-looking line */
+  const rows=edgeRows(m), key=x=>x.type==="1x2"?`1x2-${x.side}`:x.type==="ah"?`ah-${x.side}`:`ou-${x.side}`;
+  c.forEach(x=>{ const r=rows.find(r=>r.key===key(x)); x.edge=r?.edge??null; x.rank=x.prob+.5*Math.max(-.05,x.edge??0); });
+  const b=c.sort((x,y)=>y.rank-x.rank)[0]; if(!b) return null;
+  const pickPred=b.type==="ah"?(h,a)=>{ const r=settlePick(b,h,a); return r==="win"||r==="half"; }:b.type==="ou"?(h,a)=>{ const r=settlePick(b,h,a); return r==="win"||r==="half"; }:(h,a)=>b.side==="h"?h>a:a>h;
+  const sc=callScore(m.g,[pickPred,...mainPreds(m.sum)]);
+  return {id:m.id, lg:m.lg, ...b, score:`${sc.h}-${sc.a}`, dq:m.dq?.q??null};
+}
+function picksLimit(n){ return Math.min(10, Math.max(3, Math.ceil(n/3.5))); }
+function picksFor(date){
+  const day=getDay(date), ms=day.matches; if(!ms.length) return {list:[],limit:0,total:0};
+  const limit=picksLimit(ms.length);
+  const saved=Shared.on&&Shared.picks[date] ? Object.values(Shared.picks[date]) : store.get("picks:"+date,[]);
+  const byId=new Map(ms.map(m=>[m.id,m]));
+  const frozen=saved.filter(p=>byId.has(p.id)&&byId.get(p.id).st!=="pre");
+  const cal=S?.weights?.pickCal||{};
+  /* เมดูซ่า 3.1: no picks on thin data, none where the market's fair price is clearly better than the model's,
+     ranked by calibrated probability plus half the edge over the market; fewer picks on a weak day */
+  const fresh=ms.map(bestCall).filter(Boolean).map(p=>{ const c=cal[p.type]; const prob=c?Math.min(.95,p.prob*c):p.prob; return {...p,raw:c?p.prob:undefined,prob,rank:prob+.5*Math.max(-.05,p.edge??0)}; })
+    .filter(p=>p.prob>=.55&&(p.dq??100)>=45&&(p.edge==null||p.edge>=-.01)&&!frozen.some(z=>z.id===p.id)).sort((a,b)=>b.rank-a.rank);
+  /* เมดูซ่า 4.0 (item 24): no more than 60% of the day's picks of one kind (underdog with a start, favourite giving one,
+     over, under), so one bad pattern cannot sink the whole day */
+  const kindOf=p=>p.type==="ou"?(p.side==="o"?"over":"under"):p.type==="ah"?(p.line>0?"dog":p.line<0?"fav":"level"):(p.side==="h"?"home":"away");
+  const room=Math.max(0,limit-frozen.length), cap=Math.max(2,Math.ceil(limit*.6)), seen={}; frozen.forEach(p=>{ const k=kindOf(p); seen[k]=(seen[k]||0)+1; });
+  const chosen=[]; for(const p of fresh){ if(chosen.length>=room) break; const k=kindOf(p); if((seen[k]||0)>=cap) continue; seen[k]=(seen[k]||0)+1; chosen.push({...p,kind:k,fair:p.edge!=null?+(p.prob-p.edge).toFixed(4):null}); }
+  const list=[...frozen,...chosen].sort((a,b)=>b.prob-a.prob);
+  if(date>=shiftDate(bkkToday(),-1) && day.source!=="snapshot"){
+    store.set("picks:"+date, list);
+    if(Shared.on){
+      const sig=list.map(p=>p.id+p.label).join("|");
+      if(Shared.sig?.[date]!==sig){ (Shared.sig=Shared.sig||{})[date]=sig;
+        const send=list.filter(p=>byId.get(p.id)?.st==="pre").map(p=>({...p,ko:byId.get(p.id).ko,match:`${byId.get(p.id).h.short} – ${byId.get(p.id).a.short}`}));
+        const next={}; list.forEach(p=>next[p.id]={...p,ko:byId.get(p.id).ko}); Shared.picks[date]=next;
+        if(send.length) syncPush({date,picks:send});
+      }
+    }
+  }
+  return {list:list.map(p=>({...p,m:byId.get(p.id)})), limit, total:ms.length};
+}
+function settlePick(p, hs, as){
+  let s;
+  if(p.type==="1x2"){ s = (p.side==="h"?hs>as:as>hs) ? 1 : -1; }
+  else {
+    s=0;
+    const base = p.type==="ah" ? (p.side==="h" ? hs-as : as-hs) : (p.side==="o" ? hs+as : -(hs+as));
+    const ln = p.type==="ah" ? (p.side==="h" ? p.line : -p.line) : (p.side==="o" ? -p.line : p.line);
+    for(const part of atomic(ln)){ const v=base+part.line; s += (v>1e-9?1:v<-1e-9?-1:0)*part.w; }
+  }
+  return s>=1?"win":s>0?"half":s===0?"push":s>-1?"halflose":"lose";
+}
+const RES_LABEL={win:"เข้า",half:"เข้าครึ่ง",push:"คืนทุน",halflose:"เสียครึ่ง",lose:"ไม่เข้า"};
+
+/* ---------- pre-match calls, frozen at kickoff, and the verdict after full time ---------- */
+function preCall(m){
+  const top=m.sum.call, res=resOf(m.sum);
+  const c={d:bkkDateOf(m.ko),res,ph:+m.sum.home.toFixed(3),pd:+m.sum.draw.toFixed(3),pa:+m.sum.away.toFixed(3),ou:m.sum.over25>=.5?"o":"u",o25:+m.sum.over25.toFixed(3),sh:top.h,sa:top.a,btts:m.sum.btts>=.5};
+  if(m.mk?.spread){ const hc=cover(hdpSplit(m.g,m.mk.spread.line)); c.line=m.mk.spread.line; c.side=hc>=.5?"h":"a"; c.cv=+Math.max(hc,1-hc).toFixed(3); }
+  return c;
+}
+function freezeCalls(day){
+  if(!day?.matches?.length||day.source==="snapshot") return;
+  const all=store.get("calls",{}); let dirty=false;
+  for(const m of day.matches) if(m.st==="pre"){ const c=preCall(m); if(JSON.stringify(all[m.id])!==JSON.stringify(c)){ all[m.id]=c; dirty=true; } }
+  if(!dirty) return;
+  const cut=shiftDate(bkkToday(),-6); for(const k in all) if(all[k].d<cut) delete all[k];
+  store.set("calls",all);
+}
+function verdict(m){
+  if(m.st!=="post"||m.h.score==null) return null;
+  const c=store.get("calls",{})[m.id]||preCall(m), hs=m.h.score, as=m.a.score;
+  const actual=hs>as?"h":hs===as?"d":"a";
+  const v={frozen:!!store.get("calls",{})[m.id], res:{pred:c.res,ok:c.res===actual,p:c[c.res==="h"?"ph":c.res==="a"?"pa":"pd"]}, ou:{pred:c.ou,ok:(hs+as>=3)===(c.ou==="o"),p:c.ou==="o"?c.o25:1-c.o25},
+    exact:{pred:`${c.sh}-${c.sa}`,ok:c.sh===hs&&c.sa===as}, btts:{pred:c.btts,ok:(hs>0&&as>0)===c.btts}};
+  if(c.line!=null){ const r=settlePick({type:"ah",side:c.side,line:c.line},hs,as); v.hdp={side:c.side,line:c.line,res:r,ok:r==="win"||r==="half",push:r==="push"}; }
+  return v;
+}
+
+/* ---------- learning from finished matches ---------- */
+const sentLive={};
+const sentPred={}, sentRes={};
+function recordDay(date){
+  const day=S.days[date]; if(!day?.matches?.length || day.source==="snapshot") return;
+  freezeCalls(day);
+  if(Shared.on){
+    const now=Date.now(), preds=[], results=[], live=[];
+    for(const m of day.matches){
+      if(m.st==="pre" && m.lh0!=null && (!sentPred[m.id] || now-sentPred[m.id]>30*60e3)){ sentPred[m.id]=now; const mk=m.mk?.home&&m.mk.draw&&m.mk.away?devig([m.mk.home.decimal,m.mk.draw.decimal,m.mk.away.decimal]):null;
+        /* raw (before the 1X2 temperature) so the temperature is always learned from the same footing */
+        /* 4.2: the same match on the 3.3 path (same market blend and calibration), so real results can compare the cores */
+        let p33=null; if(m.basis==="dc"&&m.raw){ try{ const o=refine({...m.raw, noDc:true}); p33=[+(o.sum.rawH??o.sum.home).toFixed(3),+(o.sum.rawA??o.sum.away).toFixed(3)]; }catch{} }
+        preds.push({...(p33?{ph33:p33[0],pa33:p33[1]}:{}),id:m.id,lg:m.lg,lh0:+m.lh0.toFixed(3),la0:+m.la0.toFixed(3),ph:+(m.sum.rawH??m.sum.home).toFixed(3),pa:+(m.sum.rawA??m.sum.away).toFixed(3),ko:m.ko,hid:m.h.id,aid:m.a.id,
+          pH:+m.pH.toFixed(3),pA:+m.pA.toFixed(3),bH:+m.bH.toFixed(3),bA:+m.bA.toFixed(3),
+          mv:MEDUSA.v,lhF:+m.lh.toFixed(3),laF:+m.la.toFixed(3),o25:+m.sum.over25.toFixed(4),dc:m.basis==="dc"?1:0,fr:Object.fromEntries((m.factors||[]).filter(f=>!f.base&&f.k!=="market"&&f.rh>0&&f.ra>0).map(f=>[f.k,[+Math.log(f.rh).toFixed(4),+Math.log(f.ra).toFixed(4)]])),mkH:m.mkt?+m.mkt.lh.toFixed(3):undefined,mkA:m.mkt?+m.mkt.la.toFixed(3):undefined,mh:mk?.[0],md:mk?.[1],ma:mk?.[2],...openFair(m)}); }
+      /* เมดูซ่า 4.0 (item 18): one in-play snapshot per match around the hour mark, so the live model gets measured */
+      if(m.st==="in" && m.live && m.live.min>=55 && m.live.min<=75 && !sentLive[m.id]){ sentLive[m.id]=1; const L=m.live; live.push({id:m.id,lg:m.lg,min:L.min,ph:+L.ph.toFixed(3),pd:+L.pd.toFixed(3),pa:+L.pa.toFixed(3),fh:L.final.h,fa:L.final.a,sh:m.h.score,sa:m.a.score,o25:+L.over25.toFixed(3)}); }
+      if(m.st==="post" && m.h.score!=null && !sentRes[m.id]){ sentRes[m.id]=1; results.push({id:m.id,hs:m.h.score,as:m.a.score,match:`${m.h.short} ${m.h.score}–${m.a.score} ${m.a.short}`}); }
+    }
+    if(preds.length||results.length||live.length) syncPush({date,preds,results,live}).then(()=>{ if(results.length) syncPull(date).then(ok=>{ if(ok&&!S.open) render(); }); });
+    return;
+  }
+  const pred=store.get("pred",{}), hist=store.get("hist",[]), seen=new Set(hist.map(h=>h.id));
+  let dirty=false;
+  for(const m of day.matches){
+    if(m.st==="pre" && m.lh0!=null){ pred[m.id]={d:date,lg:m.lg,lh0:+m.lh0.toFixed(3),la0:+m.la0.toFixed(3),ph:+m.sum.home.toFixed(3),pa:+m.sum.away.toFixed(3),ko:m.ko}; dirty=true; }
+    else if(m.st==="post" && pred[m.id] && !seen.has(m.id) && m.h.score!=null){
+      hist.push({id:m.id,...pred[m.id],hs:m.h.score,as:m.a.score}); delete pred[m.id]; seen.add(m.id); dirty=true;
+    }
+  }
+  /* settle the day's picks */
+  const picks=store.get("picks:"+date,[]), ph=store.get("pickHist",[]), done=new Set(ph.map(x=>x.id));
+  for(const p of picks){ const m=day.matches.find(x=>x.id===p.id); if(m?.st==="post"&&!done.has(p.id)&&m.h.score!=null){ ph.push({d:date,id:p.id,label:p.label,type:p.type,prob:p.prob,match:`${m.h.short} ${m.h.score}–${m.a.score} ${m.a.short}`,res:settlePick(p,m.h.score,m.a.score)}); dirty=true; } }
+  if(!dirty) return;
+  const cutoff=shiftDate(bkkToday(),-10); for(const k of Object.keys(pred)) if(pred[k].d<cutoff) delete pred[k];
+  store.set("pred",pred); store.set("hist",hist.slice(-600)); store.set("pickHist",ph.slice(-300));
+  S.calib=computeCalib();
+}
+function computeCalib(){
+  const hist=store.get("hist",[]); const out={};
+  const add=(k,h)=>{ const o=out[k]=out[k]||{n:0,hs:0,as:0,lh:0,la:0}; o.n++; o.hs+=h.hs; o.as+=h.as; o.lh+=h.lh0; o.la+=h.la0; };
+  for(const h of hist){ if(h.lh0==null) continue; add(h.lg,h); add("_all",h); }
+  for(const k in out){ const o=out[k]; const w=o.n/(o.n+40);
+    o.hAdj=clamp(1+(o.hs/o.lh-1)*w,.9,1.1); o.aAdj=clamp(1+(o.as/o.la-1)*w,.9,1.1); }
+  return out;
+}
+function pickRecord(days=14){
+  const from=shiftDate(bkkToday(),-days), ph=(Shared.on?Shared.pickHist.slice().reverse():store.get("pickHist",[])).filter(x=>x.d>=from);
+  const won=ph.filter(x=>x.res==="win"||x.res==="half").length, lost=ph.filter(x=>x.res==="lose"||x.res==="halflose").length, push=ph.filter(x=>x.res==="push").length;
+  return {list:ph.slice().reverse(), won, lost, push, n:won+lost};
+}
+/* recent league trend: results of the last 14 days, one ESPN request per league */
+async function loadTrends(date, slugs){
+  const trends=store.get("trends",{}), now=Date.now(), todo=slugs.filter(s=>!trends[s]||now-trends[s].at>6*3600e3);
+  if(!todo.length) return false;
+  const from=shiftDate(date,-14).replaceAll("-",""), to=shiftDate(date,-1).replaceAll("-","");
+  const pred=store.get("pred",{}), hist=store.get("hist",[]), seen=new Set(hist.map(h=>h.id)); let settled=false;
+  await pool(todo,4,async slug=>{
+    try{
+      const b=await espn(`site/v2/sports/soccer/${slug}/scoreboard?dates=${from}-${to}`,8000);
+      let n=0,g=0,hg=0;
+      for(const ev of b.events||[]){
+        const c=ev.competitions?.[0]; if(c?.status?.type?.state!=="post") continue;
+        const H=c.competitors?.find(x=>x.homeAway==="home"), A=c.competitors?.find(x=>x.homeAway==="away");
+        const hs=Number(H?.score), as=Number(A?.score); if(!Number.isFinite(hs)||!Number.isFinite(as)) continue;
+        n++; g+=hs+as; hg+=hs;
+        if(pred[ev.id]&&!seen.has(ev.id)){ hist.push({id:ev.id,...pred[ev.id],hs,as}); delete pred[ev.id]; seen.add(ev.id); settled=true; }
+      }
+      trends[slug]={at:now,n,gpg:n?g/n:null,home:g?hg/g:null};
+    }catch{}
+  });
+  store.set("trends",trends); S.trends=trends;
+  if(settled&&!Shared.on){ store.set("pred",pred); store.set("hist",hist.slice(-600)); S.calib=computeCalib(); }
+  return true;
+}
+
+/* ---------- live ESPN (works when the page is hosted where the feed is reachable) ---------- */
+async function getJson(url, ms=6000, opts={}){
+  const ctl=new AbortController(); const t=setTimeout(()=>ctl.abort(),ms);
+  try{ const r=await fetch(url,{...opts,signal:ctl.signal}); if(!r.ok) throw new Error(r.status); return await r.json(); } finally{ clearTimeout(t); }
+}
+/* ESPN routes: first our own server proxy (/api/espn on Vercel), then ESPN directly. Whichever answers first is remembered. */
+const ESPN_ROUTES=[
+  p=>`/api/espn?path=${encodeURIComponent(p.split("?")[0])}${p.includes("?")?"&"+p.split("?")[1]:""}`,
+  p=>`https://site.api.espn.com/apis/${p}`
+];
+let espnRoute=null;
+async function espnCore(path){
+  try{ return await getJson(`/api/espn?host=core&path=${encodeURIComponent(path)}`,6000); }
+  catch{ return getJson(`https://sports.core.api.espn.com/${path}`,6000); }
+}
+async function espn(path, ms=6000){
+  if(espnRoute) return getJson(espnRoute(path), ms);
+  let last;
+  for(const route of ESPN_ROUTES){ try{ const j=await getJson(route(path), ms); espnRoute=route; return j; }catch(e){ last=e; } }
+  throw last||new Error("feed");
+}
+function readAmerican(v){ const n=typeof v==="number"?v:Number(String(v??"").replace("+","").trim()); return Number.isFinite(n)&&n!==0?n:null; }
+function amToDec(a){ if(a==null) return null; const d=a>0?1+a/100:1+100/Math.abs(a); return d>1.01?d:null; }
+function openOf(side){ const d=amToDec(readAmerican(side?.open?.odds)); return d?{decimal:d}:null; }
+function priceOf(side){ const n=side?.close?.odds!=null?side.close:side?.open; const d=amToDec(readAmerican(n?.odds)); return d?{decimal:d}:null; }
+function lineOf(side){ const n=side?.close?.line!=null?side.close:side?.open; const v=Number(String(n?.line??"").replace(/[^\d.+-]/g,"")); return n?.line!=null&&Number.isFinite(v)?v:null; }
+function parseMarket(o){
+  if(!o) return null;
+  const home=priceOf(o.moneyline?.home), away=priceOf(o.moneyline?.away), draw=priceOf(o.moneyline?.draw);
+  const sl=lineOf(o.pointSpread?.home), sh=priceOf(o.pointSpread?.home), sa=priceOf(o.pointSpread?.away);
+  const tl=lineOf(o.total?.over)??lineOf(o.total?.under), ov=priceOf(o.total?.over), un=priceOf(o.total?.under);
+  const mk={book:o.provider?.displayName||o.provider?.name||"ตลาด",home,draw,away,
+    spread: sl!=null&&sh&&sa?{line:sl,home:sh,away:sa}:null, total: tl!=null&&ov&&un?{line:tl,over:ov,under:un}:null};
+  /* เมดูซ่า 4.0 (item 14): the opening 1X2 price, kept to measure line movement against results */
+  { const oh=openOf(o.moneyline?.home), od=openOf(o.moneyline?.draw), oa=openOf(o.moneyline?.away); if(oh&&od&&oa&&o.moneyline?.home?.close?.odds!=null) mk.open={home:oh,draw:od,away:oa}; }
+  return (home||away||draw||mk.spread||mk.total)?mk:null;
+}
+const tableCache=new Map(); // slug -> {at, value}
+async function loadTable(slug){
+  const hit=tableCache.get(slug); if(hit && Date.now()-hit.at<30*60e3) return hit.value;
+  const value=await loadTableRaw(slug); tableCache.set(slug,{at:Date.now(),value}); return value;
+}
+async function loadTableRaw(slug){
+  try{
+    const p=await espn(`v2/sports/soccer/${slug}/standings`); const rows=new Map(); let g=0,pl=0;
+    for(const ch of p.children||[]) for(const e of ch.standings?.entries||[]){
+      const st=n=>{ const s=e.stats?.find(x=>x.name===n); return s&&Number.isFinite(s.value)?s.value:null; };
+      const id=String(e.team?.id??""), played=st("gamesPlayed"), gf=st("pointsFor"), ga=st("pointsAgainst");
+      if(!id||played==null||gf==null||ga==null||rows.has(id)) continue;
+      rows.set(id,{played,gf,ga,points:st("points"),rank:st("rank")}); g+=gf; pl+=played;
+    }
+    /* item 17: what the table looks like at the top-4 and relegation lines (for the motivation factor) */
+    const pts=[...rows.values()].map(r=>r.points).filter(v=>v!=null).sort((a,b)=>b-a);
+    const tinfo=pts.length>=10&&pts.length===rows.size?{n:pts.length,top:pts[3],drop:pts[pts.length-3]}:null;
+    return rows.size?{rows,avg:pl?g/pl:null,tinfo}:null;
+  }catch{ return null; }
+}
+async function pool(items,limit,fn){ const out=new Array(items.length); let i=0; await Promise.all(Array.from({length:Math.min(limit,items.length)},async()=>{ while(i<items.length){ const k=i++; out[k]=await fn(items[k]); } })); return out; }
+const natEmpty={};
+function natBadSlug(s){ if((S.natslugs?.bad||[]).includes(s)) return true; try{ const m=JSON.parse(localStorage.getItem("gc:natbad")||"{}"); return m[s]>Date.now()-864e5; }catch{ return false; } }
+function natMarkBad(s){ try{ const m=JSON.parse(localStorage.getItem("gc:natbad")||"{}"); m[s]=Date.now(); localStorage.setItem("gc:natbad",JSON.stringify(m)); }catch{} }
+async function loadLiveDay(date, onlySlugs){
+  const ymd=date.replaceAll("-","");
+  /* national competitions: skip ones ESPN does not carry, and ones already seen empty for this date in the last 3 hours,
+     so 15 extra competitions do not slow every refresh; they never count against the feed's health */
+  const now=Date.now(), natOk=s=>!natBadSlug(s) && !(natEmpty[`${s}|${date}`]>now-3*3600e3);
+  const list=(onlySlugs?.length ? LEAGUES.filter(([s])=>onlySlugs.includes(s)) : LEAGUES).filter(([s])=>!isNat(s)||natOk(s));
+  const feed={events:0,bad:0,failed:0,leagues:list.filter(([s])=>!isNat(s)).length};
+  const per=await pool(list,6,async([slug])=>{
+    try{
+      let b; try{ b=await espn(`site/v2/sports/soccer/${slug}/scoreboard?dates=${ymd}`); }catch(e){ if(isNat(slug)){ if(/^4\d\d$/.test(String(e?.message))) natMarkBad(slug); return []; } throw e; }
+      const evs=b.events||[]; if(!evs.length){ if(isNat(slug)) natEmpty[`${slug}|${date}`]=now; return []; }
+      for(const ev of evs){ feed.events++; const c=ev.competitions?.[0]; if(!ev.id||!c?.status?.type?.state||(c.competitors||[]).filter(x=>x.team?.id).length!==2) feed.bad++; }
+      const tbl=await loadTable(slug);
+      return evs.map(ev=>{
+        const c=ev.competitions?.[0], H=c?.competitors?.find(x=>x.homeAway==="home"), A=c?.competitors?.find(x=>x.homeAway==="away"); if(!H||!A) return null;
+        const side=x=>{ const id=String(x.team?.id??""), r=tbl?.rows.get(id), sc=Number(x.score);
+          return {id,logo:x.team?.logo||null,name:x.team?.displayName||"ทีม",short:x.team?.shortDisplayName||x.team?.abbreviation||x.team?.displayName||"ทีม",form:x.form||null,rank:r?.rank||null,played:r?.played??null,gf:r?.gf??null,ga:r?.ga??null,points:r?.points??null,score:Number.isFinite(sc)?sc:null}; };
+        const h=side(H), a=side(A), base=baseLambdas(h,a,tbl?.avg??null);
+        const name=c?.status?.type?.name||"", state=c?.status?.type?.state||"pre";
+        const clock = state!=="in" ? null : name.includes("HALFTIME") ? "พักครึ่ง" : name.includes("PENALT") ? "ยิงจุดโทษ" : (c?.status?.displayClock||"สด");
+        return {id:ev.id,lg:slug,ko:ev.date,st:name.includes("POSTPONED")?"pp":name.includes("CANCEL")?"pp":state,clock,h,a,lh:base.lh,la:base.la,basis:base.basis,mk:parseMarket(c?.odds?.[0]),ds:null,live:true,neutral:!!c?.neutralSite,lgAvg:tbl?.avg??null,tinfo:tbl?.tinfo||null,
+          ls:state==="pre"?null:liveStatsOf(c?.competitors||[],c?.details||[],H,A)};
+      }).filter(Boolean);
+    }catch{ if(isNat(slug)) return []; feed.failed++; return null; }
+  });
+  S.feed={...feed, at:new Date().toISOString(), ok:feed.failed<=feed.leagues/2&&feed.bad<=Math.max(2,feed.events*.05)};
+  if(per.every(x=>x==null)) throw new Error("feed");
+  return {fetchedAt:new Date().toISOString(), matches:per.flatMap(x=>x||[])};
+}
+/* goals, cards, substitutions and injuries during the match, from ESPN summary keyEvents + commentary */
+function parseLiveEvents(p, m){
+  const out=[], sideOf=id=>String(id)===String(m.h.id)?"h":String(id)===String(m.a.id)?"a":null;
+  const sideByName=n=>{ const x=String(n||"").toLowerCase(); return x&&(m.h.name.toLowerCase().includes(x)||x.includes(m.h.name.toLowerCase()))?"h":x&&(m.a.name.toLowerCase().includes(x)||x.includes(m.a.name.toLowerCase()))?"a":null; };
+  const minOf=c=>{ const t=String(c?.displayValue||c||""); const n=t.match(/(\d+)(?:'?\s*\+\s*(\d+))?/); return n?Number(n[1])+(n[2]?Number(n[2]):0):null; };
+  for(const k of p.keyEvents||[]){
+    const tt=String(k.type?.text||k.type?.type||""), text=String(k.text||k.shortText||""), side=sideOf(k.team?.id)||sideByName(k.team?.displayName), min=minOf(k.clock);
+    const who=(k.participants||[]).map(x=>x.athlete?.displayName).filter(Boolean);
+    if(/red card|second yellow/i.test(tt+" "+text)) out.push({t:"red",min,side,player:who[0]||null});
+    else if(/yellow card/i.test(tt)) out.push({t:"yellow",min,side,player:who[0]||null});
+    else if(/substitution/i.test(tt)){ const r=text.match(/\.\s*([^.]+?)\s+replaces\s+([^.]+?)(?:\s+because of an injury)?\.?$/i); out.push({t:"sub",min,side,in:r?.[1]||who[0]||null,out:r?.[2]||who[1]||null,inj:/injury/i.test(text)}); }
+    else if(k.scoringPlay||/goal|penalty - scored/i.test(tt)) out.push({t:"goal",min,side,player:who[0]||null,assist:who[1]||null,og:/own goal/i.test(tt+" "+text),pen:/penalty/i.test(tt+" "+text)});
+  }
+  for(const c of p.commentary||[]){
+    const text=String(c.text||""), r=text.match(/injury\s+([^()]+?)\s*\(([^)]+)\)/i);
+    if(r) out.push({t:"inj",min:minOf(c.time),side:sideByName(r[2]),player:r[1].trim()});
+  }
+  return out.filter(e=>e.side).sort((a,b)=>(a.min??0)-(b.min??0)).slice(-40);
+}
+async function loadLiveDossier(m){
+  try{
+    const p=await espn(`site/v2/sports/soccer/${m.lg}/summary?event=${m.id}`,8000);
+    const ser=(p.seasonseries||[]).find(s=>s.events?.length);
+    const meet=(ser?.events||[]).filter(e=>(e.statusType?.state||e.status)==="post").map(e=>{
+      const hh=e.competitors?.find(x=>x.homeAway==="home"), aa=e.competitors?.find(x=>x.homeAway==="away");
+      return [(e.date||"").slice(0,10),String(hh?.team?.id),String(aa?.team?.id),Number(hh?.score),Number(aa?.score),hh?.team?.displayName,aa?.team?.displayName];
+    }).filter(r=>Number.isFinite(r[3])&&Number.isFinite(r[4])).slice(0,5);
+    const five=id=>{ const blk=(p.lastFiveGames||[]).find(x=>String(x.team?.id)===id); if(!blk) return null;
+      const lines=[], ha=[], dates=[]; let w=0,d=0,l=0;
+      for(const e of (blk.events||[]).slice(0,5)){ const hs=Number(e.homeTeamScore), as=Number(e.awayTeamScore); if(!Number.isFinite(hs)||!Number.isFinite(as)) continue;
+        const home=String(e.homeTeamId)===id; lines.push(`${home?hs:as}-${home?as:hs}`); ha.push(home?"H":"A"); dates.push(e.gameDate||null);
+        if(e.gameResult==="W") w++; else if(e.gameResult==="L") l++; else d++; }
+      return {w,d,l,lines,ha,dates:dates.filter(Boolean).sort().reverse()}; };
+    /* season leaders per team: goals, assists */
+    const leaders={};
+    for(const side of p.leaders||[]){
+      const tid=String(side.team?.id??""); if(!tid) continue;
+      for(const cat of side.leaders||[]){
+        const key=/goal/i.test(cat.name||"")?"goals":/assist/i.test(cat.name||"")?"assists":null; if(!key) continue;
+        for(const ld of (cat.leaders||[]).slice(0,3)){
+          const a=ld.athlete; if(!a?.id) continue;
+          const v=Number(String(ld.displayValue||ld.value||"").replace(/[^\d.]/g,""));
+          const rec=(leaders[tid]=leaders[tid]||{})[a.id]=leaders[tid]?.[a.id]||{id:String(a.id),name:a.displayName||a.shortName,team:tid,goals:null,assists:null};
+          rec[key]=Number.isFinite(v)?v:null;
+        }
+      }
+    }
+    /* line-ups, when ESPN has them */
+    const starters={}; let known=false;
+    for(const r of p.rosters||[]){ const tid=String(r.team?.id??""); const st=(r.roster||[]).filter(x=>x.starter); if(st.length>=10){ known=true; starters[tid]=new Set(st.map(x=>String(x.athlete?.id))); } }
+    const miss=tid=>known&&starters[tid] ? Object.values(leaders[tid]||{}).filter(x=>(x.goals||0)>=3&&!starters[tid].has(x.id)).map(x=>x.name) : [];
+    const v=p.gameInfo?.venue;
+    const ev=parseLiveEvents(p,m);
+    const inj={h:[],a:[]};
+    for(const t of p.injuries||[]){ const tid=String(t.team?.id??""), side=tid===String(m.h.id)?"h":tid===String(m.a.id)?"a":null; if(!side) continue;
+      for(const i of (t.injuries||[]).slice(0,15)){ const a=i.athlete||{}; const raw=String(i.status||i.type?.description||i.type?.name||"");
+        inj[side].push({id:a.id?String(a.id):null,name:a.displayName||a.shortName||"",status:/out|suspen|reserve|ruled/i.test(raw)?"out":"doubtful",raw:raw.slice(0,40),detail:String(i.details?.type||i.details?.detail||i.longComment||i.shortComment||"").slice(0,60)}); } }
+    const players=[...Object.values(leaders[m.h.id]||{}),...Object.values(leaders[m.a.id]||{})].map(x=>({...x,team:x.team===m.h.id?m.h.name:m.a.name,side:x.team===m.h.id?"h":"a"}));
+    return {h2h:ser?.summary||null,meet,hf:five(m.h.id),af:five(m.a.id),venue:v?.fullName||null,city:v?.address?.city||null,country:v?.address?.country||null,
+      players, marks:[], ls:liveStatsFromSummary(p), inj:(inj.h.length||inj.a.length)?inj:null, ev, lineup: known?{known:true,hMiss:miss(m.h.id),aMiss:miss(m.a.id),starters:[...(starters[m.h.id]||[]),...(starters[m.a.id]||[])]}:null};
+  }catch{ return null; }
+}
+
+/* ---------- extra context loaded when a match is opened (hosted site only) ---------- */
+const extCache=store.get("ext",{}); // teamId -> {coach:{name,dob}}, athleteId -> dob
+function saveExt(){ store.set("ext",extCache); }
+async function loadWeather(m){
+  const city=m.ds?.city; if(!city) return null;
+  const ko=new Date(m.ko), days=(ko-Date.now())/864e5; if(days<-0.2||days>14) return null;
+  try{
+    const geo=await getJson(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=en`,6000);
+    const g=geo.results?.[0]; if(!g) return null;
+    const day=ko.toISOString().slice(0,10);
+    const f=await getJson(`https://api.open-meteo.com/v1/forecast?latitude=${g.latitude}&longitude=${g.longitude}&hourly=temperature_2m,precipitation,wind_speed_10m&start_date=${day}&end_date=${day}&timezone=UTC`,6000);
+    const i=Math.min(23,ko.getUTCHours());
+    return {temp:f.hourly.temperature_2m[i], rain:f.hourly.precipitation[i], wind:f.hourly.wind_speed_10m[i], elev:g.elevation??0, place:g.name};
+  }catch{ return null; }
+}
+async function athleteDob(id){
+  if(extCache["a"+id]!==undefined) return extCache["a"+id];
+  try{ const j=await espnCore(`v2/sports/soccer/athletes/${id}`); extCache["a"+id]=(j.dateOfBirth||"").slice(0,10)||null; }catch{ return null; }
+  saveExt(); return extCache["a"+id];
+}
+async function wikiJson(params){ return getJson(`https://en.wikipedia.org/w/api.php?${new URLSearchParams({...params,format:"json",origin:"*"})}`,7000); }
+async function wikiText(title){ const j=await wikiJson({action:"query",prop:"revisions",rvprop:"content",rvslots:"main",rvsection:"0",titles:title,redirects:"1"}); const pg=Object.values(j.query?.pages||{})[0]; return pg?.revisions?.[0]?.slots?.main?.["*"]||""; }
+function wikiDob(text){ const m=text.match(/birth[ _]date(?:[ _]and[ _]age)?\s*\|\s*(?:df=y\w*\|\s*|mf=y\w*\|\s*)?(\d{4})\s*\|\s*(\d{1,2})\s*\|\s*(\d{1,2})/i); return m?`${m[1]}-${m[2].padStart(2,"0")}-${m[3].padStart(2,"0")}`:null; }
+async function teamCoach(team){
+  const key="c"+team.id; if(extCache[key]!==undefined) return extCache[key];
+  let out=null;
+  try{
+    const s=await wikiJson({action:"query",list:"search",srsearch:`${team.name} football club`,srlimit:"1"});
+    const title=s.query?.search?.[0]?.title;
+    if(title){
+      const txt=await wikiText(title);
+      const mm=txt.match(/\|\s*(?:manager|head[ _]coach|coach)\s*=\s*([^\n]+)/i);
+      if(mm){
+        const link=mm[1].match(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/);
+        const name=link?(link[2]||link[1]):mm[1].replace(/<[^>]+>|\{\{[^}]*\}\}|'''?/g,"").trim();
+        let dob=null; if(link){ try{ dob=wikiDob(await wikiText(link[1])); }catch{} }
+        if(name && name.length<40) out={name:name.trim(),dob};
+      }
+    }
+  }catch{ return null; }
+  extCache[key]=out; saveExt(); return out;
+}
+async function loadPeople(m){
+  const ps=(m.ds?.players||[]).filter(p=>p.id).slice(0,6);
+  const [dobs,hc,ac]=await Promise.all([Promise.all(ps.map(p=>athleteDob(p.id))),teamCoach(m.h),teamCoach(m.a)]);
+  return {players:ps.map((p,i)=>({...p,dob:dobs[i]})), coaches:{h:hc,a:ac}};
+}
+
+/* ---------- app state ---------- */
+const S = {
+  polish:{}, reviews:{}, rotation:{},
+  date: bkkToday(),
+  tab: "home",
+  filter: "all",        // all | hot
+  league: "",
+  analyze: "all",       // all | ah | ou | goals
+  q: "",
+  style: store.get("style","decimal"),
+  favs: store.get("favs",{}),   // teamId -> name
+  days: {},             // date -> {fetchedAt, matches, source}
+  liveOk: null,
+  open: null,
+  briefBusy: false,
+  logos: !window.claude,   // artifact pages cannot load outside images
+  goals: {},               // matchId -> time a goal was seen
+  ext: {},                 // matchId -> {wx, people} loaded when a match is opened
+  newsAdj: {},             // matchId -> {h, a, reason} from the daily brief
+  newsTeam: store.get("newsTeam",{}), // teamId -> {e, reason, d}: news carried to the next matches for 3 days
+  trends: store.get("trends",{}),     // league -> recent goals per game (last 14 days)
+  calib: null,                        // league -> learned home/away goal multipliers
+  briefErr: ""
+};
+
+function snapshotDay(date){
+  const d=SNAPSHOT?.[date]; if(!d) return null;
+  const old = Date.now()-Date.parse(d.fetchedAt) > 3*3600e3;
+  return {fetchedAt:d.fetchedAt, matches: old ? d.matches.map(m=>m.st==="in"?{...m,st:"unk"}:m) : d.matches, source:"snapshot"};
+}
+function prepare(day){
+  const seen=new Set();
+  const matches=day.matches.filter(m=>!seen.has(m.id)&&seen.add(m.id)).map(refine)
+    .sort((a,b)=>a.ko.localeCompare(b.ko)||(LEAGUE_ORDER[a.lg]??99)-(LEAGUE_ORDER[b.lg]??99));
+  return {...day, matches};
+}
+function getDay(date){
+  if(!S.days[date]){
+    const snap=snapshotDay(date), cached=store.get("day:"+date,null);
+    const useCache = cached?.matches?.length && (!snap || cached.fetchedAt > snap.fetchedAt);
+    S.days[date] = useCache ? prepare({...cached, source:"cache"}) : snap ? prepare(snap) : {fetchedAt:null, matches:[], source:"none"};
+  }
+  return S.days[date];
+}
+function saveDay(date){
+  const d=S.days[date]; if(!d?.matches?.length) return;
+  store.set("day:"+date,{fetchedAt:d.fetchedAt, matches:d.matches.map(m=>m.raw||m)});
+  try{ const keep=new Set([shiftDate(bkkToday(),-1),bkkToday(),shiftDate(bkkToday(),1),shiftDate(bkkToday(),2),date]);
+    Object.keys(localStorage).filter(k=>k.startsWith("gc:day:")&&!keep.has(k.slice(7))).forEach(k=>localStorage.removeItem(k)); }catch{}
+}
+/* one slow answer (a phone switching networks, a cold start right after a deploy) must not leave the app on the
+   saved snapshot for the whole visit: two tries, and a failed probe is tried again after a minute */
+let liveProbeAt=0;
+async function probeLive(){
+  if(S.liveOk===true || (S.liveOk===false && Date.now()-liveProbeAt<60000)) return S.liveOk;
+  liveProbeAt=Date.now();
+  for(const ms of [6000,10000]){ try{ await espn(`site/v2/sports/soccer/eng.1/scoreboard`,ms); S.liveOk=true; return true; }catch{} }
+  S.liveOk=false; return false;
+}
+setInterval(()=>{ if(S.liveOk===false && !window.claude && document.visibilityState!=="hidden") probeLive().then(async ok=>{ if(ok){ try{ await syncPull(S.date); refresh(S.date,true); }catch{} } }); }, 65000);
+async function refresh(date, manual, light){
+  if(S.loading){ S.queued={date,manual}; return; }
+  S.loading=date; S.err=null;
+  const btn=$("#btnRefresh");
+  btn.classList.add("spin"); paintStatus();
+  try{
+    if(await probeLive()){
+      const prev=S.days[date];
+      const slugs = light && prev?.source==="live" ? [...new Set(prev.matches.map(m=>m.lg))] : null;
+      const live=await loadLiveDay(date, slugs);
+      const old=S.days[date]; const keep=new Map((old?.matches||[]).map(m=>[m.id,m.ds]));
+      const before=new Map((old?.source==="live"||old?.source==="cache"?old.matches:[]).map(m=>[m.id,m]));
+      for(const m of live.matches){
+        const o=before.get(m.id); if(!o||m.st==="pre") continue;
+        const gh=(m.h.score??0)-(o.h.score??0), ga=(m.a.score??0)-(o.a.score??0);
+        if(gh>0||ga>0){ S.goals[m.id]=Date.now();
+          if(S.favs[m.h.id]||S.favs[m.a.id]) toast(`ประตู! ${gh>0?m.h.short:m.a.short} · ${m.h.short} ${m.h.score}–${m.a.score} ${m.a.short}`); }
+      }
+      live.matches.forEach(m=>{ const d=keep.get(m.id); if(d) m.ds=d; });
+      S.days[date]=prepare({...live, source:"live"});
+      saveDay(date);
+      if(!Shared.pulled[date] || Date.now()-Shared.pulled[date]>5*60e3) await syncPull(date);
+      recordDay(date);
+      if(date===bkkToday()) liveDeep(date);
+      if(date===bkkToday()) loadTrends(date,[...new Set(S.days[date].matches.map(m=>m.lg))]).then(ch=>{ if(ch&&S.days[date]){ S.days[date]=prepare({...S.days[date],matches:S.days[date].matches.map(x=>x.raw||x)}); if(!S.open) render(); } });
+      if(S.open){ const nm=S.days[date].matches.find(x=>x.id===S.open.id); if(nm) updateSheetScore(nm); }
+      if(manual) toast("ดึงข้อมูลสดจาก ESPN แล้ว");
+    } else if(manual){
+      toast("หน้านี้เชื่อมฟีด ESPN ไม่ได้ จึงใช้ข้อมูลชุดที่บันทึกไว้ เปิดจากเว็บที่ติดตั้งไว้เพื่อดูสด");
+    }
+  }catch{ S.err=new Date().toISOString(); if(manual) toast("ดึงข้อมูลใหม่ไม่สำเร็จ ใช้ชุดเดิมต่อ"); }
+  S.loading=false;
+  btn.classList.remove("spin");
+  if(S.queued){ const q=S.queued; S.queued=null; if(q.date!==date||q.manual) return refresh(q.date,q.manual); }
+  scheduleNext();
+  render();
+  if(S.liveOk && date===bkkToday()) prefetch(shiftDate(date,1));
+}
+/* live matches on the home page: pull events, stats and line-ups every minute (up to 8 games) so the
+   in-play analysis follows red cards, substitutions and injuries without opening each match */
+const deepAt={};
+async function liveDeep(date){
+  const day=S.days[date]; if(!day?.matches) return;
+  const now=Date.now(), live=day.matches.filter(m=>m.st==="in"&&(!deepAt[m.id]||now-deepAt[m.id]>55e3)).slice(0,8);
+  if(!live.length) return;
+  live.forEach(m=>deepAt[m.id]=now);
+  const got=await Promise.all(live.map(m=>loadLiveDossier(m.raw||m).then(ds=>[m.id,ds]).catch(()=>[m.id,null])));
+  const cur=S.days[date]; if(!cur) return; let changed=false;
+  const raws=cur.matches.map(x=>{ const r=x.raw||x, hit=got.find(g=>g[0]===x.id)?.[1]; if(!hit) return r; changed=true;
+    const keep=r.ds||{}; return {...r, ds:{...hit, ...(keep.meet?{meet:keep.meet,h2h:keep.h2h,hf:keep.hf,af:keep.af}:{}), players:keep.players?.length?keep.players:hit.players, ls:hit.ls, ev:hit.ev, inj:hit.inj||keep.inj, lineup:hit.lineup||keep.lineup}}; });
+  if(!changed) return;
+  S.days[date]=prepare({...cur, matches:raws});
+  if(S.open){ const nm=S.days[date].matches.find(x=>x.id===S.open.id); if(nm&&nm.st==="in"){ S.open=nm; const el=$("#liveBox"); if(el) el.outerHTML=liveBox(nm); } }
+  else render();
+}
+/* quietly load tomorrow once so its chip count and board are ready */
+const prefetched=new Set();
+async function prefetch(date){
+  if(prefetched.has(date)||S.days[date]?.source==="live") return; prefetched.add(date);
+  try{ const live=await loadLiveDay(date); S.days[date]=prepare({...live, source:"live"}); saveDay(date); if(!S.open) render(); }catch{}
+}
+/* after midnight Bangkok time, move a board that was showing "today" to the new day */
+function rollDay(){
+  const t=bkkToday(); if(S.today && S.today!==t && S.date===S.today){ S.date=t; S.league=""; }
+  S.today=t;
+}
+/* auto update: every minute while a match is live or about to start, otherwise every 10 minutes */
+let pollT;
+function hotDay(day){ const now=Date.now(); return (day?.matches||[]).some(m=>m.st==="in"||(m.st==="pre"&&Date.parse(m.ko)-now<15*60e3&&now-Date.parse(m.ko)<3*3600e3)); }
+function scheduleNext(){
+  clearTimeout(pollT); S.nextMs=null; if(!S.liveOk) return;
+  const ms=hotDay(S.days[S.date])?60e3:10*60e3; S.nextMs=ms;
+  S.tick=(S.tick||0)+1;
+  pollT=setTimeout(()=>{ if(document.visibilityState!=="visible") return scheduleNext(); rollDay(); refresh(S.date,false, ms<600e3 && S.tick%10!==0); },ms);
+}
+document.addEventListener("visibilitychange",()=>{
+  if(document.visibilityState!=="visible") return;
+  rollDay(); const d=S.days[S.date];
+  if(S.liveOk && (!d?.fetchedAt || d.source!=="live" || Date.now()-Date.parse(d.fetchedAt)>60e3)) refresh(S.date,false); else render();
+});
+function updateSheetScore(nm){
+  if(nm.st==="in"&&S.open?.id===nm.id&&(!S.lsAt||Date.now()-S.lsAt>110e3)){ S.lsAt=Date.now();
+    loadLiveDossier(nm).then(ds=>{ if(ds&&S.open?.id===nm.id){ const cur=S.open; const keep=cur.raw?.ds; const merged=refine({...cur.raw, ds:{...(keep||ds), ls:ds.ls, ev:ds.ev, inj:ds.inj||keep?.inj, lineup:ds.lineup||keep?.lineup}}); S.open=merged; const el=$("#liveBox"); if(el) el.outerHTML=liveBox(merged); } }); }
+  if(!S.open||S.open.id!==nm.id) return;
+  const keepDs=S.open.ds; const merged=keepDs&&!nm.ds?refine({...nm.raw, ds:keepDs}):nm;
+  S.open=merged; const mid=$("#sheet .face .mid"); if(mid){ mid.innerHTML=midHtml(merged); mid.classList.toggle("live",merged.st==="in"); }
+  const lb=$("#liveBox"); if(lb) lb.outerHTML=liveBox(merged);
+  if(merged.st==="post"&&S.sheetTab==="overview") paintSheet();
+}
+

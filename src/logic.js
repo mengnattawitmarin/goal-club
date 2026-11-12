@@ -93,7 +93,11 @@ function resCall(sum){
   return r;
 }
 function mainPreds(sum){
+  /* 4.2: the backtest measures which way of naming one score hits most (likeliest score / with the result / also O/U and BTTS) */
+  const rule=S?.backtest?.scoreRules?.n>=1000?S.backtest.scoreRules.rule:"full";
+  if(rule==="max") return [];
   const r=resCall(sum), ps=[(h,a)=>r==="h"?h>a:r==="a"?a>h:r==="hd"?h>=a:r==="ad"?a>=h:h===a];
+  if(rule==="res") return ps;
   /* เมดูซ่า 4.0 (item 21): 3.3 forced every score to agree with a 51% over/under call, so 77% of calls became 2-1 or 1-2;
      only a confident call (58%+) shapes the score now */
   if(Math.abs(sum.over25-.5)>=.08) ps.push(sum.over25>=.5?(h,a)=>h+a>=3:(h,a)=>h+a<=2);
@@ -161,13 +165,16 @@ function meetingsFor(m){
   }).filter(Boolean);
 }
 /* เมดูซ่า: ชื่อของอัลกอริทึมวิเคราะห์ เพิ่มเลขทุกครั้งที่ปรับวิธีคำนวณ (ดู MEDUSA.md) */
-const MEDUSA={v:4.1, name:"เมดูซ่า 4.1", date:"2026-11-12"};
+const MEDUSA={v:4.2, name:"เมดูซ่า 4.2", date:"2026-11-12"};
 /* the 4.0 core is used only when the server's walk-forward backtest has shown it beats the 3.3 base (backtest.pass)
    and both teams have enough matches in the fit; otherwise the match runs on the 3.3 base */
-function dc4On(){ return !!(S?.backtest?.pass&&S?.dc?.leagues); }
+/* 4.2 safety: if real results (200+ matches, after the market blend) show the new core doing worse than the 3.3 path, switch it off */
+function coreWorse(c){ return !!(c&&c.n>=200&&c.ll>c.ll33+.005); }
+function dc4On(){ return !!(S?.backtest?.pass&&S?.dc?.leagues&&!coreWorse(S?.audit?.core)); }
 /* เมดูซ่า 4.1: national teams have their own fit and backtest (gate: beat the competition average by 0.02 log loss) */
 function dcnOn(){ return !!(S?.backtestn?.pass&&S?.dcn?.leagues); }
 function dc4For(m){
+  if(m.noDc) return null;
   const nat=isNat(m.lg), M=nat?S?.dcn:S?.dc;
   if(nat?!dcnOn():!dc4On()) return null;
   const T=M.teams||{}, H=T[m.h.id], A=T[m.a.id], L=M.leagues[m.lg]||(H&&M.leagues[H.lg]);
@@ -204,18 +211,25 @@ function refine(m){
   if(m.neutral&&basis!=="dc"){ const k=Math.sqrt(1.18*0.9); lh=clamp(lh/1.18*k,0.15,4.2); la=clamp(la/0.9*k,0.15,4.2); }
   /* เมดูซ่า 4.0 core: Dixon-Coles strengths fitted on two seasons of every competition, used once the backtest has passed */
   let rho=RHO; const D=dc4For(m);
-  if(D){ const w=isNat(m.lg)?null:S.dc?.cfg?.blend;   /* the backtest may pick an ensemble: dc^w x (3.3 base)^(1-w) */
+  /* เมดูซ่า 4.2: the two cores merged per league — the backtest scores every league at dc^w x (3.3 base)^(1-w) and keeps
+     the best w where it has 300+ matches (w=0: this league stays on 3.3 with all its layers) */
+  const nat=isNat(m.lg), lc=nat?null:S?.backtest?.leagueChoice?.[m.lg];
+  const mixW=nat?1:(lc?lc.w:(S?.dc?.cfg?.blend??1));
+  if(D&&mixW>0){ const w=mixW;
     if(w>0&&w<1){ lh=clamp(Math.exp(w*Math.log(D.lh)+(1-w)*Math.log(lh)),0.15,4.2); la=clamp(Math.exp(w*Math.log(D.la)+(1-w)*Math.log(la)),0.15,4.2); }
     else { lh=D.lh; la=D.la; }
     rho=D.rho; basis="dc"; }
-  const dc=basis==="dc";
+  const dc=basis==="dc", mixUsed=dc?mixW:0;
   /* every factor's push can be strengthened or weakened by the daily job (weights.factors[k]); raw ratios are kept so the job can re-tune */
   const push=(k,label,text,bh,ba)=>{
     const fh=lh/bh, fa=la/ba, st=k==="market"?1:(S?.weights?.factors?.[k]??1);
     if(st!==1){ lh=clamp(bh*fh**st,0.15,4.2); la=clamp(ba*fa**st,0.15,4.2); }
     factors.push({k,label,text:st!==1?`${text} · น้ำหนักปรับเอง ×${st}`:text,h:lh/bh,a:la/ba,rh:fh,ra:fa,st}); steps.push({k,text:`${label}: ${text}`,lh,la}); };
   steps.push({k:"base", text: dc?`โมเดลความแข็ง${isNat(m.lg)?"ทีมชาติ":"ทีม"} (ดิกสัน-โคลส์) จากผลย้อนหลัง ${(isNat(m.lg)?S.dcn:S.dc)?.rows||""} นัด ถ่วงนัดล่าสุดมากกว่า คิดความแข็งคู่แข่ง ค่าเจ้าบ้านและค่าเสมอของ${LEAGUE_NAME[m.lg]||"รายการนี้"}`:basis==="table"?"ตารางคะแนน: อัตรายิง/เสียหดเข้าค่าเฉลี่ยลีกด้วย prior 8 นัด แล้วขยับด้วยฟอร์มล่าสุด":basis==="blend"?"ตารางคะแนน: มีครบทีมเดียว อีกทีมใช้ฟอร์ม 5 นัด":"ฟอร์ม: ตารางยังไม่พอ ใช้ผล 5 นัดหลัง", lh, la});
-  factors.push({k:"base",label:dc?(isNat(m.lg)?"ความแข็งทีมชาติ เมดูซ่า 4.1":"ความแข็งทีม เมดูซ่า 4.0"):basis==="form"?"ฟอร์ม 5 นัด":"ตารางคะแนนและฟอร์ม",text:`เริ่มที่ ${lh.toFixed(2)} – ${la.toFixed(2)} ประตูที่คาด`,h:1,a:1,base:true});
+  factors.push({k:"base",label:dc?(isNat(m.lg)?"ความแข็งทีมชาติ เมดูซ่า 4.1":mixUsed<1?`ผสาน 4.0 ${Math.round(mixUsed*100)}% กับ 3.3`:"ความแข็งทีม เมดูซ่า 4.0"):basis==="form"?"ฟอร์ม 5 นัด":"ตารางคะแนนและฟอร์ม",text:`เริ่มที่ ${lh.toFixed(2)} – ${la.toFixed(2)} ประตูที่คาด`,h:1,a:1,base:true});
+  /* 4.2: each league's goal level measured in the backtest (actual / expected of the chosen mix, shrunk toward 1) */
+  { const gc=dc?(nat?S?.backtestn:S?.backtest)?.goalsCal?.[m.lg]:null;
+    if(gc&&Math.abs(gc-1)>=.01){ const bh=lh, ba=la, k=clamp(gc,.85,1.15); lh=clamp(lh*k,0.15,4.2); la=clamp(la*k,0.15,4.2); push("gcal","ระดับประตูของลีก",`ผลย้อนหลังลีกนี้ยิงจริง ${Math.round(gc*100)}% ของที่โมเดลคาด`,bh,ba); } }
   const bH=lh, bA=la;
   const meets=meetingsFor(m);
   if(!dc&&meets.length>=3){
@@ -404,8 +418,9 @@ function marketLambdasFit(m, modelTotal){
     return e;
   };
   let best={e:9,lh:1,la:1};
-  for(let h=.2;h<=3.6;h+=.1) for(let a=.2;a<=3.6;a+=.1){ const e=err(h,a); if(e<best.e) best={e,lh:h,la:a}; }
-  const c=best; for(let h=c.lh-.1;h<=c.lh+.1;h+=.02) for(let a=c.la-.1;a<=c.la+.1;a+=.02){ if(h<.1||a<.1) continue; const e=err(h,a); if(e<best.e) best={e,lh:h,la:a}; }
+  /* coarse-to-fine (0.2 -> 0.05 -> 0.01): ~530 score grids instead of ~1,350, and a finer answer (4.2, faster first open) */
+  for(let h=.2;h<=3.61;h+=.2) for(let a=.2;a<=3.61;a+=.2){ const e=err(h,a); if(e<best.e) best={e,lh:h,la:a}; }
+  for(const [span,step] of [[.2,.05],[.05,.01]]){ const c=best; for(let h=c.lh-span;h<=c.lh+span+1e-9;h+=step) for(let a=c.la-span;a<=c.la+span+1e-9;a+=step){ if(h<.1||a<.1) continue; const e=err(h,a); if(e<best.e) best={e,lh:h,la:a}; } }
   return best.e<.012 ? {lh:best.lh, la:best.la, fromTotal:tOver!=null, fromSpread:sCover!=null} : null;
 }
 
@@ -725,7 +740,9 @@ function recordDay(date){
     for(const m of day.matches){
       if(m.st==="pre" && m.lh0!=null && (!sentPred[m.id] || now-sentPred[m.id]>30*60e3)){ sentPred[m.id]=now; const mk=m.mk?.home&&m.mk.draw&&m.mk.away?devig([m.mk.home.decimal,m.mk.draw.decimal,m.mk.away.decimal]):null;
         /* raw (before the 1X2 temperature) so the temperature is always learned from the same footing */
-        preds.push({id:m.id,lg:m.lg,lh0:+m.lh0.toFixed(3),la0:+m.la0.toFixed(3),ph:+(m.sum.rawH??m.sum.home).toFixed(3),pa:+(m.sum.rawA??m.sum.away).toFixed(3),ko:m.ko,hid:m.h.id,aid:m.a.id,
+        /* 4.2: the same match on the 3.3 path (same market blend and calibration), so real results can compare the cores */
+        let p33=null; if(m.basis==="dc"&&m.raw){ try{ const o=refine({...m.raw, noDc:true}); p33=[+(o.sum.rawH??o.sum.home).toFixed(3),+(o.sum.rawA??o.sum.away).toFixed(3)]; }catch{} }
+        preds.push({...(p33?{ph33:p33[0],pa33:p33[1]}:{}),id:m.id,lg:m.lg,lh0:+m.lh0.toFixed(3),la0:+m.la0.toFixed(3),ph:+(m.sum.rawH??m.sum.home).toFixed(3),pa:+(m.sum.rawA??m.sum.away).toFixed(3),ko:m.ko,hid:m.h.id,aid:m.a.id,
           pH:+m.pH.toFixed(3),pA:+m.pA.toFixed(3),bH:+m.bH.toFixed(3),bA:+m.bA.toFixed(3),
           mv:MEDUSA.v,lhF:+m.lh.toFixed(3),laF:+m.la.toFixed(3),o25:+m.sum.over25.toFixed(4),dc:m.basis==="dc"?1:0,fr:Object.fromEntries((m.factors||[]).filter(f=>!f.base&&f.k!=="market"&&f.rh>0&&f.ra>0).map(f=>[f.k,[+Math.log(f.rh).toFixed(4),+Math.log(f.ra).toFixed(4)]])),mkH:m.mkt?+m.mkt.lh.toFixed(3):undefined,mkA:m.mkt?+m.mkt.la.toFixed(3):undefined,mh:mk?.[0],md:mk?.[1],ma:mk?.[2],...openFair(m)}); }
       /* เมดูซ่า 4.0 (item 18): one in-play snapshot per match around the hour mark, so the live model gets measured */

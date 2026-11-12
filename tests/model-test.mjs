@@ -67,6 +67,7 @@ check("walk-forward: too little data is refused", walkForward(M.slice(0, 50)).ok
   const one = walkForward(M, { configs: cfg, budgetMs: 1e9 });
   let st = null, r, runs = 0; do { r = walkForward(M, { configs: cfg, budgetMs: 1, state: st }); st = r.state; runs++; } while (!r.done && runs < 500);
   check("backtest resumes across runs and ends with the same numbers as one long run", r.done && runs > 3 && r.best.logloss === one.best.logloss && r.base33.n === one.base33.n && !one.partial, `${runs} runs`);
+  check("4.2: every league scored at 5 mixes of the two cores; choice, goal level and score rule reported", Object.keys(one.leagueChoice).length >= 3 && Object.values(one.leagueChoice).every((c) => [0, 0.3, 0.5, 0.7, 1].includes(c.w)) && one.goalsCal.all > 0.8 && one.goalsCal.all < 1.2 && one.merged.n > 0 && one.merged.logloss <= one.base33.logloss && ["max", "res", "full"].includes(one.scoreRules.rule), JSON.stringify({ lc: one.leagueChoice["eng.1"], gc: one.goalsCal, sr: one.scoreRules }));
   check("an unfinished backtest never passes the gate", walkForward(M, { configs: cfg, budgetMs: 1 }).pass === false);
   check("ensemble (4.0 x 3.3) is scored as a candidate", one.configs.length === 2 && one.configs[1].blend === 0.5 && one.configs[1].n === one.configs[0].n, `blend ${one.configs[1].logloss} vs dc ${one.configs[0].logloss} vs 3.3 ${one.base33.logloss}`); }
 const { parseBoard, backfillPlan } = await import(join(root, "lib/backfill.js"));
@@ -75,7 +76,7 @@ check("backfill parses finished games with neutral ground and shots", rows.lengt
 const plan = backfillPlan(Date.parse("2026-11-11"));
 check("backfill plan covers two seasons for every league in month chunks", plan.length >= 24 * 23 && plan.every((x) => /^[a-z.\d_]+\|\d{8}-\d{8}$/.test(x)), String(plan.length));
 
-const { evalsFromHist, finalCalib, picksAudit, liveAudit, lineMove } = await import(join(root, "lib/audit.js"));
+const { evalsFromHist, finalCalib, picksAudit, liveAudit, lineMove, coreCheck } = await import(join(root, "lib/audit.js"));
 const hist = M.slice(0, 400).map((m, i) => ({ d: m.d, ph: 0.45, pa: 0.3, mh: 0.46, md: 0.26, ma: 0.28, hs: m.hs, as: m.as, lhF: 1.5, laF: 1.2 }));
 const ev = evalsFromHist(hist); const evN = Object.values(ev).reduce((s, e) => s + e.n, 0);
 check("item 19: daily evaluation counts every settled match (not only the daily job's)", evN === 400 && Object.values(ev).every((e) => e.nK === e.n), String(evN));
@@ -85,6 +86,8 @@ check("picks judged against the market and split by kind", pa.all.n === 3 && pa.
 
 const lm = lineMove([{ hs: 2, as: 0, oh: 0.45, od: 0.28, oa: 0.27, mh: 0.52, md: 0.26, ma: 0.22, ph: 0.5, pa: 0.25 }, { hs: 0, as: 1, oh: 0.4, od: 0.3, oa: 0.3, mh: 0.4, md: 0.3, ma: 0.3, ph: 0.45, pa: 0.25 }]);
 check("item 14: opening vs closing vs model on the same matches", lm.n === 2 && lm.close < lm.open && lm.moved === 1 && lm.toward === 1, JSON.stringify(lm));
+{ const cc = coreCheck([{ ph: 0.6, pa: 0.2, ph33: 0.5, pa33: 0.25, hs: 2, as: 0 }, { ph: 0.5, pa: 0.2, hs: 1, as: 1 }]);
+  check("4.2: real results compare the new core with the 3.3 path (only rows that carry both)", cc.n === 1 && cc.ll < cc.ll33, JSON.stringify(cc)); }
 const la = liveAudit([{ ph: 0.7, pd: 0.2, pa: 0.1, fh: 2, fa: 1, hs: 2, as: 1, o25: 0.8 }, { ph: 0.2, pd: 0.6, pa: 0.2, fh: 1, fa: 1, hs: 1, as: 2, o25: 0.5 }]);
 check("item 18: live model scored (log loss, hit, exact score)", la.n === 2 && la.hit === 0.5 && la.exact === 0.5 && la.logloss > 0, JSON.stringify(la));
 const realFetch = globalThis.fetch; let refuseRanges = false;

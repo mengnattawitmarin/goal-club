@@ -48,7 +48,7 @@ async function natStep(t0, report) {
   const hist = await loadHistory("nat"); out.matches = hist.length;
   const [btRaw, stRaw, dclRaw] = await kvPipe([["GET", "backtestn"], ["GET", "btn:state"], ["GET", "dcnl"]]);
   const bt = parse(btRaw), st = parse(stRaw);
-  const stale = !bt || bt.partial || Date.now() - Date.parse(bt.at) > 6.5 * 864e5 || (bt.matches || 0) * 1.15 < hist.length;
+  const stale = !bt || bt.partial || !bt.goalsCal || Date.now() - Date.parse(bt.at) > 6.5 * 864e5 || (bt.matches || 0) * 1.15 < hist.length;
   if (hist.length >= 600 && (st || stale) && Date.now() - t0 < 42000) {
     const r = walkForward(hist, { configs: NAT_CONFIGS, base: "avg", minGain: 0.02, stepDays: 30, warmDays: 365, budgetMs: Math.max(6000, 46000 - (Date.now() - t0)), state: st });
     if (r.ok) {
@@ -94,7 +94,7 @@ export default async function handler(req, res) {
     const hist = await loadHistory(); report.matches = hist.length;
     const [btRaw, stRaw] = await kvPipe([["GET", "backtest"], ["GET", "bt:state"]]);
     const bt = parse(btRaw), st = parse(stRaw);
-    const stale = !bt || bt.partial || Date.now() - Date.parse(bt.at) > 6.5 * 864e5 || (bt.matches || 0) * 1.25 < hist.length;
+    const stale = !bt || bt.partial || !bt.leagueChoice || Date.now() - Date.parse(bt.at) > 6.5 * 864e5 || (bt.matches || 0) * 1.25 < hist.length;   // 4.2 output (per-league merge) re-runs once
     if (hist.length >= 1500 && (st || stale) && Date.now() - t0 < 30000) {
       /* resumable: each run tests the next windows and saves where it stopped; the gate is decided only on a full run */
       const hasXg = hist.filter((m) => m.xh != null).length > hist.length * 0.5;
