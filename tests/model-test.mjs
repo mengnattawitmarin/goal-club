@@ -80,13 +80,16 @@ const lm = lineMove([{ hs: 2, as: 0, oh: 0.45, od: 0.28, oa: 0.27, mh: 0.52, md:
 check("item 14: opening vs closing vs model on the same matches", lm.n === 2 && lm.close < lm.open && lm.moved === 1 && lm.toward === 1, JSON.stringify(lm));
 const la = liveAudit([{ ph: 0.7, pd: 0.2, pa: 0.1, fh: 2, fa: 1, hs: 2, as: 1, o25: 0.8 }, { ph: 0.2, pd: 0.6, pa: 0.2, fh: 1, fa: 1, hs: 1, as: 2, o25: 0.5 }]);
 check("item 18: live model scored (log loss, hit, exact score)", la.n === 2 && la.hit === 0.5 && la.exact === 0.5 && la.logloss > 0, JSON.stringify(la));
-const realFetch = globalThis.fetch;
+const realFetch = globalThis.fetch; let refuseRanges = false;
 const byMonth = {}; for (const m of M.filter((m) => m.lg !== "uefa.europa")) { const k = `${m.lg}|${m.d.slice(0, 7).replace("-", "")}`; (byMonth[k] = byMonth[k] || []).push(m); }
 globalThis.fetch = async (url, opts) => {
   const u = String(url); if (u.startsWith("http://localhost")) return realFetch(url, opts);
   if (/soccer\/bad\./.test(u)) return new Response("busy", { status: 503 });
   { const m = u.match(/soccer\/esp\.1\/scoreboard\?dates=(\d{8})-(\d{8})/); const p = (x) => Date.parse(`${x.slice(0, 4)}-${x.slice(4, 6)}-${x.slice(6)}`);
     if (m && p(m[2]) - p(m[1]) > 10 * 864e5) return new Response("slow", { status: 504 }); }   // a whole month of esp.1 is "too heavy": must be split
+  const ev = (list) => new Response(JSON.stringify({ events: list.map((m) => ({ id: m.id, date: m.d + "T15:00Z", competitions: [{ status: { type: { state: "post" } }, competitors: [{ homeAway: "home", score: String(m.hs), team: { id: m.hid } }, { homeAway: "away", score: String(m.as), team: { id: m.aid } }] }] })) }), { status: 200 });
+  if (refuseRanges && /dates=\d{8}-\d{8}/.test(u)) return new Response("bad request", { status: 400 });   // what ESPN did live on 12 Nov 2026
+  { const d1 = u.match(/soccer\/([^/]+)\/scoreboard\?dates=(\d{4})(\d\d)(\d\d)$/); if (d1) return ev((byMonth[`${d1[1]}|${d1[2]}${d1[3]}`] || []).filter((m) => m.d === `${d1[2]}-${d1[3]}-${d1[4]}`)); }
   const mm = u.match(/soccer\/([^/]+)\/scoreboard\?dates=(\d{6})\d\d-/);
   if (mm) { const list = byMonth[`${mm[1]}|${mm[2]}`] || []; return new Response(JSON.stringify({ events: list.map((m) => ({ id: m.id, date: m.d + "T15:00Z", competitions: [{ status: { type: { state: "post" } }, competitors: [{ homeAway: "home", score: String(m.hs), team: { id: m.hid } }, { homeAway: "away", score: String(m.as), team: { id: m.aid } }] }] })) }), { status: 200 }); }
   return new Response("{}", { status: 404 });
@@ -94,6 +97,7 @@ globalThis.fetch = async (url, opts) => {
 const { backfillPlan: bp } = await import(join(root, "lib/backfill.js"));
 /* 14 chunks ESPN always refuses, at the front of the queue: they must not block the rest (bug seen live 12 Nov) */
 const broken = Array.from({ length: 14 }, (_, i) => `bad.${i}|20250101-20250131`);
+db.set("bf:ver", "2");
 db.set("bf:todo", JSON.stringify([...broken, ...bp(Date.parse("2026-05-01"), 650).filter((x) => /^(eng\.1|sco\.1|esp\.1)\|/.test(x))]));
 process.env.CRON_SECRET = "s3";
 const job = (await import(join(root, "api/model.js"))).default;
@@ -105,5 +109,12 @@ check("backfill fills the history over several runs: heavy months split in halve
 const bt = JSON.parse(db.get("backtest") || "null");
 check("model job stores a backtest with a pass/fail gate and measured context (rest, motivation)", bt && typeof bt.pass === "boolean" && bt.best && bt.base33 && bt.context?.shortRest && "deadFor" in bt.context, bt ? `gain ${bt.gain} pass ${bt.pass}` : "none");
 check("model job stores team strengths and league levels for the app", Object.keys(db.get("dct") || {}).length >= 60 && JSON.parse(db.get("dcl")).leagues["eng.1"].home > 1);
+/* ESPN refuses date ranges (HTTP 400, seen live): the job switches to one request per day, week-sized chunks, and still fills */
+{ refuseRanges = true; db.delete("bf:mode"); db.delete("bf:eng.1"); db.delete("bf:tries"); db.delete("bf:skip");
+  db.set("bf:todo", JSON.stringify(["eng.1|20250901-20250930", "eng.1|20251001-20251031", "eng.1|20251101-20251130"]));
+  let r2; for (let i = 0; i < 12; i++) { r2 = await call({ secret: "s3" }); if (!r2.backfill?.left) break; }
+  const want = ["202509", "202510", "202511"].reduce((n, k) => n + (byMonth[`eng.1|${k}`] || []).length, 0);
+  const got = Object.values(db.get("bf:eng.1") || {}).reduce((n, v) => n + JSON.parse(v).length, 0);
+  check("ESPN refuses ranges (HTTP 400): falls back to one request per day and still stores every match", r2.backfill.left === 0 && db.get("bf:mode") === "day" && got === want && want > 50, `${got}/${want} mode ${db.get("bf:mode")}`); }
 kvServer.close();
 process.exit(fail ? 1 : 0);

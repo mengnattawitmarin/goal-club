@@ -101,7 +101,7 @@ npm test           # build + ทดสอบงานประจำวัน + 
 | `dcl` | string JSON | `{leagues{mu,home,rho,n}, asOf, cfg, rows}` |
 | `backtest` | string JSON | ผล walk-forward ล่าสุด `{base33, best, configs, gain, pass, leagues, context}` แอปใช้แกน 4.0 เมื่อ `pass` เท่านั้น |
 | `modellog` | string JSON | ผลการรันงานโมเดลล่าสุด |
-| `bf:todo`, `bf:tries`, `bf:skip`, `bf:<lg>` | string JSON / list / hash YYYYMMDD-YYYYMMDD → rows | งานค้าง จำนวนครั้งที่พลาด ช่วงที่ข้าม (พลาด 3 ครั้ง) และผลย้อนหลังที่เก็บแล้ว |
+| `bf:todo`, `bf:tries`, `bf:skip`, `bf:ver`, `bf:mode`, `bf:<lg>` | string JSON / list / hash YYYYMMDD-YYYYMMDD → rows | งานค้าง จำนวนครั้งที่พลาด ช่วงที่ข้าม (พลาด 3 ครั้ง) และผลย้อนหลังที่เก็บแล้ว |
 | `live:<matchId>` → `livehist` | string (3 วัน) → list (2000) | ภาพนิ่งโมเดลสดครั้งแรกช่วงนาที 55–75 ตัดสินโดยงานประจำวัน |
 | `ana2:<matchId>` | string JSON, หมดอายุ 5 วัน | ทัศนะบอลจากบอท `{at, text, sources, bot}` |
 ถ้าไม่ได้ต่อ Redis แอปยังทำงานได้ โดยเก็บข้อมูลเหล่านี้ใน localStorage ของแต่ละเครื่อง (prefix `gc:`)
