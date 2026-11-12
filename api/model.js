@@ -4,6 +4,7 @@
 //   3. fit the Dixon-Coles model on everything with the winning settings and store team strengths
 // The app uses the 4.0 core only after the backtest passes (backtest.pass) — otherwise it stays on 3.3.
 // Auth: Authorization: Bearer <CRON_SECRET>  or  ?secret=<CRON_SECRET>  (required).
+import { LEAGUES } from "../lib/leagues.js";
 import { kv, kvPipe, kvEnabled, parse } from "../lib/kv.js";
 import { backfillStep, loadHistory } from "../lib/backfill.js";
 import { fitDC } from "../lib/dc.js";
@@ -27,7 +28,13 @@ export default async function handler(req, res) {
   if (!kvEnabled) { res.status(200).json({ error: "no database" }); return; }
   const t0 = Date.now(), report = { at: new Date().toISOString() };
   try {
-    report.backfill = await backfillStep(getJson, { budgetMs: 22000 });
+    const pre = parse(await kv("GET", "bf:todo"));
+    const filling = !pre || pre.length > 0;
+    report.backfill = await backfillStep(getJson, { budgetMs: filling ? 40000 : 22000 });
+    if (report.backfill.left > 0) {   // still collecting: skip the heavy part, the last run does it
+      report.months = await kvPipe(LEAGUES.map((lg) => ["HLEN", `bf:${lg}`])).then((r) => r.reduce((s, x) => s + (+x || 0), 0)).catch(() => null);
+      report.ms = Date.now() - t0; await kv("SET", "modellog", JSON.stringify(report)); res.status(200).json(report); return;
+    }
     const hist = await loadHistory(); report.matches = hist.length;
     const bt = parse(await kv("GET", "backtest"));
     const stale = !bt || Date.now() - Date.parse(bt.at) > 6.5 * 864e5 || (bt.matches || 0) * 1.25 < hist.length;
