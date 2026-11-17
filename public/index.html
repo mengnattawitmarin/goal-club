@@ -1416,21 +1416,29 @@ async function loadTableRaw(slug){
 }
 async function pool(items,limit,fn){ const out=new Array(items.length); let i=0; await Promise.all(Array.from({length:Math.min(limit,items.length)},async()=>{ while(i<items.length){ const k=i++; out[k]=await fn(items[k]); } })); return out; }
 const natEmpty={};
-function natBadSlug(s){ if((S.natslugs?.bad||[]).includes(s)) return true; try{ const m=JSON.parse(localStorage.getItem("gc:natbad")||"{}"); return m[s]>Date.now()-864e5; }catch{ return false; } }
-function natMarkBad(s){ try{ const m=JSON.parse(localStorage.getItem("gc:natbad")||"{}"); m[s]=Date.now(); localStorage.setItem("gc:natbad",JSON.stringify(m)); }catch{} }
+/* 18 Nov fix: one refused request used to hide a competition on EVERY date for 24 h (Nations League matchday 6 vanished).
+   Now: the server's weekly check decides whether a competition exists; a refusal only skips that competition on that date, for 1 h */
+try{ localStorage.removeItem("gc:natbad"); }catch{}
+function natBadSlug(s,date){ if((S.natslugs?.bad||[]).includes(s)) return true; if((S.natslugs?.ok||[]).includes(s)&&!date) return false;
+  try{ const m=JSON.parse(localStorage.getItem("gc:natbad2")||"{}"); return m[`${s}|${date}`]>Date.now()-36e5; }catch{ return false; } }
+function natMarkBad(s,date){ if((S.natslugs?.ok||[]).includes(s)) return; try{ const m=JSON.parse(localStorage.getItem("gc:natbad2")||"{}"); m[`${s}|${date}`]=Date.now(); for(const k in m) if(m[k]<Date.now()-36e5) delete m[k]; localStorage.setItem("gc:natbad2",JSON.stringify(m)); }catch{} }
 async function loadLiveDay(date, onlySlugs){
   const ymd=date.replaceAll("-","");
   /* national competitions: skip ones ESPN does not carry, and ones already seen empty for this date in the last 3 hours,
      so 15 extra competitions do not slow every refresh; they never count against the feed's health */
-  const now=Date.now(), natOk=s=>!natBadSlug(s) && !(natEmpty[`${s}|${date}`]>now-3*3600e3);
+  const now=Date.now(), natOk=s=>!natBadSlug(s,date) && !(natEmpty[`${s}|${date}`]>now-3*3600e3);
   const list=(onlySlugs?.length ? LEAGUES.filter(([s])=>onlySlugs.includes(s)) : LEAGUES).filter(([s])=>!isNat(s)||natOk(s));
   const feed={events:0,bad:0,failed:0,leagues:list.filter(([s])=>!isNat(s)).length};
   const per=await pool(list,6,async([slug])=>{
     try{
-      let b; try{ b=await espn(`site/v2/sports/soccer/${slug}/scoreboard?dates=${ymd}`); }catch(e){ if(isNat(slug)){ if(/^4\d\d$/.test(String(e?.message))) natMarkBad(slug); return []; } throw e; }
+      let b; try{ b=await espn(`site/v2/sports/soccer/${slug}/scoreboard?dates=${ymd}`); }
+      catch(e){ if(!isNat(slug)) throw e;
+        /* national: a slow answer gets one more, longer try before giving up */
+        if(!/^4\d\d$/.test(String(e?.message))){ try{ b=await espn(`site/v2/sports/soccer/${slug}/scoreboard?dates=${ymd}`,10000); }catch{} }
+        if(!b){ if(/^4\d\d$/.test(String(e?.message))) natMarkBad(slug,date); return []; } }
       const evs=b.events||[]; if(!evs.length){ if(isNat(slug)) natEmpty[`${slug}|${date}`]=now; return []; }
       for(const ev of evs){ feed.events++; const c=ev.competitions?.[0]; if(!ev.id||!c?.status?.type?.state||(c.competitors||[]).filter(x=>x.team?.id).length!==2) feed.bad++; }
-      const tbl=await loadTable(slug);
+      const tbl=isNat(slug)?null:await loadTable(slug);   /* national competitions: no league table to read (and their standings calls were slow) */
       return evs.map(ev=>{
         const c=ev.competitions?.[0], H=c?.competitors?.find(x=>x.homeAway==="home"), A=c?.competitors?.find(x=>x.homeAway==="away"); if(!H||!A) return null;
         const side=x=>{ const id=String(x.team?.id??""), r=tbl?.rows.get(id), sc=Number(x.score);

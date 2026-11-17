@@ -73,6 +73,11 @@ try {
   });
   check("4.0 item 14: Asian handicap price used; a bigger handicap means a bigger expected gap", i14.a && i14.gap > 0, JSON.stringify(i14));
   check("4.0 item 17: motivation factor only from the measured effect, late in the season", i14.dead && !i14.alive && i14.motiv && i14.motiv[0] < 1 && i14.motiv[1] > 1, JSON.stringify(i14.motiv));
+  const nb = await A.evaluate(() => { const keep = S.natslugs; S.natslugs = null;
+    natMarkBad("uefa.nations", "2026-11-15"); const sameDay = natBadSlug("uefa.nations", "2026-11-15"), otherDay = natBadSlug("uefa.nations", "2026-11-16");
+    S.natslugs = { ok: ["fifa.friendly"], bad: [] }; natMarkBad("fifa.friendly", "2026-11-16"); const verified = natBadSlug("fifa.friendly", "2026-11-16");
+    S.natslugs = keep; try { localStorage.removeItem("gc:natbad2"); } catch {} return { sameDay, otherDay, verified }; });
+  check("national competition refused once is skipped only on that date, never when the server verified it (18 Nov bug)", nb.sameDay && !nb.otherDay && !nb.verified, JSON.stringify(nb));
   const mix42 = await A.evaluate(() => {
     const raw = { ...S.open.raw, lh: 1.2, la: 1.0, basis: "table" }, keep = [S.backtest, S.dc, S.audit];
     S.dc = { leagues: { [raw.lg]: { mu: 1.4, home: 1.25, rho: -0.06 } }, teams: { [raw.h.id]: { att: 1.4, def: 0.8, n: 30, lg: raw.lg }, [raw.a.id]: { att: 1.1, def: 1, n: 30, lg: raw.lg } } };
